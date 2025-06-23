@@ -1,0 +1,15 @@
+
+fn fib(n) {
+    if n <= 1 { return n }
+    return fib(n-1) + fib(n-2)
+}
+
+for i in 0:5 {
+    fib(25)
+}
+
+let start = perf_counter()
+fib(35)
+let end = perf_counter()
+
+echo("Took", end - start)

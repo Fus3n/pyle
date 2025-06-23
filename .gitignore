@@ -1,0 +1,11 @@
+ast_dump.json
+source.pyled
+source.pylec
+
+**/__pycache__/
+
+**/package-lock.json
+**/node_modules/
+
+# extension output
+**/out/
