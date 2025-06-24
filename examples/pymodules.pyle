@@ -1,0 +1,43 @@
+// All python object method are available
+const hello = "Hello world"
+echo(hello.split(" ")) // list
+
+const math = importpy("math");
+echo("Pi from Python math module:", math.pi);
+echo("Cosine of 0:", math.cos(0));
+
+const random = importpy("random");
+echo("Random integer between 1 and 10:", random.randint(1, 10));
+
+let attr_name = "sqrt";
+echo("Square root of 25 using get_attr:", get_attr(math, attr_name)(25));
+
+const os = importpy("os");
+echo("Current working directory:", os.getcwd());
+
+const sys = importpy("sys");
+echo("Python version info:", sys.version);
+
+let env_var = get_attr(os, "environ");
+// Print all environment variable names and their values
+
+let i = 0
+for key in env_var.keys() {
+    if i == 5 { break }
+    echo(key, "=", env_var[key]);
+    i = i + 1
+}
+
+const datetime = importpy("datetime");
+let now = datetime.datetime.now();
+echo("Current datetime:", now);
+
+const time = importpy("time");
+echo("Sleeping for 1 second...");
+time.sleep(1);
+echo("Awake!");
+
+// Demonstrate dynamic attribute access with get_attr
+let func_name = "randint";
+let randint_func = get_attr(random, func_name);
+echo("Random int (dynamic):", randint_func(100, 200));

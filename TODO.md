@@ -50,8 +50,8 @@
     - [x] Result class for Lexer
     - [x] Handling Lexer Errors
     - [x] Handling Parser Errors
-    - [ ] Stack trace
-    - [ ] Use token map to propagate error (from main.py comment)
+    - [ ] Implement detailed stack traces for Pyle runtime errors
+    - [ ] Integrate `token_map` from Compiler into VM for precise runtime error location reporting
 
 5. Implement Stack-based VM
     - [x] Basic VM structure
@@ -84,9 +84,23 @@
     - [x] Updated syntax highlighting for new keywords (`continue`, `break`, `fn`, `const`)
 
 8. General Language Features
-    - [ ] Implement break and continue in loops (from main.py comment)
-    - [ ] Function def should be able to define with default arguments (from main.py comment)
-    - [ ] Add `disassemble` utility function
+    - [x] Implement break and continue in loops
+    - [ ] Function def should be able to define with default arguments 
+    - [x] Add `disassemble` utility function
+    - [ ] Design and implement a basic module system for Pyle scripts (e.g., `import "my_module.pyle"`)
+    - [ ] Add support for Dictionary/Map literals and operations
+    - [ ] Add support for Set literals and operations
+    - [ ] Implement comprehensions (list, dictionary/map)
+
+9. Testing & Quality Assurance
+    - [ ] Create a comprehensive test suite covering:
+        - [ ] Lexer tokenization
+        - [ ] Parser AST generation for all syntax
+        - [ ] Compiler bytecode generation
+        - [ ] VM execution for all opcodes and features
+        - [ ] Built-in functions
+        - [ ] Error handling and reporting
+    - [ ] Set up automated testing / Continuous Integration (CI)
 
 Project Assumptions/Rules:
 - TokenType or token type and token kind is used interchangeably

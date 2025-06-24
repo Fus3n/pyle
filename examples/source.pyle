@@ -1,1 +1,15 @@
-echo("Hello world")
+fn fib(n) {
+    if n <= 1 {
+        return n;
+    }
+    return fib(n - 1) + fib(n - 2);
+}
+
+echo("Calculating fib(10):");
+let result = fib(10);
+echo("Result:", result);
+
+echo("Fibonacci sequence up to 7:");
+for i in 0:8 { // Will print fib(0) to fib(7)
+    echo("fib(", i, ") =", fib(i));
+}

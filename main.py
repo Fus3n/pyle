@@ -2,7 +2,6 @@ from pyle import Lexer, Parser, Compiler, PyleVM
 from pprint import pprint
 import json
 import enum
-import pickle
 import sys
 
 from pyle.pyle_bytecode import OpCode
@@ -15,8 +14,6 @@ def json_serial_default(obj):
     raise TypeError(f"Object of type {obj.__class__.__name__} is not JSON serializable")
 
 
-# TODO: Implement break and continue in loops
-# TODO: Function def should able to define with default arguments
 # TODO: use token map to propagate error 
 
 def main():
@@ -69,13 +66,6 @@ def main():
     with open("source.pyled", "w") as f:
         f.write(dis)
 
-    compiled = (bytecode_chunk, constants)
-    with open("source.pylec", "wb") as f:
-        pickle.dump(compiled, f)
-
-    # with open("source.pylec", "rb") as f:
-    #     bytecode_chunk, constants = pickle.load(f)
-    
     vm = PyleVM()
     try:
         print("\n--- VM Execution ---")
