@@ -98,19 +98,16 @@ class Compiler:
             self.token_map[instruction_index] = token 
         return instruction_index
     
-    def patch_jump(self, instruction_index: int):
+    def patch_jump(self, instruction_index: int, jump_target_ip: int | None = None):
         if instruction_index is None: 
             raise ValueError("patch_jump called with None instruction_index")
-        if not isinstance(instruction_index, int) or instruction_index < 0 or instruction_index >= len(self.bytecode_chunk):
-            # This can happen if jump is patched before any instructions are emitted after it.
-            # jump_target_ip will be current len, if that's the jump index, it's an infinite loop.
-            # This check is more about instruction_index itself being valid.
-             pass # Allow jump to current end, it might be intended (e.g. jump over nothing)
-            # raise IndexError(f"patch_jump called with invalid instruction_index: {instruction_index}, bytecode length: {len(self.bytecode_chunk)}")
+        
+        # Ensure instruction_index is a valid index for an existing instruction
+        if not (isinstance(instruction_index, int) and 0 <= instruction_index < len(self.bytecode_chunk)):
+            raise IndexError(f"patch_jump: instruction_index {instruction_index} is out of bounds for bytecode length {len(self.bytecode_chunk)}")
 
-
-        jump_target_ip = len(self.bytecode_chunk) 
-        self.bytecode_chunk[instruction_index].operand = jump_target_ip
+        target_ip_to_set = jump_target_ip if jump_target_ip is not None else len(self.bytecode_chunk)
+        self.bytecode_chunk[instruction_index].operand = target_ip_to_set
 
     def visit_Block(self, node: Block):
         # Only create a new scope if this is an explicit block (node.token is not None)
@@ -294,41 +291,58 @@ class Compiler:
 
     def visit_ForInStmt(self, node: ForInStmt):
         self.loop_level += 1
-        self.loop_start_patches.append([])
-        self.loop_end_patches.append([])
+        
+        current_loop_break_patches = [] 
+        self.loop_end_patches.append(current_loop_break_patches)
+
+        current_loop_continue_patches = []
+        self.loop_start_patches.append(current_loop_continue_patches)
 
         self.scope_depth += 1
         self.emit_instruction(OpCode.OP_ENTER_SCOPE, token=node.token) 
 
         self._compile_node(node.iterable) 
-        self.emit_instruction(OpCode.OP_ITER_NEW, token=node.iterable.token if node.iterable.token else node.token) 
+        self.emit_instruction(OpCode.OP_ITER_NEW, token=node.iterable.token if node.iterable.token else node.token) # Pushes iterator
 
         var_name_str = node.loop_variable.value
         name_idx = self.add_constant(var_name_str)
         self.emit_instruction(OpCode.OP_CONST, self.add_constant(None), token=node.loop_variable) 
-        self.emit_instruction(OpCode.OP_DEF_LOCAL, name_idx, token=node.loop_variable)
+        self.emit_instruction(OpCode.OP_DEF_LOCAL, name_idx, token=node.loop_variable) # Defines loop var
 
-        loop_iteration_start_ip = len(self.bytecode_chunk) # Target for continue
+        loop_iteration_start_ip = len(self.bytecode_chunk) # Target for continue AND normal loop back
         
-        jump_to_loop_end_idx = self.emit_instruction(OpCode.OP_ITER_NEXT_OR_JUMP, 99999, token=node.token)
+        # OP_ITER_NEXT_OR_JUMP:
+        # - If next item: pushes item. Iterator remains on stack under item.
+        # - If exhausted: pops iterator, then jumps to its operand.
+        jump_if_exhausted_idx = self.emit_instruction(OpCode.OP_ITER_NEXT_OR_JUMP, 99999, token=node.token) # Placeholder for jump on exhaustion
 
-        self.emit_instruction(OpCode.OP_SET_LOCAL, name_idx, token=node.loop_variable)
+        # Item is now on stack (if not exhausted). Assign to loop variable.
+        self.emit_instruction(OpCode.OP_SET_LOCAL, name_idx, token=node.loop_variable) # Pops item, iterator remains.
         
-        self._compile_node(node.body) 
+        self._compile_node(node.body) # Body might contain break/continue
 
-        # Patch all continue jumps
-        for patch_idx in self.loop_start_patches[-1]:
+        self.emit_instruction(OpCode.OP_JUMP, loop_iteration_start_ip, token=node.token) # Loop back
+        
+        # --- Loop End Handling ---
+        # This IP is the target for 'break' statements from the loop body.
+        # It's responsible for popping the iterator that 'break' would leave on stack.
+        break_handler_ip = len(self.bytecode_chunk)
+        self.emit_instruction(OpCode.OP_POP, token=node.token) # Pop the iterator
+
+        # Patch all 'break' jumps collected from visit_BreakStmt for this loop
+        for patch_idx in current_loop_break_patches:
+            self.bytecode_chunk[patch_idx].operand = break_handler_ip
+        
+        # This IP is the target for:
+        # 1. OP_ITER_NEXT_OR_JUMP when the iterator is exhausted.
+        # 2. Fall-through from break_handler_ip (after iterator has been popped).
+        after_loop_ip = len(self.bytecode_chunk)
+        self.patch_jump(jump_if_exhausted_idx, after_loop_ip) # Patch OP_ITER_NEXT_OR_JUMP's exhaustion jump
+
+        # Patch all 'continue' jumps for this loop
+        for patch_idx in current_loop_continue_patches:
             self.bytecode_chunk[patch_idx].operand = loop_iteration_start_ip
-
-        self.emit_instruction(OpCode.OP_JUMP, loop_iteration_start_ip, token=node.token) # Jump back to iterate
-        
-        self.patch_jump(jump_to_loop_end_idx) # Target for loop exit and break
-        
-        # Patch all break jumps
-        loop_end_target_ip = self.bytecode_chunk[jump_to_loop_end_idx].operand
-        for patch_idx in self.loop_end_patches[-1]:
-             self.bytecode_chunk[patch_idx].operand = loop_end_target_ip
-
+            
         self.emit_instruction(OpCode.OP_EXIT_SCOPE, token=node.token)
         self.scope_depth -= 1
 
