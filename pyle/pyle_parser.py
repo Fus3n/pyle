@@ -500,7 +500,7 @@ class Parser:
         return Result.ok(left)
 
     def factor(self) -> Result[Expr]:
-        left_res = self.call() # Changed from self.atom() or self.primary()
+        left_res = self.unary() # Changed from self.call()
         if left_res.is_err(): return left_res
         left = left_res.ok_val
 
@@ -508,10 +508,27 @@ class Parser:
             op_token = self.curr_tok
             if self._consume(self.curr_tok.kind).is_err(): break
 
-            right_res = self.call() # Changed from self.atom() or self.primary()
+            right_res = self.unary() # Changed from self.call()
             if right_res.is_err(): return right_res
             left = BinaryOp(left=left, op=op_token, right=right_res.ok_val, token=op_token)
         return Result.ok(left)
+
+    def unary(self) -> Result[Expr]: # New method for unary operators
+        if self.is_kind(TT.MINUS) or (self.is_kind(TT.KEYWORD) and self.curr_tok.value == "not"):
+            op_token = self.curr_tok
+            # Consume the operator token ('-' or 'not')
+            consume_res = self._consume(op_token.kind)
+            if consume_res.is_err():
+                 # This should not happen if is_kind was true, but good for safety
+                return Result.err(ParseError(f"Failed to consume unary operator '{op_token.value}'.", op_token))
+
+            operand_res = self.unary() # Recursively call unary for the operand
+            if operand_res.is_err():
+                return operand_res
+            
+            return Result.ok(UnaryOp(op=op_token, operand=operand_res.ok_val, token=op_token))
+        
+        return self.call() # If no unary operator, proceed to call
 
     def call(self) -> Result[Expr]: # New method for handling function calls
         # This will parse a primary expression, then check if it's followed by '(' for a call.

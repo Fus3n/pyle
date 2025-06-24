@@ -132,6 +132,20 @@ class Compiler:
         constant_index = self.add_constant(node.value)
         self.emit_instruction(OpCode.OP_CONST, constant_index, node.token)        
 
+    def visit_UnaryOp(self, node: UnaryOp):
+        self._compile_node(node.operand) # First compile the operand
+        
+        op_kind = node.op.kind
+        op_value = node.op.value
+
+        if op_kind == TokenType.MINUS:
+            self.emit_instruction(OpCode.OP_NEGATE, token=node.op)
+        elif op_kind == TokenType.KEYWORD and op_value == "not":
+            self.emit_instruction(OpCode.OP_NOT, token=node.op)
+        else:
+            # This case should ideally be prevented by the parser.
+            raise Exception(f"Compiler error: Unsupported unary operator '{op_value}' at {node.op.get_file_loc()}")
+
     def visit_BinaryOp(self, node: BinaryOp):
         self._compile_node(node.left)
         self._compile_node(node.right)

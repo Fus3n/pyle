@@ -142,6 +142,20 @@ class PyleVM:
                 self._push(left % right) 
             #endregion
             
+            #region Unary Operations
+            elif op == OpCode.OP_NEGATE:
+                if not self.stack: return Result.err(PyleRuntimeError("Stack underflow for OP_NEGATE.", current_token))
+                value = self._pop()
+                if isinstance(value, (int, float)):
+                    self._push(-value)
+                else:
+                    return Result.err(PyleRuntimeError(f"Operand for '-' must be a number, not {type(value).__name__}.", current_token))
+            elif op == OpCode.OP_NOT:
+                if not self.stack: return Result.err(PyleRuntimeError("Stack underflow for OP_NOT.", current_token))
+                value = self._pop()
+                self._push(not value) # Python's `not` handles truthiness correctly
+            #endregion
+
             #region Comparison
             elif op == OpCode.OP_EQUAL:
                 if len(self.stack) < 2: return Result.err(PyleRuntimeError("Stack underflow for OP_EQUAL.", current_token))
