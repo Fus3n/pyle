@@ -1,6 +1,7 @@
-# Pyle: A "from-scratch" Python-like Language & VM
+# Pyle: Crafting a Language
 
-<p align="center">Dive into the internals of programming languages!</p>
+<p align="center">Exploring language internals: lexing, parsing, bytecode & a custom VM in Python.</p>
+
 
 Pyle is a dynamic, interpreted programming language, along with its own bytecode virtual machine, built entirely in Python. It's designed as a learning project, offering a hands-on way to understand how programming languages are tokenized, parsed, compiled into bytecode, and finally executed.
 
@@ -53,7 +54,7 @@ Pyle supports a growing set of features:
 
 *   **Variables:**
     ```pyle
-    let message = "Hello, Pyle!";
+    let message = "Hello, Pyle!"; // semicolons are optional
     const PI = 3.14159;
     echo(message);
     echo(PI);
@@ -131,8 +132,8 @@ Pyle supports a growing set of features:
         fn introduce(name, age) {
             echo("My name is", name, "and I am", age, "years old.");
         }
-        introduce(name: "Alex", age: 30);
-        introduce(age: 25, name: "Jordan"); // Order doesn't matter for keywords
+        introduce(name="Alex", age=30);
+        introduce(age=25, name="Jordan"); // Order doesn't matter for keywords
         ```
     *   Return statements (can return any expression, or nothing).
 
