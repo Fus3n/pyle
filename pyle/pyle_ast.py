@@ -14,10 +14,6 @@ class ASTNode:
             self.type = ""
             return
         
-        # Convert CamelCase to snake_case
-        # Example: "LogicalOp" becomes "logical_op"
-        # Example: "Number" becomes "number"
-        # Example: "ASTNode" becomes "a_s_t_node"
         s = class_name
         self.type = ''.join(['_' + c.lower() if i > 0 and c.isupper() else c.lower() for i, c in enumerate(s)])
 

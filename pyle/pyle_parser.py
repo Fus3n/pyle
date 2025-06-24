@@ -1,4 +1,3 @@
-# pyle/pyle_parser.py
 from typing import Optional
 from .pyle_ast import *
 from .pyle_types import Loc, Token, TokenType as TT
@@ -9,28 +8,21 @@ class Parser:
     
     def __init__(self, tokens: list[Token]) -> None:
         self.toks = tokens
-        self.curr_tok: Token = self.toks[0] if len(self.toks) > 0 else Token(TT.EOF, "", Loc(0,0), "") # Ensure curr_tok is never None
+        self.curr_tok: Token = self.toks[0] if len(self.toks) > 0 else Token(TT.EOF, "", Loc(0,0), "") 
         self.curr_tok_idx = 0
         self.source_name = self.toks[0].source_name if len(self.toks) > 0 else ""
 
 
-    def _consume(self, tok_kind: TT) -> Result[Token]: # Renamed tok to tok_kind for clarity
+    def _consume(self, tok_kind: TT) -> Result[Token]: 
         current_token_being_consumed = self.curr_tok
         if current_token_being_consumed.kind == tok_kind:
             self.curr_tok_idx += 1
             if self.curr_tok_idx < len(self.toks):
                 self.curr_tok = self.toks[self.curr_tok_idx]
             else:
-                # Reached end of tokens, set current to a new EOF token
-                # to prevent errors if _consume is called again.
-                # Use location of last real token if possible.
                 last_loc = current_token_being_consumed.loc if current_token_being_consumed else Loc(0,0)
                 self.curr_tok = Token(TT.EOF, "", last_loc, self.source_name) 
             return Result.ok(current_token_being_consumed)
-        # elif self.curr_tok.kind == TT.EOF: # check kind, not the whole token object
-        #     return Result.err(
-        #         ParseError(f"EOF reached: no more tokens left to consume. Expected {tok_kind.name}", self.curr_tok)
-        #     )
         else:
             return Result.err(
                 ParseError(f"Unexpected Token: expected {tok_kind.name} but found {self.curr_tok.kind.name}", self.curr_tok)
@@ -53,8 +45,6 @@ class Parser:
         return False
 
     def parse(self) -> Result[Block]:
-        # The main entry point now directly calls a method that parses a sequence of statements
-        # ending with EOF. This sequence implicitly forms the main program block.
         prog_block = Block(token=None) # Top-level block for the whole program
         
         while not self.is_kind(TT.EOF):
@@ -65,19 +55,15 @@ class Parser:
             
             # Optionally consume a semicolon if present after a statement
             if self.is_kind(TT.SEMICOLON):
-                self._consume(TT.SEMICOLON) # Ignore result, it's optional
-            elif self.is_kind(TT.EOF): # If EOF, break, don't look for more statements
+                self._consume(TT.SEMICOLON)
+            elif self.is_kind(TT.EOF):
                 break
-            elif self.is_kind(TT.R_CURLY_BRACE): # Stop if we hit a R_CURLY_BRACE at top level (syntax error, but block() handles it)
+            elif self.is_kind(TT.R_CURLY_BRACE): 
                  return Result.err(ParseError("Unexpected '}' at top level.", self.curr_tok))
 
-
         return Result.ok(prog_block)
-
         
-    def block(self) -> Result[Block]: # This is for explicit { } blocks, not the whole program
-        # This method is now primarily for parsing contents within { ... }
-        # The main parse() method handles the top-level sequence of statements.
+    def block(self) -> Result[Block]: 
         open_curly_res = self._consume(TT.L_CURLY_BRACE)
         if open_curly_res.is_err(): return open_curly_res
 
@@ -89,15 +75,13 @@ class Parser:
                 return stmt_res
             block_node.statements.append(stmt_res.ok_val)
 
-            # Optional semicolon consumption inside blocks too
             if self.is_kind(TT.SEMICOLON):
                 self._consume(TT.SEMICOLON)
             elif self.is_kind(TT.R_CURLY_BRACE) or self.is_kind(TT.EOF):
-                break # End of block or file
+                break
 
         close_curly_res = self._consume(TT.R_CURLY_BRACE)
         if close_curly_res.is_err():
-            # Error if EOF or wrong token instead of '}'
             start_loc_info = f"line {open_curly_res.ok_val.loc.line}" if open_curly_res.is_ok() else "unknown location"
             return Result.err(
                 ParseError(f"Missing '}}' to close block started at {start_loc_info}.", 
@@ -106,7 +90,7 @@ class Parser:
             )
         return Result.ok(block_node)
         
-    def statements(self) -> Result[Stmt | Expr]: # Can return Expr for expression statements
+    def statements(self) -> Result[Stmt | Expr]:
         if self.is_kind(TT.KEYWORD):
             if self.curr_tok.value in ("let", "const"):
                 return self.parse_variable_def()
@@ -116,19 +100,17 @@ class Parser:
                 return self.parse_while_statement()
             elif self.curr_tok.value == "for":
                 return self.parse_for_in_statement()
-            elif self.curr_tok.value == "fn": # New
+            elif self.curr_tok.value == "fn": 
                 return self.parse_function_definition()
-            elif self.curr_tok.value == "return": # New
+            elif self.curr_tok.value == "return": 
                 return self.parse_return_statement()
-            elif self.curr_tok.value == "break": # Corrected condition
-                return self.break_statement() # Use existing method
-            elif self.curr_tok.value == "continue": # Corrected condition
-                return self.continue_statement() # Use existing method
-        elif self.is_kind(TT.L_CURLY_BRACE): # Explicit block statement
+            elif self.curr_tok.value == "break": 
+                return self.break_statement() 
+            elif self.curr_tok.value == "continue": 
+                return self.continue_statement() 
+        elif self.is_kind(TT.L_CURLY_BRACE): 
             return self.block()
 
-        # Check for assignment before general expression, as it starts with IDENT
-        # Peek to see if IDENT is followed by ASSIGN
         if self.is_kind(TT.IDENT):
             peeked = self._peek(1)
             if peeked and peeked.kind == TT.ASSIGN:
@@ -166,8 +148,6 @@ class Parser:
         continue_token_res = self._consume(TT.KEYWORD)
         if continue_token_res.is_err(): return continue_token_res
 
-        # Optional semicolon
-        # self._try_consume_semicolon()
         if self.is_kind(TT.SEMICOLON):
             self._consume(TT.SEMICOLON)
             
@@ -201,7 +181,7 @@ class Parser:
         if self._consume(TT.R_PAREN).is_err():
             return Result.err(ParseError("Expected ')' after parameter list.", self.curr_tok))
 
-        body_res = self.block() # Use self.block for { ... }
+        body_res = self.block() 
         if body_res.is_err():
             return Result.err(ParseError(f"Expected '{{' to start function body for '{name_token.value}'.", self.curr_tok))
 
@@ -213,11 +193,9 @@ class Parser:
             return Result.err(ParseError("Expected 'return' keyword.", return_token))
 
         value_expr: Expr | None = None
-        # If the next token is not a semicolon (optional end of statement)
-        # or a right curly brace (end of block), then parse an expression.
         if not self.is_kind(TT.SEMICOLON) and \
            not self.is_kind(TT.R_CURLY_BRACE) and \
-           not self.is_kind(TT.EOF): # Check for EOF too
+           not self.is_kind(TT.EOF):
             expr_res = self.expr()
             if expr_res.is_err():
                 return expr_res
@@ -225,36 +203,20 @@ class Parser:
         
         return Result.ok(ReturnStmt(token=return_token, value=value_expr))
 
-    def parse_range_specifier(self) -> Result[RangeSpecifier]: # This is part of 'ranges' rule now
-        # This method seems to be for parsing `start : end : step` when it's already known
-        # that `start` has been parsed and a COLON is next.
-        # It's better integrated into the `ranges()` precedence rule.
-        # For now, assuming it's called correctly after parsing 'start' and seeing ':'
-        # This function is not directly called from statement parsing, but from expression parsing.
-        # The `ranges` method below handles this. This specific function might be redundant
-        # if `ranges` handles it fully.
-        # Let's assume `ranges()` calls something like this or has this logic inline.
-        # For now, I will keep it but it might need to be refactored into `ranges()`
-        start_expr_res = self.expr() # This should be `left` passed from `ranges`
+    def parse_range_specifier(self) -> Result[RangeSpecifier]: 
+        start_expr_res = self.expr() 
         if start_expr_res.is_err(): return start_expr_res
         start_expr = start_expr_res.ok_val
-        
-        # We should already have consumed the first COLON if `ranges()` calls this
-        # This function as standalone needs adjustment if it's a primary way to parse ranges.
-        # For now, assuming it's part of a larger expression rule.
-        # coln1_res = self._consume(TT.COLON) # This would be done by caller in `ranges`
-        # if coln1_res.is_err():
-        #     return coln1_res
-        
-        end_expr_res = self.logical_and_expr() # Or higher precedence for range bounds
+
+        end_expr_res = self.logical_and_expr() 
         if end_expr_res.is_err():
             return Result.err(ParseError("Expected end expression for range.", self.curr_tok, underlying_error=end_expr_res.err_val))
         end_expr = end_expr_res.ok_val
 
         step_expr: Expr = None
         if self.is_kind(TT.COLON):
-            self._consume(TT.COLON) # Consume the second colon
-            step_val_res = self.logical_and_expr() # Or higher precedence
+            self._consume(TT.COLON) 
+            step_val_res = self.logical_and_expr()
             if step_val_res.is_err():
                  return Result.err(ParseError("Expected step expression for range after ':'.", self.curr_tok, underlying_error=step_val_res.err_val))
             step_expr = step_val_res.ok_val
@@ -281,14 +243,14 @@ class Parser:
             return iterable_res
         iterable_node = iterable_res.ok_val
 
-        body_block_res = self.block() # Use self.block()
+        body_block_res = self.block() 
         if body_block_res.is_err(): 
             return Result.err(ParseError(f"Expected '{{' to start 'for' loop body.", token=self.curr_tok, underlying_error=body_block_res.err_val))
 
 
         return Result.ok(ForInStmt(
                                 token=for_token,
-                                loop_variable=loop_var_token, # Use the actual token
+                                loop_variable=loop_var_token, 
                                 iterable=iterable_node, 
                                 body=body_block_res.ok_val
                             )
@@ -302,7 +264,7 @@ class Parser:
         if condition_expr_res.is_err():
             return condition_expr_res
         
-        body_block_res = self.block() # Use self.block()
+        body_block_res = self.block()
         if body_block_res.is_err():
             return body_block_res
 
@@ -315,7 +277,7 @@ class Parser:
                     )
 
     def parse_variable_assign(self) -> Result[Stmt]:
-        var_name_token = self.curr_tok # Store token for AST
+        var_name_token = self.curr_tok 
         if (res := self._consume(TT.IDENT)).is_err(): return res
 
         assign_res = self._consume(TT.ASSIGN)
@@ -372,16 +334,12 @@ class Parser:
             self._consume(TT.KEYWORD) 
             
             if self.is_kind(TT.KEYWORD) and self.curr_tok.value == "if":
-                # It's an 'else if'. The 'else' branch is another IfStmt.
-                # Wrap the recursive IfStmt in a Block for consistency
                 else_if_stmt_res = self.parse_if_statement() 
                 if else_if_stmt_res.is_err():
                     return else_if_stmt_res
-                # Create a Block containing just the IfStmt for the else_branch
                 else_branch_node = Block(statements=[else_if_stmt_res.ok_val], token=else_token)
             else:
-                # It's a simple 'else { ... }'. Parse the block.
-                else_block_res = self.block() # Use self.block()
+                else_block_res = self.block() 
                 if else_block_res.is_err():
                     return Result.err(ParseError(f"Expected '{{' to start 'else' block body.", token=self.curr_tok, underlying_error=else_block_res.err_val))
                 else_branch_node = else_block_res.ok_val
@@ -392,17 +350,6 @@ class Parser:
                                 else_branch=else_branch_node)
                         )
 
-    # --- Expression Parsing Hierarchy ---
-    # expr -> ranges ( "or" ranges )*
-    # ranges -> logical_and_expr ( ":" logical_and_expr ( ":" logical_and_expr )? )?
-    # logical_and_expr -> equality_expr ( "and" equality_expr )*
-    # equality_expr -> comparison_expr ( ( "==" | "!=" ) comparison_expr )*
-    # comparison_expr -> term ( ( ">" | ">=" | "<" | "<=" ) term )*
-    # term -> factor ( ( "+" | "-" ) factor )*
-    # factor -> call ( ( "*" | "/" | "%" ) call )*  // Changed from atom to call
-    # call -> primary ( "(" arguments? ")" )*      // New rule
-    # primary -> NUMBER | STRING | IDENTIFIER | "(" expr ")" | "[" array_elements? "]" | "true" | "false" | KEYWORD_CONST (true/false/none)
-
     def expr(self) -> Result[Expr]:
         left_res = self.ranges()
         if left_res.is_err(): return left_res
@@ -410,7 +357,7 @@ class Parser:
 
         while self.curr_tok.is_keyword("or"):
             op_token = self.curr_tok
-            if self._consume(TT.KEYWORD).is_err(): break # Should not happen if is_keyword is true
+            if self._consume(TT.KEYWORD).is_err(): break 
 
             right_res = self.ranges()
             if right_res.is_err(): return right_res
@@ -424,22 +371,21 @@ class Parser:
         left = left_res.ok_val
 
         if self.is_kind(TT.COLON):
-            start_token = left.token # Token of the start expression for RangeSpecifier
-            self._consume(TT.COLON) # Consume first colon
+            start_token = left.token 
+            self._consume(TT.COLON) 
             
-            end_expr_res = self.logical_and_expr() # Or higher precedence for range bounds
+            end_expr_res = self.logical_and_expr() 
             if end_expr_res.is_err(): return end_expr_res
             end_expr = end_expr_res.ok_val
 
             step_expr: Expr | None = None
             if self.is_kind(TT.COLON):
-                self._consume(TT.COLON) # Consume second colon
-                step_expr_res = self.logical_and_expr() # Or higher precedence
+                self._consume(TT.COLON) 
+                step_expr_res = self.logical_and_expr() 
                 if step_expr_res.is_err(): return step_expr_res
                 step_expr = step_expr_res.ok_val
             
             return Result.ok(RangeSpecifier(token=start_token, start=left, end=end_expr, step=step_expr))
-
         return Result.ok(left)
 
 
@@ -501,7 +447,7 @@ class Parser:
         return Result.ok(left)
 
     def factor(self) -> Result[Expr]:
-        left_res = self.unary() # Changed from self.call()
+        left_res = self.unary() 
         if left_res.is_err(): return left_res
         left = left_res.ok_val
 
@@ -509,29 +455,27 @@ class Parser:
             op_token = self.curr_tok
             if self._consume(self.curr_tok.kind).is_err(): break
 
-            right_res = self.unary() # Changed from self.call()
+            right_res = self.unary() 
             if right_res.is_err(): return right_res
             left = BinaryOp(left=left, op=op_token, right=right_res.ok_val, token=op_token)
         return Result.ok(left)
 
-    def unary(self) -> Result[Expr]: # New method for unary operators
+    def unary(self) -> Result[Expr]: 
         if self.is_kind(TT.MINUS) or (self.is_kind(TT.KEYWORD) and self.curr_tok.value == "not"):
             op_token = self.curr_tok
-            # Consume the operator token ('-' or 'not')
             consume_res = self._consume(op_token.kind)
             if consume_res.is_err():
                 return consume_res
 
-            operand_res = self.unary() # Recursively call unary for the operand
+            operand_res = self.unary()
             if operand_res.is_err():
                 return operand_res
             
             return Result.ok(UnaryOp(op=op_token, operand=operand_res.ok_val, token=op_token))
         
-        return self.call() # If no unary operator, proceed to call
+        return self.call() 
 
-    def call(self) -> Result[Expr]: # New method for handling function calls
-        # This will parse a primary expression, then check if it's followed by '(' for a call.
+    def call(self) -> Result[Expr]: 
         expr_res = self.primary() 
         if expr_res.is_err(): return expr_res
         
@@ -539,7 +483,6 @@ class Parser:
 
 
         while True:
-            # Check for keyword argument: IDENT = expr
             if self.is_kind(TT.L_PAREN):
                 l_paren_token = self.curr_tok
                 self._consume(TT.L_PAREN)
@@ -550,7 +493,6 @@ class Parser:
 
                 if not self.is_kind(TT.R_PAREN):
                     while True:
-                        # Check for keyword argument: IDENT = expr
                         if self.is_kind(TT.IDENT) and self._peek(1) and self._peek(1).kind == TT.ASSIGN:
                             name_token = self.curr_tok
                             self._consume(TT.IDENT)
@@ -597,13 +539,13 @@ class Parser:
         return Result.ok(current_expr)
 
 
-    def primary(self) -> Result[Expr]: # Renamed from atom
+    def primary(self) -> Result[Expr]: 
         tok = self.curr_tok
 
         if tok.kind == TT.KEYWORD and tok.value == "fn":
             return self.parse_function_expr()
         elif tok.kind == TT.INT or tok.kind == TT.FLOAT:
-            self._consume(tok.kind) # Consume the token
+            self._consume(tok.kind)
             value = int(tok.value) if tok.kind == TT.INT else float(tok.value)
             return Result.ok(Number(value=value, token=tok))
         elif tok.kind == TT.STRING:
@@ -616,7 +558,10 @@ class Parser:
             elif tok.value == "false":
                 self._consume(tok.kind)
                 return Result.ok(Boolean(value=False, token=tok))
-            # Potentially 'none' keyword later
+            # elif tok.value: # For later
+            #     self._consume(tok.kind)
+            #     return Result.ok(None(token=tok))
+
         elif tok.kind == TT.L_PAREN: # Grouped expression
             self._consume(tok.kind)
             expr_val_res = self.expr()
@@ -625,15 +570,15 @@ class Parser:
             r_paren_res = self._consume(TT.R_PAREN)
             if r_paren_res.is_err(): 
                 return Result.err(ParseError("Expected ')' after expression in parentheses.", self.curr_tok, underlying_error=r_paren_res.err_val))
-            return expr_val_res # Return the inner expression directly
+            return expr_val_res 
         elif tok.kind == TT.L_SQ_BRACKET: # Array literal
             return self.parse_array_literal()
         elif tok.kind == TT.IDENT:
             self._consume(tok.kind)
-            return Result.ok(VariableExpr(name=tok, token=tok)) # name and token are the same IDENT token
+            return Result.ok(VariableExpr(name=tok, token=tok)) 
             
         prev_tok_info = "None"
-        if self.curr_tok_idx > 0 and self.toks and self.curr_tok_idx -1 < len(self.toks): #bounds check
+        if self.curr_tok_idx > 0 and self.toks and self.curr_tok_idx -1 < len(self.toks): 
             prev_tok_info = str(self.toks[self.curr_tok_idx-1].kind.name)
 
         return Result.err(
@@ -649,25 +594,23 @@ class Parser:
             return Result.err(ParseError("Expected '[' to start array literal.", self.curr_tok, underlying_error=res.err_val))
         
         elements: list[Expr] = []
-        if self.is_kind(TT.R_SQ_BRACKET): # Handle empty array: []
+        if self.is_kind(TT.R_SQ_BRACKET):
             close_res = self._consume(TT.R_SQ_BRACKET)
-            if close_res.is_err(): return close_res # Should not happen if is_kind true
+            if close_res.is_err(): return close_res 
             return Result.ok(ArrayLiteral(token=open_bracket_tok, elements=elements))
         
-        # Parse first element (if not empty array)
-        while True: # Loop for elements
+        while True: 
             element_res = self.expr()
             if element_res.is_err(): return element_res
             elements.append(element_res.ok_val)
 
             if self.is_kind(TT.R_SQ_BRACKET):
-                break # End of elements, expect ']'
+                break 
             
             comma_res = self._consume(TT.COMMA)
             if comma_res.is_err():
                 return Result.err(ParseError("Expected ',' or ']' in array literal.", self.curr_tok, underlying_error=comma_res.err_val))
             
-            # Allow trailing comma: if after comma we see ']', it's fine
             if self.is_kind(TT.R_SQ_BRACKET):
                 break
 
@@ -676,13 +619,11 @@ class Parser:
         if closing_bracket_res.is_err():
             return Result.err(ParseError(f"Expected ']' to close array literal started at {open_bracket_tok.get_file_loc()}.", self.curr_tok, underlying_error=closing_bracket_res.err_val))
 
-        # Update open_bracket_tok to span the whole array if needed for its loc, or just use it as is.
-        # For now, token for ArrayLiteral is just the opening '['.
         return Result.ok(ArrayLiteral(token=open_bracket_tok, elements=elements))
     
     def parse_function_expr(self) -> Result[FunctionExpr]:
         fn_token = self.curr_tok
-        self._consume(TT.KEYWORD)  # 'fn'
+        self._consume(TT.KEYWORD) 
         if self._consume(TT.L_PAREN).is_err():
             return Result.err(ParseError("Expected '(' after 'fn' in function expression.", self.curr_tok))
         params = []

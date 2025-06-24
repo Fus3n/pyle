@@ -2,7 +2,7 @@ import enum
 from enum import auto
 from dataclasses import dataclass
 from .pyle_types import Token
-from typing import Callable, Any # Import Callable, Any
+from typing import Callable, Any 
 
 class OpCode(enum.Enum):
     OP_CONST = auto()
@@ -21,8 +21,8 @@ class OpCode(enum.Enum):
     OP_DIVIDE = auto()
     OP_MODULO = auto()
 
-    OP_NEGATE = auto() # New
-    OP_NOT = auto()    # New
+    OP_NEGATE = auto() 
+    OP_NOT = auto()    
 
     OP_EQUAL = auto()
     OP_NOT_EQUAL = auto()
@@ -72,8 +72,8 @@ class Instruction:
 class PyleFunction:
     name: str
     arity: int 
-    start_ip: int | None = None  # IP for Pyle-defined functions, None for native
-    native_fn: Callable[..., Any] | None = None # Python callable for native functions
+    start_ip: int | None = None  
+    native_fn: Callable[..., Any] | None = None 
 
     def __repr__(self):
         fn_type = "native" if self.native_fn else "pyle"
@@ -84,3 +84,12 @@ class Variable:
     var_name: str
     value: any
     is_const: bool = False
+
+@dataclass
+class Range:
+    start: int
+    end: int
+    step: int = 1
+
+    def __iter__(self):
+        return iter(range(self.start, self.end, self.step))

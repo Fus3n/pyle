@@ -25,11 +25,6 @@ class ParseError(InterpreterError):
 class PyleRuntimeError(InterpreterError):
     pass
 
-@dataclass(frozen=True, slots=True) 
-class ResultValue(Generic[T]):
-    value: T # Actual value
-    token: Token # Where the value occured
-
 @dataclass
 class Result(Generic[T]):
     ok_val: Optional[T] = None

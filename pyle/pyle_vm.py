@@ -1,9 +1,7 @@
-# pyle/pyle_vm.py
-from dataclasses import dataclass # For CallFrame
+from dataclasses import dataclass 
 from pyle.pyle_errors import PyleRuntimeError, Result
-from pyle.pyle_range import Range
-from .pyle_bytecode import OpCode, Instruction, PyleFunction, Variable # Import PyleFunction
-from .pyle_types import Token # For error reporting context
+from .pyle_bytecode import OpCode, Instruction, PyleFunction, Variable, Range
+from .pyle_types import Token 
 from types import MethodType, BuiltinFunctionType, FunctionType
 
 @dataclass
@@ -26,15 +24,14 @@ class PyleVM:
     def interpret(self, bytecode_chunk: list[Instruction], constants: list[any]):
         self.bytecode_chunk = bytecode_chunk
         self.constants = constants
+
+        # reset
         self.ip = 0
         self.stack = []
-        self.globals = {} # Reset globals for each run (might change for persistent REPL state)
-        self.environments = [] # Reset environments
-        self.frames = [] # Reset call frames
+        self.globals = {} 
+        self.environments = []
+        self.frames = [] 
 
-        # The compiler now wraps the script in an implicit main function scope and ends with OP_RETURN.
-        # So, the main execution is like a function call.
-        # We don't need a special CallFrame for the script if OP_RETURN from global halts.
         return self._run()
     
     def _push(self, value):
@@ -42,7 +39,6 @@ class PyleVM:
     
     def _pop(self):
         if not self.stack:
-            # This is a critical VM error, should ideally not happen with correct bytecode
             raise PyleRuntimeError("VM stack underflow during pop.", None) 
         return self.stack.pop()
 
@@ -55,18 +51,15 @@ class PyleVM:
         return None
     
     def _get_token_for_current_instruction(self, compiler_token_map: dict[int, Token]) -> Token | None:
-        # self.ip points to the *next* instruction. We need token for instruction just executed or about to be.
-        # Let's assume error happens related to the instruction at self.ip -1 (if ip > 0)
         return compiler_token_map.get(self.ip -1 if self.ip > 0 else 0)
 
     def _set_variable(self, store, var_name: str, value, is_const=False):
         store[var_name] = Variable(var_name, value, is_const)
 
-    def _run(self): # token_map passed from compiler for error reporting
+    def _run(self):
 
         while True:
             if self.ip >= len(self.bytecode_chunk):
-                # Should be properly terminated by OP_RETURN (from script level) or OP_HALT
                 print("--- VM Execution Finished (IP out of bounds, no RETURN/HALT) ---")
                 break 
 
@@ -75,33 +68,25 @@ class PyleVM:
                 print("--- VM Execution Error: Current instruction is None ---")
                 break
             
-            # For error reporting, try to get the token associated with the current instruction
-            # This requires the compiler to pass its token_map to the VM or store it with instructions.
-            # For now, we'll pass `None` for token in PyleRuntimeError, but this is where it would be used.
-            # Let's assume a self.token_map exists, populated from compiler. (Needs to be passed in interpret)
+            # For error reporting, the VM should use the token associated with the current instruction, which requires the compiler to provide a token_map (not yet implemented here).
             current_token: Token | None = None # Placeholder
 
-            # Debug print before advancing IP
             # print(f"IP: {self.ip:04} About to execute: {current_instr_obj.opcode.name}" + \
             #       (f" {current_instr_obj.operand}" if current_instr_obj.operand is not None else "") + \
             #       f" Stack: {self.stack} Frames: {len(self.frames)} Envs: {len(self.environments)}")
-
 
             self.ip += 1 
             op = current_instr_obj.opcode
             operand = current_instr_obj.operand
             
-            # Error propagation (if a Result.err was pushed, which it shouldn't be with current design)
-            # if self.stack and isinstance(self.stack[-1], Result) and self.stack[-1].is_err():
-            #     return self.stack[-1]
 
             if op == OpCode.OP_CONST:
                 self._push(self.constants[operand])
             
-            elif op == OpCode.OP_DEF_GLOBAL: # Should be less common if script uses local scope
+            #region Global scope
+            elif op == OpCode.OP_DEF_GLOBAL:
                 var_name = self.constants[operand]
                 if not self.stack: return Result.err(PyleRuntimeError(f"Stack underflow for OP_DEF_GLOBAL '{var_name}'.", current_token))
-                # self.globals[var_name] = self._pop()
                 self._set_variable(self.globals, var_name, self._pop())
             elif op == OpCode.OP_GET_GLOBAL:
                 var_name = self.constants[operand]
@@ -114,7 +99,6 @@ class PyleVM:
                 if var_name not in self.globals:
                     return Result.err(PyleRuntimeError(f"Cannot assign to undefined global variable '{var_name}'.", current_token))
                 if not self.stack: return Result.err(PyleRuntimeError(f"Stack underflow for OP_SET_GLOBAL '{var_name}'.", current_token))
-                # self.globals[var_name] = self._pop()
                 if self.globals[var_name].is_const:
                     return Result.err(PyleRuntimeError(f"Cannot assign to const global variable '{var_name}'.", current_token))
                 self._set_variable(self.globals, var_name, self._pop())
@@ -122,6 +106,7 @@ class PyleVM:
                 var_name = self.constants[operand]
                 if not self.stack: return Result.err(PyleRuntimeError(f"Stack underflow for OP_DEF_GLOBAL '{var_name}'.", current_token))
                 self._set_variable(self.globals, var_name, self._pop(), is_const=True)
+            #endregion
 
             #region Arithmetic
             elif op == OpCode.OP_ADD:
@@ -164,7 +149,7 @@ class PyleVM:
             elif op == OpCode.OP_NOT:
                 if not self.stack: return Result.err(PyleRuntimeError("Stack underflow for OP_NOT.", current_token))
                 value = self._pop()
-                self._push(not value) # Python's `not` handles truthiness correctly
+                self._push(not value) 
             #endregion
 
             #region Comparison
@@ -214,10 +199,9 @@ class PyleVM:
                 self._push(iterator)
             elif op == OpCode.OP_ITER_NEXT_OR_JUMP:
                 if not self.stack: return Result.err(PyleRuntimeError("Stack underflow for OP_ITER_NEXT_OR_JUMP.", current_token))
-                iterator = self.stack[-1] # Peek, don't pop yet
+                iterator = self.stack[-1] 
                 try:
                     value = next(iterator)
-                    # Iterator stays on stack, value is pushed on top of it.
                     self._push(value)     
                 except StopIteration:
                     self._pop() # Pop the exhausted iterator
@@ -251,11 +235,10 @@ class PyleVM:
                 value = self._pop()
                 index = self._pop()
                 collection = self._pop()
-                # Only allow assignment to lists (arrays)
                 if isinstance(collection, list):
                     try:
                         collection[index] = value
-                        self._push(value)  # Optionally push the value assigned (like Python's assignment returns value)
+                        self._push(value) 
                     except (TypeError, IndexError) as e:
                         return Result.err(PyleRuntimeError(f"Index assignment error: {e}", current_token))
                 else:
@@ -277,7 +260,6 @@ class PyleVM:
                 if not self.environments:
                     return Result.err(PyleRuntimeError("VM error: Attempted to exit scope when no local scope active.", current_token))
                 self.environments.pop()
-                # print("Environments after OP_EXIT_SCOPE:", self.environments)
             
             #region Local Scope
             elif op == OpCode.OP_DEF_LOCAL:
@@ -286,7 +268,6 @@ class PyleVM:
                 if not self.stack: return Result.err(PyleRuntimeError(f"Stack underflow defining local '{var_name}'.", current_token))
                 
                 current_scope = self.environments[-1]
-                # current_scope[var_name] = self._pop()
                 self._set_variable(current_scope, var_name, self._pop())
             elif op == OpCode.OP_DEF_CONST_LOCAL:
                 var_name = self.constants[operand]
@@ -297,9 +278,7 @@ class PyleVM:
                 self._set_variable(current_scope, var_name, self._pop(), is_const=True)
             elif op == OpCode.OP_GET_LOCAL:
                 var_name = self.constants[operand]
-                # print(f"OP_GET_LOCAL for {var_name}, environments:", self.environments)
                 found_in_locals = False
-                # Search from innermost to outermost local scope
                 for i_env in range(len(self.environments) - 1, -1, -1):
                     scope = self.environments[i_env]
                     if var_name in scope:
@@ -308,8 +287,6 @@ class PyleVM:
                         break
                 
                 if not found_in_locals:
-                    # If not found in any local environment, it's an error.
-                    # OP_GET_LOCAL should not look in self.globals.
                     return Result.err(PyleRuntimeError(f"Undefined local variable '{var_name}'.", current_token))
            
             elif op == OpCode.OP_SET_LOCAL:
@@ -344,27 +321,25 @@ class PyleVM:
             elif op == OpCode.OP_CALL:
                 num_args = operand
                 
-                # Stack layout: [..., callee_fn_obj, arg0, ..., arg(N-1)]
                 if len(self.stack) < num_args + 1: # Args + function object
                     return Result.err(PyleRuntimeError(f"Stack underflow for OP_CALL: need {num_args+1} args + func, have {len(self.stack)}.", current_token))
 
-                # The function object is num_args + 1 positions down from top of stack
                 callee_candidate_idx = len(self.stack) - 1 - num_args
                 callee_candidate = self.stack[callee_candidate_idx]
 
-
+                # Calling python functions are currently supported.
                 if not isinstance(callee_candidate, (PyleFunction, MethodType, BuiltinFunctionType, FunctionType, type)) :
                     return Result.err(PyleRuntimeError(f"Cannot call non-function type '{type(callee_candidate)}'.", current_token))
                 
                 function_to_call: PyleFunction | MethodType = callee_candidate
 
-                # --- Handle Native (Python) Function Call ---
                 if isinstance(function_to_call, (MethodType, BuiltinFunctionType, FunctionType, type)):
+                    # Python functions/methods/classes
                     args_for_pyfunc = []
                     for _ in range(num_args):
                         args_for_pyfunc.append(self._pop())
                     args_for_pyfunc.reverse()
-                    self._pop()  # pop the function object
+                    self._pop() 
 
                     try:
                         native_result = function_to_call(*args_for_pyfunc)
@@ -373,9 +348,6 @@ class PyleVM:
                         return Result.err(PyleRuntimeError(f"Error in python function '{function_to_call.__name__}': {e}", current_token))
 
                 elif function_to_call.native_fn:
-                    # Arity check for native function
-                    # For a simple print(arg), arity is 1.
-                    # If arity is -1 (variadic), we might collect all args.
                     if function_to_call.arity >= 0 and num_args != function_to_call.arity:
                          return Result.err(PyleRuntimeError(f"Native function '{function_to_call.name}' expected {function_to_call.arity} arguments, but got {num_args}.", current_token))
 
@@ -383,16 +355,15 @@ class PyleVM:
                     for _ in range(num_args):
                         args_for_native_call.append(self._pop())
                     args_for_native_call.reverse()
-                    self._pop()  # pop the function object
+                    self._pop()  
                                         
                     try:
                         native_result = function_to_call.native_fn(self, *args_for_native_call)
                         self._push(native_result)
                     except Exception as e:
                         return Result.err(PyleRuntimeError(f"Error in native function '{function_to_call.name}': {e}", current_token))
-                # --- Handle Pyle-defined Function Call (Bytecode) ---
                 else: 
-                    if function_to_call.start_ip is None: # Should not happen if native_fn is None
+                    if function_to_call.start_ip is None: 
                         return Result.err(PyleRuntimeError(f"Pyle function '{function_to_call.name}' has no bytecode start IP.", current_token))
 
                     if num_args != function_to_call.arity:
@@ -405,26 +376,18 @@ class PyleVM:
             elif op == OpCode.OP_RETURN:
                 if not self.stack: 
                     return Result.err(PyleRuntimeError("Stack underflow for OP_RETURN (no return value).", current_token))
-                return_value = self._pop() # Pop the return value
+                return_value = self._pop() 
 
-                if not self.frames: # Returning from top-level script execution
-                    # The script's main environment should have been closed by an OP_EXIT_SCOPE
-                    # instruction that was emitted by the compiler *before* this OP_RETURN.
-                    # If environments is not empty here, it might imply a slight mismatch,
-                    # but for now, we assume the compiled bytecode is correct.
-                    # If an OP_EXIT_SCOPE was indeed before this, self.environments might be empty
-                    # or contain an outer scope if Pyle ever supports nested top-level files (not current).
-                    # The crucial part is that the *script's own* environment is handled by its own EXIT_SCOPE.
-                    return Result.ok(return_value) # This is the final result of the script execution
+                if not self.frames: 
+                    return Result.ok(return_value)
 
                 frame = self.frames.pop()
                 self.ip = frame.return_ip
 
-                # Pop all environments created during the function call
                 while len(self.environments) > frame.env_depth:
                     self.environments.pop()
 
-                # Clean up the stack as before
+                # stack cleanup
                 self.stack = self.stack[:frame.stack_slot]
                 self._push(return_value)
 
@@ -432,7 +395,7 @@ class PyleVM:
                 num_kwargs = operand
                 if len(self.stack) < num_kwargs + 1:
                     return Result.err(PyleRuntimeError("Stack underflow for OP_BUILD_KWARGS.", current_token))
-                kw_names = self._pop()  # Pop the names list from the stack
+                kw_names = self._pop() 
                 kw_values = [self._pop() for _ in range(num_kwargs)]
                 kw_values.reverse()
                 kwargs = dict(zip(kw_names, kw_values))
@@ -453,11 +416,9 @@ class PyleVM:
             
             #endregion
             
-            elif op == OpCode.OP_HALT: # Explicit HALT, less used now
-                # print("--- VM Halted (OP_HALT) ---")
+            elif op == OpCode.OP_HALT: 
                 return Result.ok(self.stack[-1] if self.stack else None)
             else:
                 return Result.err(PyleRuntimeError(f"Unknown opcode: {op.name}", current_token))
 
-        # Should be unreachable if bytecode is correct (ends with OP_RETURN)
         return Result.ok(self.stack[-1] if self.stack else None)
