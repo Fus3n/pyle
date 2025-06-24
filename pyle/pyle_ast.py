@@ -70,6 +70,11 @@ class Number(Expr):
 class String(Expr):
     value: str
 
+@dataclass(slots=True)
+class UnaryOp(Expr):
+    op: Token       # The operator token (e.g., '-', 'not')
+    operand: Expr   # The expression the operator applies to
+
 @dataclass
 class ArrayLiteral(Expr): # Or whatever your base expression class is
     elements: list[Expr]      # List of expression nodes for each element
