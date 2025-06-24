@@ -3,8 +3,10 @@ from pprint import pprint
 import json
 import enum
 import pickle
+import sys
 
 from pyle.pyle_bytecode import OpCode
+import pyle
 
 def json_serial_default(obj):
     """JSON serializer for objects not serializable by default json code"""
@@ -13,11 +15,21 @@ def json_serial_default(obj):
     raise TypeError(f"Object of type {obj.__class__.__name__} is not JSON serializable")
 
 
-def main():
-    FILE_NAME = "./examples/source.pyle"
-    source = open(FILE_NAME, "r").read()
+# TODO: Implement break and continue in loops
+# TODO: Function def should able to define with default arguments
+# TODO: use token map to propagate error 
 
-    lexer = Lexer(FILE_NAME, source)
+def main():
+    args = sys.argv
+
+    file_name = "./examples/source.pyle"
+
+    if len(args) > 1:
+        file_name = args[1]
+
+    source = open(file_name, "r").read()
+
+    lexer = Lexer(file_name, source)
     res = lexer.tokenize()
     if res.is_err():
         pprint(res.err_val)
@@ -51,45 +63,11 @@ def main():
         print(f"Unexpected Compilation Error: {e}")
         return
 
-    # pprint(bytecode_chunk)
+    dis = pyle.disassemble(bytecode_chunk, constants)
+    print(dis)
 
-    # --- DISASSEMBLER SECTION ---
-    print("\n--------- Constants ---------")
-    if constants:
-        for i, const_val in enumerate(constants):
-            print(f"{i:04}: {const_val!r} (type: {type(const_val).__name__})")
-    else:
-        print("Constants list is empty.")
-
-    print("\n--------- Disassembled Bytecode ---------")
-    lines = []
-    if bytecode_chunk:
-        for i, instruction in enumerate(bytecode_chunk):
-            opcode_name = instruction.opcode.name
-            line = f"{i:04}: {opcode_name:<18}"
-
-            if instruction.operand is not None:
-                operand_val = instruction.operand
-                line += f" {operand_val!s:<5}" 
-
-                if instruction.opcode in (
-                    OpCode.OP_CONST, 
-                    OpCode.OP_DEF_GLOBAL, 
-                    OpCode.OP_GET_GLOBAL, 
-                    OpCode.OP_SET_GLOBAL
-                ):
-                    if 0 <= operand_val < len(constants):
-                        line += f" ({constants[operand_val]!r})"
-                    else:
-                        line += " (INVALID CONSTANT INDEX)"
-            print(line)
-            lines.append(line)
-    else:
-        print("Bytecode chunk is empty.")
-
-    with open("source.pyled", "w", encoding="utf-8") as f:
-        f.write("\n".join(lines))
-    # --- END DISASSEMBLER SECTION ---
+    with open("source.pyled", "w") as f:
+        f.write(dis)
 
     compiled = (bytecode_chunk, constants)
     with open("source.pylec", "wb") as f:

@@ -105,6 +105,9 @@ class Lexer:
             elif self.curr_char == ";":
                 self.tokens.append(self.get_tok(TokenType.SEMICOLON, self.curr_char, self.get_loc()))
                 self._advance()
+            elif self.curr_char == ".":
+                self.add_tok(TokenType.DOT, ".", self.get_loc())
+                self._advance()
             elif self.curr_char == ":":
                  self.add_tok(TokenType.COLON, ":", self.get_loc())
                  self._advance()

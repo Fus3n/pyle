@@ -44,9 +44,15 @@ class OpCode(enum.Enum):
     OP_JUMP_IF_FALSE = auto()
     OP_JUMP = auto()
     OP_POP = auto()
+
+    OP_INDEX_GET = auto()
+    OP_INDEX_SET = auto()
+    OP_GET_ATTR = auto()
     
     # --- Functions ---
     OP_CALL = auto()
+    OP_BUILD_KWARGS = auto()
+    OP_CALL_KW = auto()
     OP_RETURN = auto()
     
     OP_HALT = auto()

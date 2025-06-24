@@ -120,7 +120,10 @@ class Parser:
                 return self.parse_function_definition()
             elif self.curr_tok.value == "return": # New
                 return self.parse_return_statement()
-
+            elif self.curr_tok == "break":
+                return self.parse_break_statement()
+            elif self.curr_tok == "continue":
+                return self.parse_continue_statement()
         elif self.is_kind(TT.L_CURLY_BRACE): # Explicit block statement
             return self.block()
 
@@ -131,9 +134,46 @@ class Parser:
             if peeked and peeked.kind == TT.ASSIGN:
                 return self.parse_variable_assign()
         
-        # If none ofthe above, it's an expression statement
-        return self.expr()
+        expr_res = self.expr()
+        if expr_res.is_err():
+            return expr_res
+        expr_node = expr_res.ok_val
+
+        if isinstance(expr_node, IndexExpr) and self.is_kind(TT.ASSIGN):
+            self._consume(TT.ASSIGN)
+            value_res = self.expr()
+            if value_res.is_err():
+                return value_res
+            return Result.ok(AssignIndexStmt(
+                collection=expr_node.collection,
+                index=expr_node.index,
+                value=value_res.ok_val,
+                token=expr_node.token
+            ))
+
+        return Result.ok(expr_node)
     
+    def break_statement(self) -> Result[BreakStmt]:
+        break_tok_res = self._consume(TT.KEYWORD)
+        if break_tok_res.is_err(): return break_tok_res 
+
+        if self.is_kind(TT.SEMICOLON):
+            self._consume(TT.SEMICOLON)
+
+        return Result.ok(BreakStmt(token=break_tok_res.ok_val))
+
+        
+    def continue_statement(self) -> Result[ContinueStmt, ParseError]:
+        continue_token_res = self._consume(TT.KEYWORD)
+        if continue_token_res.is_err(): return continue_token_res
+
+        # Optional semicolon
+        # self._try_consume_semicolon()
+        if self.is_kind(TT.SEMICOLON):
+            self._consume(TT.SEMICOLON)
+            
+        return Result.ok(ContinueStmt(token=continue_token_res.ok_val))
+        
     def parse_function_definition(self) -> Result[FunctionDefStmt]:
         fn_token = self.curr_tok
         if self._consume(TT.KEYWORD).is_err() or fn_token.value != "fn": # Should be 'fn'
@@ -265,7 +305,7 @@ class Parser:
         
         body_block_res = self.block() # Use self.block()
         if body_block_res.is_err():
-            return Result.err(ParseError(f"Expected '{{' to start 'while' loop body.", token=self.curr_tok, underlying_error=body_block_res.err_val))
+            return body_block_res
 
 
         return Result.ok(WhileStmt(
@@ -481,29 +521,63 @@ class Parser:
         
         current_expr = expr_res.ok_val
 
-        while self.is_kind(TT.L_PAREN): # Loop to handle chained calls like obj.method()()
-            l_paren_token = self.curr_tok
-            if self._consume(TT.L_PAREN).is_err(): break # Should not happen if is_kind is true
 
-            arguments: list[Expr] = []
-            if not self.is_kind(TT.R_PAREN): # If there are arguments
-                while True:
-                    arg_expr_res = self.expr() # Arguments are full expressions
-                    if arg_expr_res.is_err(): return arg_expr_res
-                    arguments.append(arg_expr_res.ok_val)
+        while True:
+            # Check for keyword argument: IDENT = expr
+            if self.is_kind(TT.L_PAREN):
+                l_paren_token = self.curr_tok
+                self._consume(TT.L_PAREN)
 
-                    if self.is_kind(TT.R_PAREN):
-                        break
-                    comma_res = self._consume(TT.COMMA)
-                    if comma_res.is_err():
-                        return Result.err(ParseError("Expected ',' or ')' in argument list.", self.curr_tok, underlying_error=comma_res.err_val))
+                arguments: list[Expr] = []
+                keywords: list[KeywordArg] = []
+                seen_keyword = False
+
+                if not self.is_kind(TT.R_PAREN):
+                    while True:
+                        # Check for keyword argument: IDENT = expr
+                        if self.is_kind(TT.IDENT) and self._peek(1) and self._peek(1).kind == TT.ASSIGN:
+                            name_token = self.curr_tok
+                            self._consume(TT.IDENT)
+                            self._consume(TT.ASSIGN)
+                            value_res = self.expr()
+                            if value_res.is_err(): return value_res
+                            keywords.append(KeywordArg(name=name_token, value=value_res.ok_val))
+                            seen_keyword = True
+                        else:
+                            if seen_keyword:
+                                return Result.err(ParseError("Positional argument after keyword argument is not allowed.", self.curr_tok))
+                            arg_res = self.expr()
+                            if arg_res.is_err(): return arg_res
+                            arguments.append(arg_res.ok_val)
+
+                        if self.is_kind(TT.R_PAREN):
+                            break
+                        comma_res = self._consume(TT.COMMA)
+                        if comma_res.is_err():
+                            return Result.err(ParseError("Expected ',' or ')' in argument list.", self.curr_tok, underlying_error=comma_res.err_val))
+
+                r_paren_res = self._consume(TT.R_PAREN)
+                if r_paren_res.is_err(): return r_paren_res
+
+                current_expr = CallExpr(callee=current_expr, arguments=arguments, keywords=keywords, token=l_paren_token)
             
-            r_paren_res = self._consume(TT.R_PAREN)
-            if r_paren_res.is_err(): return r_paren_res
-            
-            # Update current_expr to be the CallExpr node
-            current_expr = CallExpr(callee=current_expr, arguments=arguments, token=l_paren_token)
-        
+            elif self.is_kind(TT.L_SQ_BRACKET):
+                l_bracket_token = self.curr_tok
+                self._consume(TT.L_SQ_BRACKET)
+                index_expr_res = self.expr()
+                if index_expr_res.is_err(): return index_expr_res
+                if self._consume(TT.R_SQ_BRACKET).is_err():
+                    return Result.err(ParseError("Expected ']' after index expression.", self.curr_tok))
+                current_expr = IndexExpr(collection=current_expr, index=index_expr_res.ok_val, token=l_bracket_token)
+            elif self.is_kind(TT.DOT):
+                dot_token = self.curr_tok
+                self._consume(TT.DOT)
+                attr_token = self.curr_tok
+                if self._consume(TT.IDENT).is_err():
+                    return Result.err(ParseError("Expected identifier after '.'", attr_token))
+                current_expr = DotExpr(object=current_expr, attr=attr_token, token=dot_token)
+            else:
+                break
         return Result.ok(current_expr)
 
 

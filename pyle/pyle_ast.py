@@ -96,11 +96,18 @@ class ComparisonOp(Expr):
     op: Token
     right: Expr
 
-
 @dataclass(slots=True)
 class WhileStmt(Stmt):
     condition: Expr
     body: Block 
+
+@dataclass(slots=True)
+class BreakStmt(Stmt):
+    pass
+
+@dataclass(slots=True)
+class ContinueStmt(Stmt):
+    pass
 
 @dataclass(slots=True)
 class RangeSpecifier(ASTNode):
@@ -127,10 +134,32 @@ class FunctionDefStmt(Stmt):
     body: Block
 
 @dataclass(slots=True)
+class KeywordArg:
+    name: Token
+    value: Expr
+
+@dataclass(slots=True)
 class CallExpr(Expr):
     callee: Expr
     arguments: list[Expr]
+    keywords: list[KeywordArg]
+    token: Token
 
+@dataclass(slots=True)
+class IndexExpr(Expr):
+    collection: Expr
+    index: Expr
+
+@dataclass(slots=True)
+class AssignIndexStmt(Stmt):
+    collection: Expr
+    index: Expr
+    value: Expr
 @dataclass(slots=True)
 class ReturnStmt(Stmt):
     value: Expr | None = None
+
+@dataclass(slots=True)
+class DotExpr(Expr):
+    object: Expr
+    attr: Token

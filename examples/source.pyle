@@ -1,15 +1,56 @@
+// examples/source.pyle
 
-fn fib(n) {
-    if n <= 1 { return n }
-    return fib(n-1) + fib(n-2)
+let b = importpy("builtins") // For str()
+
+fn bubble_sort(arr_to_sort) {
+    let arr = arr_to_sort // Create a new reference if we don't want to sort in place,
+                         // or modify arr_to_sort directly.
+                         // For simplicity here, Pyle assignment is by reference for lists,
+                         // so this sorts the original list passed in.
+                         // If you want a copy: arr = arr_to_sort.__getslice__(0, len(arr_to_sort)) or similar
+
+    let n = len(arr)
+    let i = 0
+    while i < n {
+        let swapped = false
+        let j = 0
+        // Last i elements are already in place
+        while j < (n - i - 1) {
+            if arr[j] > arr[j + 1] {
+                // Swap arr[j] and arr[j+1]
+                let temp = arr[j]
+                arr[j] = arr[j + 1]
+                arr[j + 1] = temp
+                swapped = true
+            }
+            j = j + 1
+        }
+        // If no two elements were swapped by inner loop, then break
+        if swapped == false {
+            break
+        }
+        i = i + 1
+    }
+    return arr // Return the sorted array (or void if sorting in place and not returning)
 }
 
-for i in 0:5 {
-    fib(25)
-}
+let my_numbers = [64, 34, 25, 12, 22, 11, 90, 5]
+echo("Original numbers: " + b.str(my_numbers))
+let sorted_numbers = bubble_sort(my_numbers) // my_numbers will also be sorted
+echo("Sorted numbers:   " + b.str(sorted_numbers))
+echo("Original (after sort): " + b.str(my_numbers)) // Shows it was sorted in-place
 
-let start = perf_counter()
-fib(35)
-let end = perf_counter()
+let my_strings = ["Pyle", "Is", "Awesome", "For", "Scripting", "Python"]
+echo("Original strings: " + b.str(my_strings))
+bubble_sort(my_strings) // Sorts in place
+echo("Sorted strings:   " + b.str(my_strings))
 
-echo("Took", end - start)
+let empty_list = []
+echo("Original empty: " + b.str(empty_list))
+bubble_sort(empty_list)
+echo("Sorted empty:   " + b.str(empty_list))
+
+let single_list = [42]
+echo("Original single: " + b.str(single_list))
+bubble_sort(single_list)
+echo("Sorted single:   " + b.str(single_list))

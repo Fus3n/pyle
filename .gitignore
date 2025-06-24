@@ -9,3 +9,4 @@ source.pylec
 
 # extension output
 **/out/
+.aider*

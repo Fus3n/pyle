@@ -19,6 +19,8 @@ KEYWORD_CONSTANTS = (
     "while",
     "fn",      # Added
     "return"   # Added
+    "break",
+    "continue",
 )
 
 # Types
@@ -29,6 +31,7 @@ class TokenType(Enum):
 
     KEYWORD = auto()
     IDENT = auto()
+    DOT = auto()
 
     L_PAREN = auto()
     R_PAREN = auto()

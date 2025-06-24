@@ -6,3 +6,4 @@ from .pyle_parser import *
 from .pyle_types import *
 from .pyle_compiler import Compiler
 from .pyle_vm import PyleVM
+from .utils import disassemble

@@ -11,8 +11,7 @@ class InterpreterError:
         self.tok = token
 
     def __str__(self) -> str:
-        col = self.tok.loc.col_end if self.tok.loc.col_end else self.tok.loc.col_start
-        return f"{self.__class__.__name__}: {self.msg}' -> {self.tok.source_name}:{self.tok.loc.line}:{col}"       
+        return f"{self.__class__.__name__}: {self.msg}' -> {self.tok.get_file_loc()}"       
 
     def __repr__(self) -> str:
         return self.__str__()

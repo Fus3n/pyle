@@ -17,11 +17,22 @@ def native_scan(vm, *arg):
 def native_perf_counter(vm):
     return time.perf_counter()
 
+def native_import_py(vm, arg):
+    # import python module and return it
+    return __import__(arg)
+
+def native_get_attr(vm, obj, attr):
+    return getattr(obj, attr)
+
+# def native_call_attr(vm, obj, attr)
+
 BUILTINS = {
     "echo": PyleFunction(name="echo", arity=-1, start_ip=None, native_fn=native_echo),
     "len":  PyleFunction(name="len", arity=1, start_ip=None, native_fn=native_len),
     "scan": PyleFunction(name="scan", arity=-1, start_ip=None, native_fn=native_scan),
     "perf_counter": PyleFunction(name="perf_counter", arity=0, start_ip=None, native_fn=native_perf_counter),
+    "importpy": PyleFunction(name="importpy", arity=1, start_ip=None, native_fn=native_import_py),
+    "get_attr": PyleFunction(name="get_attr", arity=2, start_ip=None, native_fn=native_get_attr),
    
     # Add more as needed
 }

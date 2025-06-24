@@ -31,6 +31,10 @@ class Compiler:
         self.scope_depth: int = 0 
         self.token_map: dict[int, Token] = {} 
 
+        self.loop_level = 0 # To check if break/continue are inside a loop
+        self.loop_start_patches: list[list[int]] = [] # For 'continue', stores lists of jump instruction indices to patch
+        self.loop_end_patches: list[list[int]] = []   # For 'break', stores lists of jump instruction indices to patch
+
         # Pre-define built-in functions here
         self._initialize_builtins()
 
@@ -48,6 +52,9 @@ class Compiler:
         self.constants = [] 
         self.scope_depth = 0 # Start at 0, representing "outside any specific user-defined scope"
         self.token_map = {}
+        self.loop_level = 0 
+        self.loop_start_patches = [] 
+        self.loop_end_patches = [] 
         self._initialize_builtins()
 
         # --- Script's Main Scope Setup ---
@@ -90,7 +97,7 @@ class Compiler:
         if token:
             self.token_map[instruction_index] = token 
         return instruction_index
-
+    
     def patch_jump(self, instruction_index: int):
         if instruction_index is None: 
             raise ValueError("patch_jump called with None instruction_index")
@@ -247,7 +254,6 @@ class Compiler:
                 raise RuntimeError("Internal error: jump_over_else_idx not set for else branch.")
             self.patch_jump(jump_over_else_idx)
 
-
     def visit_WhileStmt(self, node: WhileStmt):
         loop_start_ip = len(self.bytecode_chunk)
         self._compile_node(node.condition)
@@ -358,15 +364,22 @@ class Compiler:
 
 
     def visit_CallExpr(self, node: CallExpr):
-        self._compile_node(node.callee) # Leaves PyleFunction object on stack
-
-        for arg_node in node.arguments:
-            self._compile_node(arg_node) # Push each argument's value
-
-        # Operand for OP_CALL is the number of arguments
-        self.emit_instruction(OpCode.OP_CALL, len(node.arguments), token=node.token)
-
-
+        self._compile_node(node.callee)
+        for arg in node.arguments:
+            self._compile_node(arg)
+        # For keywords, push values
+        for kw in node.keywords:
+            self._compile_node(kw.value)
+        if node.keywords:
+            # Push the names list as a constant BEFORE OP_BUILD_KWARGS
+            kw_names = [kw.name.value for kw in node.keywords]
+            kw_names_idx = self.add_constant(kw_names)
+            self.emit_instruction(OpCode.OP_CONST, kw_names_idx, token=node.token)
+            self.emit_instruction(OpCode.OP_BUILD_KWARGS, len(node.keywords), token=node.token)
+            self.emit_instruction(OpCode.OP_CALL_KW, (len(node.arguments), len(node.keywords)), token=node.token)
+        else:
+            self.emit_instruction(OpCode.OP_CALL, len(node.arguments), token=node.token)
+            
     def visit_ReturnStmt(self, node: ReturnStmt):
         if node.value:
             self._compile_node(node.value) # Push return value
@@ -403,6 +416,22 @@ class Compiler:
         func_obj = PyleFunction(name="<lambda>", arity=len(node.params), start_ip=function_start_ip)
         func_const_idx = self.add_constant(func_obj)
         self.emit_instruction(OpCode.OP_CONST, func_const_idx, token=node.token)
-    
+
+    def visit_IndexExpr(self, node: IndexExpr):
+        self._compile_node(node.collection)  
+        self._compile_node(node.index)
+        self.emit_instruction(OpCode.OP_INDEX_GET, token=node.token)
+
+    def visit_AssignIndexStmt(self, node: AssignIndexStmt):
+        self._compile_node(node.collection)  # Push collection
+        self._compile_node(node.index)       # Push index
+        self._compile_node(node.value)       # Push value
+        self.emit_instruction(OpCode.OP_INDEX_SET, token=node.token)
+
+    def visit_DotExpr(self, node: DotExpr):
+        self._compile_node(node.object)
+        attr_name_idx = self.add_constant(node.attr.value)
+        self.emit_instruction(OpCode.OP_GET_ATTR, attr_name_idx, token=node.token)
+
     def generic_visit(self, node: ASTNode):
         raise Exception(f"No visit_{node.__class__.__name__} method in Compiler for {node}")

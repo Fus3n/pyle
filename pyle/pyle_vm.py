@@ -4,6 +4,7 @@ from pyle.pyle_errors import PyleRuntimeError, Result
 from pyle.pyle_range import Range
 from .pyle_bytecode import OpCode, Instruction, PyleFunction # Import PyleFunction
 from .pyle_types import Token # For error reporting context
+from types import MethodType, BuiltinFunctionType, FunctionType
 
 @dataclass
 class CallFrame:
@@ -111,6 +112,7 @@ class PyleVM:
                 if not self.stack: return Result.err(PyleRuntimeError(f"Stack underflow for OP_SET_GLOBAL '{var_name}'.", current_token))
                 self.globals[var_name] = self._pop()
 
+            #region Arithmetic
             elif op == OpCode.OP_ADD:
                 if len(self.stack) < 2: return Result.err(PyleRuntimeError("Stack underflow for OP_ADD.", current_token))
                 right = self._pop(); left = self._pop()
@@ -138,7 +140,9 @@ class PyleVM:
                 right = self._pop(); left = self._pop()
                 if right == 0: return Result.err(PyleRuntimeError("Modulo by zero.", current_token))
                 self._push(left % right) 
-
+            #endregion
+            
+            #region Comparison
             elif op == OpCode.OP_EQUAL:
                 if len(self.stack) < 2: return Result.err(PyleRuntimeError("Stack underflow for OP_EQUAL.", current_token))
                 right = self._pop(); left = self._pop(); self._push(left == right)
@@ -157,18 +161,22 @@ class PyleVM:
             elif op == OpCode.OP_LESS_EQUAL:
                 if len(self.stack) < 2: return Result.err(PyleRuntimeError("Stack underflow for OP_LESS_EQUAL.", current_token))
                 right = self._pop(); left = self._pop(); self._push(left <= right)
+            #endregion
 
+            #region Logical Comp
             elif op == OpCode.OP_AND: 
                 if len(self.stack) < 2: return Result.err(PyleRuntimeError("Stack underflow for OP_AND.", current_token))
                 right = self._pop(); left = self._pop(); self._push(left and right) # Python's short-circuiting behavior
             elif op == OpCode.OP_OR:
                 if len(self.stack) < 2: return Result.err(PyleRuntimeError("Stack underflow for OP_OR.", current_token))
                 right = self._pop(); left = self._pop(); self._push(left or right) # Python's short-circuiting behavior
+            #endregion
 
             elif op == OpCode.OP_TRUE: self._push(True)
             elif op == OpCode.OP_FALSE: self._push(False)
             elif op == OpCode.OP_NONE: self._push(None) 
 
+            #region Range and iterators
             elif op == OpCode.OP_BUILD_RANGE:
                 if len(self.stack) < 3: return Result.err(PyleRuntimeError("Stack underflow for OP_BUILD_RANGE.", current_token))
                 step = self._pop(); end = self._pop(); start = self._pop()
@@ -191,6 +199,8 @@ class PyleVM:
                     self.ip = operand  # Jump to end of loop
                 except TypeError: # If item on stack wasn't an iterator
                     return Result.err(PyleRuntimeError(f"Cannot iterate non-iterator type '{type(iterator).__name__}'.", current_token))
+            #endregion
+
 
             elif op == OpCode.OP_BUILD_LIST:
                 num_elements = operand
@@ -198,6 +208,39 @@ class PyleVM:
                 elements = []
                 for _ in range(num_elements): elements.append(self._pop())
                 elements.reverse(); self._push(elements)
+            elif op == OpCode.OP_INDEX_GET:
+                if len(self.stack) < 2:
+                    return Result.err(PyleRuntimeError("Stack underflow for OP_INDEX_GET.", current_token))
+                index = self._pop()
+                collection = self._pop()
+                try:
+                    self._push(collection[index])
+                except (TypeError, IndexError, KeyError) as e:
+                    return Result.err(PyleRuntimeError(f"Indexing error: {e}", current_token))
+            elif op == OpCode.OP_INDEX_SET:
+                if len(self.stack) < 3:
+                    return Result.err(PyleRuntimeError("Stack underflow for OP_INDEX_SET.", current_token))
+                value = self._pop()
+                index = self._pop()
+                collection = self._pop()
+                # Only allow assignment to lists (arrays)
+                if isinstance(collection, list):
+                    try:
+                        collection[index] = value
+                        self._push(value)  # Optionally push the value assigned (like Python's assignment returns value)
+                    except (TypeError, IndexError) as e:
+                        return Result.err(PyleRuntimeError(f"Index assignment error: {e}", current_token))
+                else:
+                    return Result.err(PyleRuntimeError(f"Index assignment not supported on type '{type(collection).__name__}'.", current_token))
+            elif op == OpCode.OP_GET_ATTR:
+                if not self.stack:
+                    return Result.err(PyleRuntimeError("Stack underflow for OP_GET_ATTR.", current_token))
+                obj = self._pop()
+                attr_name = self.constants[operand]
+                try:
+                    self._push(getattr(obj, attr_name))
+                except Exception as e:
+                    return Result.err(PyleRuntimeError(f"Attribute error: {e}", current_token))
 
             elif op == OpCode.OP_ENTER_SCOPE:
                 self.environments.append({})
@@ -206,6 +249,8 @@ class PyleVM:
                     return Result.err(PyleRuntimeError("VM error: Attempted to exit scope when no local scope active.", current_token))
                 self.environments.pop()
                 # print("Environments after OP_EXIT_SCOPE:", self.environments)
+            
+            #region Local Scope
             elif op == OpCode.OP_DEF_LOCAL:
                 var_name = self.constants[operand]
                 if not self.environments: return Result.err(PyleRuntimeError(f"VM error: No active local scope to define '{var_name}'.", current_token))
@@ -244,6 +289,7 @@ class PyleVM:
                         scope[var_name] = val_to_assign; assigned = True; break
                 if not assigned:
                     return Result.err(PyleRuntimeError(f"Cannot assign to undefined local variable '{var_name}'.", current_token))
+            #endregion
 
             elif op == OpCode.OP_JUMP_IF_FALSE: 
                 if not self.stack: return Result.err(PyleRuntimeError("Stack underflow for OP_JUMP_IF_FALSE.", current_token))
@@ -255,9 +301,10 @@ class PyleVM:
                 if not self.stack: return Result.err(PyleRuntimeError("Stack underflow for OP_POP.", current_token))
                 self._pop()
 
-            # --- Function Call Opcodes ---
+            #region Function Call
             elif op == OpCode.OP_CALL:
                 num_args = operand
+                
                 # Stack layout: [..., callee_fn_obj, arg0, ..., arg(N-1)]
                 if len(self.stack) < num_args + 1: # Args + function object
                     return Result.err(PyleRuntimeError(f"Stack underflow for OP_CALL: need {num_args+1} args + func, have {len(self.stack)}.", current_token))
@@ -267,13 +314,26 @@ class PyleVM:
                 callee_candidate = self.stack[callee_candidate_idx]
 
 
-                if not isinstance(callee_candidate, PyleFunction):
-                    return Result.err(PyleRuntimeError(f"Cannot call non-function type '{type(callee_candidate).__name__}'.", current_token))
+                if not isinstance(callee_candidate, (PyleFunction, MethodType, BuiltinFunctionType, FunctionType, type)) :
+                    return Result.err(PyleRuntimeError(f"Cannot call non-function type '{type(callee_candidate)}'.", current_token))
                 
-                function_to_call: PyleFunction = callee_candidate
+                function_to_call: PyleFunction | MethodType = callee_candidate
 
                 # --- Handle Native (Python) Function Call ---
-                if function_to_call.native_fn:
+                if isinstance(function_to_call, (MethodType, BuiltinFunctionType, FunctionType, type)):
+                    args_for_pyfunc = []
+                    for _ in range(num_args):
+                        args_for_pyfunc.append(self._pop())
+                    args_for_pyfunc.reverse()
+                    self._pop()  # pop the function object
+
+                    try:
+                        native_result = function_to_call(*args_for_pyfunc)
+                        self._push(native_result)
+                    except Exception as e:
+                        return Result.err(PyleRuntimeError(f"Error in python function '{function_to_call.__name__}': {e}", current_token))
+
+                elif function_to_call.native_fn:
                     # Arity check for native function
                     # For a simple print(arg), arity is 1.
                     # If arity is -1 (variadic), we might collect all args.
@@ -328,6 +388,32 @@ class PyleVM:
                 # Clean up the stack as before
                 self.stack = self.stack[:frame.stack_slot]
                 self._push(return_value)
+
+            elif op == OpCode.OP_BUILD_KWARGS:
+                num_kwargs = operand
+                if len(self.stack) < num_kwargs + 1:
+                    return Result.err(PyleRuntimeError("Stack underflow for OP_BUILD_KWARGS.", current_token))
+                kw_names = self._pop()  # Pop the names list from the stack
+                kw_values = [self._pop() for _ in range(num_kwargs)]
+                kw_values.reverse()
+                kwargs = dict(zip(kw_names, kw_values))
+                self._push(kwargs)
+
+            elif op == OpCode.OP_CALL_KW:
+                num_args, num_kwargs = operand
+                if len(self.stack) < num_args + 2: return Result.err(PyleRuntimeError("Stack underflow for OP_CALL_KW.", current_token))
+                kwargs = self._pop()
+                args = [self._pop() for _ in range(num_args)]
+                args.reverse()
+                func = self._pop()
+                try:
+                    result = func(*args, **kwargs)
+                    self._push(result)
+                except Exception as e:
+                    return Result.err(PyleRuntimeError(f"Error in function call with kwargs: {e}", current_token))
+            
+            #endregion
+            
             elif op == OpCode.OP_HALT: # Explicit HALT, less used now
                 # print("--- VM Halted (OP_HALT) ---")
                 return Result.ok(self.stack[-1] if self.stack else None)
