@@ -161,9 +161,8 @@ class Parser:
             self._consume(TT.SEMICOLON)
 
         return Result.ok(BreakStmt(token=break_tok_res.ok_val))
-
         
-    def continue_statement(self) -> Result[ContinueStmt, ParseError]:
+    def continue_statement(self) -> Result[ContinueStmt]:
         continue_token_res = self._consume(TT.KEYWORD)
         if continue_token_res.is_err(): return continue_token_res
 
@@ -204,7 +203,7 @@ class Parser:
 
         body_res = self.block() # Use self.block for { ... }
         if body_res.is_err():
-            return Result.err(ParseError(f"Expected '{{' to start function body for '{name_token.value}'.", self.curr_tok, underlying_error=body_res.err_val))
+            return Result.err(ParseError(f"Expected '{{' to start function body for '{name_token.value}'.", self.curr_tok))
 
         return Result.ok(FunctionDefStmt(token=fn_token, name=name_token, params=params, body=body_res.ok_val))
 
