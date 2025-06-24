@@ -1,13 +1,52 @@
 import * as vscode from 'vscode';
+import { exec } from 'child_process';
 
 const PYLE_KEYWORDS = [
 	"and", "or", "not", "for", "in", "if", "else", "let", "true", "false", "while",
-	"fn"
+	"fn", "break", "continue", "const"
 ];
 
-const BUILTIN_FUNCTIONS = ["echo", "scan", "len"];
+const BUILTIN_FUNCTIONS = ["echo", "scan", "len", "importpy", "perf_counter", "get_attr"];
 
-export function activate(context: vscode.ExtensionContext) {
+// Fallback static list
+const STATIC_PYTHON_PACKAGES = ["os", "sys", "json", "math", "random", "re", "datetime", "collections", "itertools", "functools", "subprocess", "threading", "multiprocessing", "asyncio", "http", "urllib", "requests", "flask", "django", "numpy", "pandas", "matplotlib", "scipy", "sklearn", "pytest", "unittest", "logging", "argparse", "tkinter", "sqlite3", "email", "csv", "shutil", "glob", "pathlib", "typing", "pyle"];
+
+let PYTHON_PACKAGES: string[] = STATIC_PYTHON_PACKAGES;
+
+async function updatePythonPackages() {
+	return new Promise<string[]>((resolve) => {
+		// Try to use VS Code Python extension's interpreter, else fallback to 'python'
+		let pythonPath = 'python';
+		const pythonExt = vscode.extensions.getExtension('ms-python.python');
+		if (pythonExt && pythonExt.isActive && pythonExt.exports && pythonExt.exports.settings) {
+			const execCommand = pythonExt.exports.settings.getExecutionDetails().execCommand;
+			if (execCommand && execCommand.length > 0) {
+				pythonPath = execCommand[0];
+			}
+		}
+		const script = 'import pkgutil, json; print(json.dumps(sorted([m.name for m in pkgutil.iter_modules()])))';
+		exec(`${pythonPath} -c "${script}"`, { timeout: 10000 }, (err, stdout) => {
+			if (err) {
+				resolve(STATIC_PYTHON_PACKAGES);
+				return;
+			}
+			try {
+				const pkgs = JSON.parse(stdout);
+				if (Array.isArray(pkgs) && pkgs.length > 0) {
+					resolve(pkgs);
+				} else {
+					resolve(STATIC_PYTHON_PACKAGES);
+				}
+			} catch {
+				resolve(STATIC_PYTHON_PACKAGES);
+			}
+		});
+	});
+}
+
+export async function activate(context: vscode.ExtensionContext) {
+	PYTHON_PACKAGES = (await updatePythonPackages()).sort();
+
 	const completionProvider = vscode.languages.registerCompletionItemProvider(
 		{ language: 'pyle', scheme: 'file' },
 		{
@@ -16,6 +55,19 @@ export function activate(context: vscode.ExtensionContext) {
 
 				const text = document.getText();
 				const lines = text.split(/\r?\n/);
+
+				// Context-aware: If inside importpy("") string, suggest Python packages
+				const line = document.lineAt(position.line).text;
+				const before = line.slice(0, position.character);
+				const importpyMatch = /importpy\(\s*"([^"]*)$/.exec(before);
+				if (importpyMatch) {
+					return PYTHON_PACKAGES.map(pkg => {
+						const item = new vscode.CompletionItem(pkg, vscode.CompletionItemKind.Module);
+						item.insertText = pkg;
+						item.detail = "Python package";
+						return item;
+					});
+				}
 
 				// Add function definitions: fn function_name(args...)
 				const fnRegex = /fn\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*\(([^)]*)\)/g;
@@ -89,7 +141,6 @@ export function activate(context: vscode.ExtensionContext) {
 					completions.push(item);
 				}
 
-
 				// Add keywords
 				completions.push(
 					...PYLE_KEYWORDS.map(keyword => {
@@ -99,8 +150,6 @@ export function activate(context: vscode.ExtensionContext) {
 						return item;
 					})
 				);
-
-				
 
 				return completions;
 			}

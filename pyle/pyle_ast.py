@@ -41,12 +41,11 @@ class Stmt(ASTNode):
 class VarDeclareStmt(Stmt):
     name: Token
     initializer: Expr
-
+    is_const: bool = False
 @dataclass(slots=True)
 class AssignStmt(Stmt):
     name: Token
     value: Expr
-
 @dataclass(slots=True)
 class VariableExpr(Expr):
     name: Token

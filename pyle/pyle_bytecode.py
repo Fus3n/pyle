@@ -9,15 +9,20 @@ class OpCode(enum.Enum):
     OP_DEF_GLOBAL = auto()
     OP_GET_GLOBAL = auto()
     OP_SET_GLOBAL = auto()
+    OP_DEF_CONST_GLOBAL = auto()
     OP_DEF_LOCAL = auto()
     OP_GET_LOCAL = auto()
     OP_SET_LOCAL = auto()
+    OP_DEF_CONST_LOCAL = auto()
 
     OP_ADD = auto()
     OP_SUBTRACT = auto()
     OP_MULTIPLY = auto()
     OP_DIVIDE = auto()
     OP_MODULO = auto()
+
+    OP_NEGATE = auto() # New
+    OP_NOT = auto()    # New
 
     OP_EQUAL = auto()
     OP_NOT_EQUAL = auto()
@@ -73,3 +78,9 @@ class PyleFunction:
     def __repr__(self):
         fn_type = "native" if self.native_fn else "pyle"
         return f"<fn {self.name}/{self.arity} ({fn_type})>"
+    
+@dataclass(frozen=True, slots=True)
+class Variable:
+    var_name: str
+    value: any
+    is_const: bool = False

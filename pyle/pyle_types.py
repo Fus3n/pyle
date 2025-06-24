@@ -21,6 +21,7 @@ KEYWORD_CONSTANTS = (
     "return",   # Added comma
     "break",
     "continue",
+    "const"
 )
 
 # Types

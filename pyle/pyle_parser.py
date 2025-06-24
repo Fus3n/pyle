@@ -108,7 +108,7 @@ class Parser:
         
     def statements(self) -> Result[Stmt | Expr]: # Can return Expr for expression statements
         if self.is_kind(TT.KEYWORD):
-            if self.curr_tok.value == "let":
+            if self.curr_tok.value in ("let", "const"):
                 return self.parse_variable_def()
             elif self.curr_tok.value == "if":
                 return self.parse_if_statement()
@@ -330,8 +330,8 @@ class Parser:
 
     def parse_variable_def(self) -> Result[Stmt]:
         let_token = self.curr_tok
-        if (res := self._consume(TT.KEYWORD)).is_err() or let_token.value != "let": # ensure it is 'let'
-            return res if res.is_err() else Result.err(ParseError("Expected 'let' keyword.", let_token))
+        if (res := self._consume(TT.KEYWORD)).is_err() or let_token.value not in ("let", "const"): 
+            return res if res.is_err() else Result.err(ParseError("Expected 'let' or 'const' keyword.", let_token))
         
         var_name_tok = self.curr_tok
         var_name_res = self._consume(TT.IDENT)
@@ -345,9 +345,10 @@ class Parser:
         
         return Result.ok(
             VarDeclareStmt(
-                token=let_token, # 'let' token
+                token=let_token, 
                 name=var_name_tok, 
                 initializer=expr_res.ok_val, 
+                is_const=(let_token.value == "const")
             )
         )
 
@@ -362,7 +363,7 @@ class Parser:
 
         then_branch_res = self.block()
         if then_branch_res.is_err():
-             return Result.err(ParseError(f"Expected '{{' to start 'if' block body.", token=self.curr_tok, underlying_error=then_branch_res.err_val))
+             return Result.err(ParseError(f"Expected '{{' to start 'if' block body.", token=self.curr_tok))
 
         
         else_branch_node: Optional[Block] = None
@@ -519,8 +520,7 @@ class Parser:
             # Consume the operator token ('-' or 'not')
             consume_res = self._consume(op_token.kind)
             if consume_res.is_err():
-                 # This should not happen if is_kind was true, but good for safety
-                return Result.err(ParseError(f"Failed to consume unary operator '{op_token.value}'.", op_token))
+                return consume_res
 
             operand_res = self.unary() # Recursively call unary for the operand
             if operand_res.is_err():

@@ -214,13 +214,15 @@ class Compiler:
         var_name_str = node.name.value
         name_idx = self.add_constant(var_name_str)
 
-        if self.scope_depth > 0: # If inside any scope (global script scope, or function/block scope)
-            self.emit_instruction(OpCode.OP_DEF_LOCAL, name_idx, token=node.name)
-        else:
-            # This case should ideally not be hit if compile() wraps script in a scope.
-            # For safety, treat as global if somehow scope_depth is 0.
-            self.emit_instruction(OpCode.OP_DEF_GLOBAL, name_idx, token=node.name)
+        op_code = OpCode.OP_DEF_GLOBAL
 
+        if self.scope_depth > 0: # If inside any scope (global script scope, or function/block scope)
+            op_code = OpCode.OP_DEF_CONST_LOCAL if node.is_const else OpCode.OP_DEF_LOCAL
+            self.emit_instruction(op_code, name_idx, token=node.name)
+        else:
+            op_code = OpCode.OP_DEF_CONST_GLOBAL if node.is_const else OpCode.OP_DEF_GLOBAL
+            self.emit_instruction(op_code, name_idx, token=node.name)
+            self.emit_instruction(OpCode.OP_DEF_GLOBAL, name_idx, token=node.name)
 
     def visit_AssignStmt(self, node: AssignStmt):
         self._compile_node(node.value) 

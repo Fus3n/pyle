@@ -2,7 +2,7 @@
 from dataclasses import dataclass # For CallFrame
 from pyle.pyle_errors import PyleRuntimeError, Result
 from pyle.pyle_range import Range
-from .pyle_bytecode import OpCode, Instruction, PyleFunction # Import PyleFunction
+from .pyle_bytecode import OpCode, Instruction, PyleFunction, Variable # Import PyleFunction
 from .pyle_types import Token # For error reporting context
 from types import MethodType, BuiltinFunctionType, FunctionType
 
@@ -19,8 +19,8 @@ class PyleVM:
         self.constants: list[any] = []
         self.ip: int = 0
         self.stack: list[any] = []
-        self.globals: dict[str, any] = {} 
-        self.environments: list[dict[str, any]] = [] # For lexical scoping
+        self.globals: dict[str, Variable] = {} 
+        self.environments: list[dict[str, Variable]] = [] # For lexical scoping
         self.frames: list[CallFrame] = [] # Call stack
 
     def interpret(self, bytecode_chunk: list[Instruction], constants: list[any]):
@@ -59,6 +59,8 @@ class PyleVM:
         # Let's assume error happens related to the instruction at self.ip -1 (if ip > 0)
         return compiler_token_map.get(self.ip -1 if self.ip > 0 else 0)
 
+    def _set_variable(self, store, var_name: str, value, is_const=False):
+        store[var_name] = Variable(var_name, value, is_const)
 
     def _run(self): # token_map passed from compiler for error reporting
 
@@ -99,18 +101,27 @@ class PyleVM:
             elif op == OpCode.OP_DEF_GLOBAL: # Should be less common if script uses local scope
                 var_name = self.constants[operand]
                 if not self.stack: return Result.err(PyleRuntimeError(f"Stack underflow for OP_DEF_GLOBAL '{var_name}'.", current_token))
-                self.globals[var_name] = self._pop()
+                # self.globals[var_name] = self._pop()
+                self._set_variable(self.globals, var_name, self._pop())
             elif op == OpCode.OP_GET_GLOBAL:
                 var_name = self.constants[operand]
                 if var_name not in self.globals:
                     return Result.err(PyleRuntimeError(f"Undefined global variable '{var_name}'.", current_token))
-                self._push(self.globals[var_name])
+                var_val = self.globals[var_name]
+                self._push(var_val.value)
             elif op == OpCode.OP_SET_GLOBAL:
                 var_name = self.constants[operand]
                 if var_name not in self.globals:
                     return Result.err(PyleRuntimeError(f"Cannot assign to undefined global variable '{var_name}'.", current_token))
                 if not self.stack: return Result.err(PyleRuntimeError(f"Stack underflow for OP_SET_GLOBAL '{var_name}'.", current_token))
-                self.globals[var_name] = self._pop()
+                # self.globals[var_name] = self._pop()
+                if self.globals[var_name].is_const:
+                    return Result.err(PyleRuntimeError(f"Cannot assign to const global variable '{var_name}'.", current_token))
+                self._set_variable(self.globals, var_name, self._pop())
+            elif op == OpCode.OP_DEF_CONST_GLOBAL:
+                var_name = self.constants[operand]
+                if not self.stack: return Result.err(PyleRuntimeError(f"Stack underflow for OP_DEF_GLOBAL '{var_name}'.", current_token))
+                self._set_variable(self.globals, var_name, self._pop(), is_const=True)
 
             #region Arithmetic
             elif op == OpCode.OP_ADD:
@@ -215,7 +226,7 @@ class PyleVM:
                     return Result.err(PyleRuntimeError(f"Cannot iterate non-iterator type '{type(iterator).__name__}'.", current_token))
             #endregion
 
-
+            #region List & Index
             elif op == OpCode.OP_BUILD_LIST:
                 num_elements = operand
                 if len(self.stack) < num_elements: return Result.err(PyleRuntimeError(f"Stack underflow for OP_BUILD_LIST: need {num_elements}, have {len(self.stack)}.", current_token))
@@ -228,7 +239,10 @@ class PyleVM:
                 index = self._pop()
                 collection = self._pop()
                 try:
-                    self._push(collection[index])
+                    if isinstance(index, Range):
+                        self._push(collection[index.start:index.end:index.step])
+                    else:
+                        self._push(collection[index])
                 except (TypeError, IndexError, KeyError) as e:
                     return Result.err(PyleRuntimeError(f"Indexing error: {e}", current_token))
             elif op == OpCode.OP_INDEX_SET:
@@ -255,6 +269,7 @@ class PyleVM:
                     self._push(getattr(obj, attr_name))
                 except Exception as e:
                     return Result.err(PyleRuntimeError(f"Attribute error: {e}", current_token))
+            #endregion
 
             elif op == OpCode.OP_ENTER_SCOPE:
                 self.environments.append({})
@@ -271,10 +286,15 @@ class PyleVM:
                 if not self.stack: return Result.err(PyleRuntimeError(f"Stack underflow defining local '{var_name}'.", current_token))
                 
                 current_scope = self.environments[-1]
-                # Re-declaration check could be optional based on language rules
-                # if var_name in current_scope:
-                #     return Result.err(PyleRuntimeError(f"Variable '{var_name}' already defined in this local scope.", current_token))
-                current_scope[var_name] = self._pop()
+                # current_scope[var_name] = self._pop()
+                self._set_variable(current_scope, var_name, self._pop())
+            elif op == OpCode.OP_DEF_CONST_LOCAL:
+                var_name = self.constants[operand]
+                if not self.environments: return Result.err(PyleRuntimeError(f"VM error: No active local scope to define '{var_name}'.", current_token))
+                if not self.stack: return Result.err(PyleRuntimeError(f"Stack underflow defining local '{var_name}'.", current_token))
+                
+                current_scope = self.environments[-1]
+                self._set_variable(current_scope, var_name, self._pop(), is_const=True)
             elif op == OpCode.OP_GET_LOCAL:
                 var_name = self.constants[operand]
                 # print(f"OP_GET_LOCAL for {var_name}, environments:", self.environments)
@@ -283,13 +303,13 @@ class PyleVM:
                 for i_env in range(len(self.environments) - 1, -1, -1):
                     scope = self.environments[i_env]
                     if var_name in scope:
-                        self._push(scope[var_name])
+                        self._push(scope[var_name].value)
                         found_in_locals = True
                         break
                 
                 if not found_in_locals:
                     # If not found in any local environment, it's an error.
-                    # OP_GET_LOCAL should not look in self.globals. That's OP_GET_GLOBAL's job.
+                    # OP_GET_LOCAL should not look in self.globals.
                     return Result.err(PyleRuntimeError(f"Undefined local variable '{var_name}'.", current_token))
            
             elif op == OpCode.OP_SET_LOCAL:
@@ -300,7 +320,12 @@ class PyleVM:
                 for i in range(len(self.environments) - 1, -1, -1):
                     scope = self.environments[i]
                     if var_name in scope:
-                        scope[var_name] = val_to_assign; assigned = True; break
+                        # scope[var_name] = val_to_assign 
+                        if scope[var_name].is_const:
+                            return Result.err(PyleRuntimeError(f"Cannot Assign const local variable '{var_name}'.", current_token))
+                        self._set_variable(scope, var_name, val_to_assign)
+                        assigned = True
+                        break
                 if not assigned:
                     return Result.err(PyleRuntimeError(f"Cannot assign to undefined local variable '{var_name}'.", current_token))
             #endregion
@@ -434,6 +459,5 @@ class PyleVM:
             else:
                 return Result.err(PyleRuntimeError(f"Unknown opcode: {op.name}", current_token))
 
-        print("Environments at end:", self.environments)
         # Should be unreachable if bytecode is correct (ends with OP_RETURN)
         return Result.ok(self.stack[-1] if self.stack else None)

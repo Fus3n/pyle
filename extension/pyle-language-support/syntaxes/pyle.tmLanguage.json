@@ -18,7 +18,7 @@
       "patterns": [
         {
           "name": "keyword.control.pyle",
-          "match": "\\b(and|or|not|for|in|if|else|let|true|false|while|return)\\b"
+          "match": "\\b(and|or|not|for|in|if|else|let|true|false|while|return|continue|break|fn|const)\\b"
         }
       ]
     },
