@@ -1,0 +1,11 @@
+
+echo("Hello world")
+echo("a", 3, 5, 6, ["A", 2, 5])
+
+let input = scan()
+echo("value", input)
+
+let name = scan("Enter your name: ")
+echo("Hello, I'm am", name)
+
+

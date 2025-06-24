@@ -1,5 +1,5 @@
 from pyle.pyle_types import TokenType, Token
-from .pyle_bytecode import OpCode, Instruction, PyleFunction 
+from .pyle_bytecode import OpCode, Instruction, PyleFunction
 from .pyle_ast import *
 from .pyle_builtins import BUILTINS
 
