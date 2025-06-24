@@ -255,12 +255,33 @@ class Compiler:
             self.patch_jump(jump_over_else_idx)
 
     def visit_WhileStmt(self, node: WhileStmt):
-        loop_start_ip = len(self.bytecode_chunk)
+        self.loop_level += 1
+        self.loop_start_patches.append([])
+        self.loop_end_patches.append([])
+
+        loop_start_ip = len(self.bytecode_chunk) # Target for continue
+
         self._compile_node(node.condition)
         exit_loop_jump_idx = self.emit_instruction(OpCode.OP_JUMP_IF_FALSE, 99999, token=node.token)
+        
         self._compile_node(node.body)
+
+        # Patch all continue jumps to point to the start of the loop (condition check)
+        for patch_idx in self.loop_start_patches[-1]:
+            self.bytecode_chunk[patch_idx].operand = loop_start_ip
+        
         self.emit_instruction(OpCode.OP_JUMP, loop_start_ip, token=node.token) # Jump back to condition
-        self.patch_jump(exit_loop_jump_idx)
+        
+        self.patch_jump(exit_loop_jump_idx) # Target for loop exit and break
+        
+        # Patch all break jumps to point to after the loop
+        loop_end_target_ip = self.bytecode_chunk[exit_loop_jump_idx].operand
+        for patch_idx in self.loop_end_patches[-1]:
+            self.bytecode_chunk[patch_idx].operand = loop_end_target_ip
+
+        self.loop_start_patches.pop()
+        self.loop_end_patches.pop()
+        self.loop_level -= 1
 
     def visit_RangeSpecifier(self, node: RangeSpecifier):
         self._compile_node(node.start)
@@ -272,9 +293,12 @@ class Compiler:
         self.emit_instruction(OpCode.OP_BUILD_RANGE, token=node.token)
 
     def visit_ForInStmt(self, node: ForInStmt):
-        # For loop variable 'i' should be local to the for loop.
+        self.loop_level += 1
+        self.loop_start_patches.append([])
+        self.loop_end_patches.append([])
+
         self.scope_depth += 1
-        self.emit_instruction(OpCode.OP_ENTER_SCOPE, token=node.token) # Scope for the for-loop itself
+        self.emit_instruction(OpCode.OP_ENTER_SCOPE, token=node.token) 
 
         self._compile_node(node.iterable) 
         self.emit_instruction(OpCode.OP_ITER_NEW, token=node.iterable.token if node.iterable.token else node.token) 
@@ -284,21 +308,33 @@ class Compiler:
         self.emit_instruction(OpCode.OP_CONST, self.add_constant(None), token=node.loop_variable) 
         self.emit_instruction(OpCode.OP_DEF_LOCAL, name_idx, token=node.loop_variable)
 
-        loop_start_ip = len(self.bytecode_chunk)
-        # OP_ITER_NEXT_OR_JUMP: Pops iterator. If next, pushes iterator, pushes value. If no next, jumps.
-        jump_to_end_idx = self.emit_instruction(OpCode.OP_ITER_NEXT_OR_JUMP, 99999, token=node.token) # Placeholder
+        loop_iteration_start_ip = len(self.bytecode_chunk) # Target for continue
+        
+        jump_to_loop_end_idx = self.emit_instruction(OpCode.OP_ITER_NEXT_OR_JUMP, 99999, token=node.token)
 
-        # Value from iterator is now on stack. Assign it to loop variable.
-        self.emit_instruction(OpCode.OP_SET_LOCAL, name_idx, token=node.loop_variable) # Pops value, sets local
+        self.emit_instruction(OpCode.OP_SET_LOCAL, name_idx, token=node.loop_variable)
         
         self._compile_node(node.body) 
 
-        self.emit_instruction(OpCode.OP_JUMP, loop_start_ip, token=node.token)
-        self.patch_jump(jump_to_end_idx)
-        # After jump_to_end_idx, iterator is no longer on stack (consumed by last failed OP_ITER_NEXT_OR_JUMP)
+        # Patch all continue jumps
+        for patch_idx in self.loop_start_patches[-1]:
+            self.bytecode_chunk[patch_idx].operand = loop_iteration_start_ip
+
+        self.emit_instruction(OpCode.OP_JUMP, loop_iteration_start_ip, token=node.token) # Jump back to iterate
+        
+        self.patch_jump(jump_to_loop_end_idx) # Target for loop exit and break
+        
+        # Patch all break jumps
+        loop_end_target_ip = self.bytecode_chunk[jump_to_loop_end_idx].operand
+        for patch_idx in self.loop_end_patches[-1]:
+             self.bytecode_chunk[patch_idx].operand = loop_end_target_ip
 
         self.emit_instruction(OpCode.OP_EXIT_SCOPE, token=node.token)
         self.scope_depth -= 1
+
+        self.loop_start_patches.pop()
+        self.loop_end_patches.pop()
+        self.loop_level -= 1
 
 
     def visit_ArrayLiteral(self, node: ArrayLiteral):
@@ -306,6 +342,20 @@ class Compiler:
             self._compile_node(element_expr)
         num_elements = len(node.elements)
         self.emit_instruction(OpCode.OP_BUILD_LIST, num_elements, token=node.token)
+
+    def visit_BreakStmt(self, node: BreakStmt):
+        if self.loop_level == 0:
+            raise Exception(f"CompileError: 'break' outside loop at {node.token.get_file_loc()}")
+        
+        jump_idx = self.emit_instruction(OpCode.OP_JUMP, 99999, token=node.token) # Placeholder target
+        self.loop_end_patches[-1].append(jump_idx)
+
+    def visit_ContinueStmt(self, node: ContinueStmt):
+        if self.loop_level == 0:
+            raise Exception(f"CompileError: 'continue' outside loop at {node.token.get_file_loc()}")
+
+        jump_idx = self.emit_instruction(OpCode.OP_JUMP, 99999, token=node.token) # Placeholder target
+        self.loop_start_patches[-1].append(jump_idx)
         
     # --- New Visit Methods for Functions ---
 

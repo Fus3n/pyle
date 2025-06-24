@@ -18,7 +18,7 @@ KEYWORD_CONSTANTS = (
     "false",
     "while",
     "fn",      # Added
-    "return"   # Added
+    "return",   # Added comma
     "break",
     "continue",
 )

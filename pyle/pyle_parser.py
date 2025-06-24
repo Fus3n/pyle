@@ -120,10 +120,10 @@ class Parser:
                 return self.parse_function_definition()
             elif self.curr_tok.value == "return": # New
                 return self.parse_return_statement()
-            elif self.curr_tok == "break":
-                return self.parse_break_statement()
-            elif self.curr_tok == "continue":
-                return self.parse_continue_statement()
+            elif self.curr_tok.value == "break": # Corrected condition
+                return self.break_statement() # Use existing method
+            elif self.curr_tok.value == "continue": # Corrected condition
+                return self.continue_statement() # Use existing method
         elif self.is_kind(TT.L_CURLY_BRACE): # Explicit block statement
             return self.block()
 
