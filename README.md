@@ -34,7 +34,7 @@ When you run a Pyle script (`.pyle` file), it goes through several stages:
     Bytecode is an intermediate representation of your program, more abstract than machine code but lower-level than your source code. It's portable (can run on any Pyle VM) and can be more efficient to interpret than directly walking the AST.
 
     For example, a line of Pyle like:
-    ```pyle
+    ```cs
     let a = 10 + 20
     ```
     Might be compiled into something conceptually like this (actual opcodes and operands may vary):
@@ -53,7 +53,7 @@ When you run a Pyle script (`.pyle` file), it goes through several stages:
 Pyle supports a growing set of features:
 
 *   **Variables:**
-    ```pyle
+    ```cs
     let message = "Hello, Pyle!"; // semicolons are optional
     const PI = 3.14159;
     echo(message);
@@ -71,7 +71,7 @@ Pyle supports a growing set of features:
     *   Logical: `and`, `or`, `not`
     *   Comparison: `==`, `!=`, `<`, `>`, `<=`, `>=`
     *   Unary: `-` (negation), `not`
-    ```pyle
+    ```cs
     let sum = 10 + 5 * 2; // 20
     let isGreater = sum > 15; // true
     let isNotActive = not isActive;
@@ -79,7 +79,7 @@ Pyle supports a growing set of features:
 
 *   **Control Flow:**
     *   `if/else` statements:
-        ```pyle
+        ```cs
         if score > 90 {
             echo("Grade: A");
         } else if score > 80 {
@@ -89,7 +89,7 @@ Pyle supports a growing set of features:
         }
         ```
     *   `while` loops:
-        ```pyle
+        ```cs
         let i = 0;
         while i < 3 {
             echo(i);
@@ -97,7 +97,7 @@ Pyle supports a growing set of features:
         }
         ```
     *   `for..in` loops (currently with ranges):
-        ```pyle
+        ```cs
         for x in 0:5 { // Iterates from 0 up to (but not including) 5
             echo(x);
         }
@@ -106,7 +106,7 @@ Pyle supports a growing set of features:
         }
         ```
     *   `break` and `continue`:
-        ```pyle
+        ```cs
         for i in 0:10 {
             if i == 3 {
                 continue; // Skip printing 3
@@ -120,7 +120,7 @@ Pyle supports a growing set of features:
 
 *   **Functions:**
     *   Definition and calling:
-        ```pyle
+        ```cs
         fn greet(name) {
             return "Hello, " + name + "!";
         }
@@ -128,7 +128,7 @@ Pyle supports a growing set of features:
         echo(message);
         ```
     *   Keyword arguments:
-        ```pyle
+        ```cs
         fn introduce(name, age) {
             echo("My name is", name, "and I am", age, "years old.");
         }
@@ -138,7 +138,7 @@ Pyle supports a growing set of features:
     *   Return statements (can return any expression, or nothing).
 
 *   **Array Indexing and Assignment:**
-    ```pyle
+    ```cs
     let my_array = [10, 20, 30];
     echo(my_array[1]); // 20
     my_array[1] = 25;
@@ -147,7 +147,7 @@ Pyle supports a growing set of features:
 
 *   **Python Module Importing & Attribute Access:**
     You can import and use Python modules and their attributes/functions.
-    ```pyle
+    ```cs
     const math = importpy("math");
     echo("Pi from Python:", math.pi);
     echo("Square root of 16:", math.sqrt(16));
@@ -184,7 +184,7 @@ Pyle supports a growing set of features:
 
 Here's a small example demonstrating functions and loops:
 
-```pyle
+```cs
 fn fib(n) {
     if n <= 1 {
         return n;
