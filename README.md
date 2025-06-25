@@ -215,5 +215,5 @@ Pyle is, first and foremost, an educational endeavor. It's a playground for expl
 This project might be used as a basis for a future YouTube series exploring these concepts in depth.
 
 ---
-<p align="center">Happy Pyling!</p>
+
 
