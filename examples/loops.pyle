@@ -1,0 +1,56 @@
+echo("Range")
+// Test Ranges
+for i in 0:10 {
+    echo(i)
+}
+
+echo("Range with steps")
+// Test Range with steps
+for i in 0:10:2 {
+    echo(i)
+}
+
+// Test for break in while loop
+let i = 0
+let sum_break_while = 0
+while i < 10 {
+    if i == 5 {
+        break
+    }
+    sum_break_while = sum_break_while + i
+    i = i + 1
+}
+echo("sum_break_while", sum_break_while) // Expected: 0+1+2+3+4 = 10
+
+// Test for continue in while loop
+i = 0
+let sum_continue_while = 0
+while i < 5 {
+    i = i + 1
+    if i == 3 {
+        continue
+    }
+    sum_continue_while = sum_continue_while + i
+}
+echo("sum_continue_while", sum_continue_while) // Expected: 1+2+4+5 = 12
+
+// Test for break in for loop
+let sum_break_for = 0
+for x in [0, 1, 2, 3, 4, 5, 6, 7, 8, 9] {
+    if x == 5 {
+        break
+    }
+    sum_break_for = sum_break_for + x
+}
+echo("sum_break_for", sum_break_for) // Expected: 0+1+2+3+4 = 10
+
+// Test for continue in for loop
+let sum_continue_for = 0
+for y in [1, 2, 3, 4, 5] {
+    if y == 3 {
+        continue
+    }
+    sum_continue_for = sum_continue_for + y
+}
+echo("sum_continue_for", sum_continue_for) // Expected: 1+2+4+5 = 12
+

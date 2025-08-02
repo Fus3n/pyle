@@ -1,0 +1,43 @@
+// Example Of Maps
+// Map supports identifiers/strings as key's
+// only hashable types are supported as key's
+
+// The first variable of a function assigned to an object becomes a bound method.
+// a bound methods first parameter always gets a reference to itself i.e the map
+// so you can do self.param on it
+
+
+fn User(name, age) {
+    return {
+        name: name,
+        age: age,
+        work_address: {
+            city: null,
+            road: null
+        },
+        getName: fn(self) {
+            return self.name
+        },
+        setName: fn(self, name) {
+            self.name = name
+        },
+        ["home"+"_address"]: "xyz street" // have computed values like js, but still only string is supported
+    }
+}
+
+const user = User("EpicGames", 15)
+user.setWorkAddr = fn(self, city, road) {
+    self.work_address.city = city
+    self.work_address.road = road
+}
+user.getFullWorkAddr = fn(self) {
+    return self.work_address.city + " " + self.work_address.road
+}
+user.setName("John Epic")
+echo(user.getName())
+
+user.setWorkAddr("New York", "Wall Street")
+echo(user.getFullWorkAddr())
+
+echo(user.work_address)
+echo(user.home_address)

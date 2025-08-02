@@ -1,0 +1,42 @@
+// --- Arithmetic Operators ---
+echo("--- Arithmetic Operators ---")
+echo("10 * 5 =", 10 * 5)
+echo("10 / 5 =", 10 / 5)
+echo("10 - 5 =", 10 - 5)
+echo("10 % 3 =", 10 % 3)
+echo("")
+
+// --- Unary Operators ---
+echo("--- Unary Operators ---")
+let x = 10
+echo("-x =", -x)
+echo("not true =", not true)
+echo("")
+
+// --- Logical Operators ---
+echo("--- Logical Operators ---")
+echo("true and false =", true and false)
+echo("true or false =", true or false)
+echo("")
+
+// --- Array Indexing ---
+echo("--- Array Indexing ---")
+let my_array = [1, "two", 3]
+echo("my_array[0] =", my_array[0])
+my_array[0] = "one"
+echo("my_array after set =", my_array)
+echo("")
+
+// --- Compound Assignment Operators ---
+echo("--- Compound Assignment Operators ---")
+let a = 10
+a += 5
+echo("a += 5 ->", a)
+a -= 5
+echo("a -= 5 ->", a)
+a *= 2
+echo("a *= 2 ->", a)
+a /= 2
+echo("a /= 2 ->", a)
+a %= 3
+echo("a %= 3 ->", a)

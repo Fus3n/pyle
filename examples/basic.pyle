@@ -1,0 +1,85 @@
+// Hello world
+echo("Hello World")
+
+// Intro: Types
+
+echo("String type:")
+let strVal = "Hello world"
+echo(strVal, "or", 'Hello world')
+echo(".len()", strVal.len())
+echo(".trimSpace()", "       Hello      ".trimSpace())
+echo(".format()", "Hello {}".format("World"))
+echo()
+
+echo("Number type:")
+// Numbers can be either int64 or float64  
+const a = 2
+const b = 2.5
+echo(a, b, a + b)
+echo()
+
+echo("Boolean type:")
+const c = true
+const d = false
+echo(c, d, c and d, c or d)
+echo()
+
+echo("Tuple type:")
+const t1 = tuple(1, 2, "hello", "world") // tuples are non resizeable containers
+echo(t1, t1[0], t1[0] * t1[1])
+echo()
+
+echo("Array type:")
+const arr = [1, "hello", 2, "world", false, true]
+echo("Array Original", arr.len()) // size
+
+// append
+arr.append(tuple(5, 5))
+echo("Array New", arr.len())
+echo(arr)
+// get or set values
+arr[1] = "HELLO" // set
+const t = arr[arr.len()-1]
+echo("Product of tuple values", t[0] * t[1])
+echo()
+
+// Map
+const randomKey = "key2"
+const m = { 
+    key1: "Value1", // identifiers are taken as string
+    [randomKey]: "Value2", // so you can use [] to have computed values
+    "key3": "Value3", 
+    [5]: 10, // any expression needs to be enclosed inside [] except for string literals
+    [5.5]: 11  
+} 
+echo("Full map", m)
+echo("Result of key2", m.key2) // dot operated acess is supported
+echo("Result of key3", m["key3"])
+echo(m[5] * m[5.5])
+
+
+// Builtin function demonstrations
+echo("Builtin function examples:")
+
+// scan() example
+let name = scan("Enter your name: ")
+echo("Hello {}".format(name))
+
+// type() examples
+echo("Type of 42:", type(42))
+echo("Type of 'text':", type("text"))
+echo("Type of true:", type(true))
+
+// type conversion examples
+echo("int('123'):", int("123"))
+echo("float('3.14'):", float("3.14"))
+echo("string(42):", string(42))
+echo("bool(1):", bool(1))
+
+// expect() example
+expect(true, "This should pass")
+// expect(false, "This will fail")  // Uncomment to see failure
+
+// hash() example
+echo("Hash of 'hello':", hash("hello"))
+
