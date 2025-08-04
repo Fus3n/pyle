@@ -622,9 +622,10 @@ func (c *Compiler) visitFunctionDefStmt(node *FunctionDefStmt) error {
 
 	// loop over params in reverse and add to constant and def local
 	for i := len(node.Params) - 1; i >= 0; i-- {
-		paramName := node.Params[i].Value
+		param := node.Params[i]
+		paramName := param.Name.Value
 		nameIdx := c.addConstant(StringObj{Value: paramName})
-		c.emitInstruct(OpDefLocal, &nameIdx, node.Params[i])
+		c.emitInstruct(OpDefLocal, &nameIdx, param.Name)
 	}
 
 	// Check for docstring
@@ -703,9 +704,10 @@ func (c *Compiler) visitFunctionExpr(node *FunctionExpr) error {
 
 	// loop over params in reverse and add to constant and def local
 	for i := len(node.Params) - 1; i >= 0; i-- {
-		paramName := node.Params[i].Value
+		param := node.Params[i]
+		paramName := param.Name.Value
 		nameIdx := c.addConstant(StringObj{Value: paramName})
-		c.emitInstruct(OpDefLocal, &nameIdx, node.Params[i])
+		c.emitInstruct(OpDefLocal, &nameIdx, param.Name)
 	}
 
 	// Check for docstring

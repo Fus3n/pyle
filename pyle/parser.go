@@ -280,7 +280,14 @@ func (p *Parser) variableDeclaration() Result[Stmt] {
 		varNames = append(varNames, nameRes.Value)
 	}
 
-	// name := nameRes.Value
+	var typeHint Expr
+	if p.match(TokenColon) {
+		typeRes := p.expression()
+		if typeRes.IsErr() {
+			return ResErr[Stmt](typeRes.Err)
+		}
+		typeHint = typeRes.Value
+	}
 
 	var initializer Expr = nil
 
@@ -300,6 +307,7 @@ func (p *Parser) variableDeclaration() Result[Stmt] {
 		Names:       varNames,
 		Initializer: initializer,
 		IsConst:     isConst,
+		Type:        typeHint,
 	})
 }
 
@@ -674,32 +682,48 @@ func (p *Parser) functionExpr() Result[Expr] {
 	fnTok := p.advance() // token wasnt advance so using advance
 
 	if !p.match(TokenLParen) {
-		return ResErr[Expr](NewParserError("Expected '(' after function name.", p.current()))
+		return ResErr[Expr](NewParserError("Expected '(' after 'fn' keyword.", p.current()))
 	}
-	params := []*Token{}
+	params := []*Parameter{}
 	if !p.check(TokenRParen) {
 		for {
-			if !p.match(TokenIdent) {
-				return ResErr[Expr](
-					NewParserError(
-						fmt.Sprintf("Expected parameter name, but got %s instead.", p.current().Value),
-						p.current(),
-					),
-				)
+			paramNameRes := p.consume(TokenIdent, "Expected parameter name.")
+			if paramNameRes.IsErr() {
+				return ResErr[Expr](paramNameRes.Err)
 			}
-			params = append(params, p.previous())
-			if p.check(TokenRParen) {
+			paramName := paramNameRes.Value
+
+			var paramType Expr = nil
+			if p.match(TokenColon) {
+				typeRes := p.expression()
+				if typeRes.IsErr() {
+					return ResErr[Expr](typeRes.Err)
+				}
+				paramType = typeRes.Value
+			}
+
+			params = append(params, &Parameter{Name: paramName, Type: paramType})
+
+			if !p.match(TokenComma) {
 				break
 			}
-			res := p.consume(TokenComma, "Expected ',' after parameter.")
-			if res.IsErr() {
-				return ResErr[Expr](res.Err)
+			if p.check(TokenRParen) {
+				break
 			}
 		}
 	}
 
 	if !p.match(TokenRParen) {
 		return ResErr[Expr](NewParserError("Expected ')' after parameters.", p.current()))
+	}
+
+	var returnType Expr = nil
+	if p.match(TokenArrow) {
+		typeRes := p.expression()
+		if typeRes.IsErr() {
+			return ResErr[Expr](typeRes.Err)
+		}
+		returnType = typeRes.Value
 	}
 
 	if !p.match(TokenLCurlyBrace) {
@@ -716,6 +740,7 @@ func (p *Parser) functionExpr() Result[Expr] {
 		Token:      fnTok,
 		Params:     params,
 		Body:       bodyBlock,
+		ReturnType: returnType,
 	})
 }
 
@@ -824,26 +849,47 @@ func (p *Parser) functionDefinition() Result[Stmt] {
 	if !p.match(TokenLParen) {
 		return ResErr[Stmt](NewParserError("Expected '(' after function name.", p.current()))
 	}
-	
-	params := []*Token{}
+
+	params := []*Parameter{}
 	if !p.check(TokenRParen) {
 		for {
-			if !p.match(TokenIdent) {
-				return ResErr[Stmt](NewParserError("Expected parameter name.", p.current()))
+			paramNameRes := p.consume(TokenIdent, "Expected parameter name.")
+			if paramNameRes.IsErr() {
+				return ResErr[Stmt](paramNameRes.Err)
 			}
-			params = append(params, p.previous())
-			if p.check(TokenRParen) {
+			paramName := paramNameRes.Value
+
+			var paramType Expr = nil
+			if p.match(TokenColon) {
+				typeRes := p.expression()
+				if typeRes.IsErr() {
+					return ResErr[Stmt](typeRes.Err)
+				}
+				paramType = typeRes.Value
+			}
+
+			params = append(params, &Parameter{Name: paramName, Type: paramType})
+
+			if !p.match(TokenComma) {
 				break
 			}
-			res := p.consume(TokenComma, "Expected ',' after parameter.")
-			if res.IsErr() {
-				return ResErr[Stmt](res.Err)
+			if p.check(TokenRParen) {
+				break
 			}
 		}
 	}
 
 	if !p.match(TokenRParen) {
 		return ResErr[Stmt](NewParserError("Expected ')' after parameters.", p.current()))
+	}
+
+	var returnType Expr = nil
+	if p.match(TokenArrow) {
+		typeRes := p.expression()
+		if typeRes.IsErr() {
+			return ResErr[Stmt](typeRes.Err)
+		}
+		returnType = typeRes.Value
 	}
 
 	if !p.match(TokenLCurlyBrace) {
@@ -861,6 +907,7 @@ func (p *Parser) functionDefinition() Result[Stmt] {
 		Name:       fnName,
 		Params:     params,
 		Body:       bodyBlock,
+		ReturnType: returnType,
 	})
 }
 

@@ -28,6 +28,7 @@ const htmlTemplateStr = `
             --border-color: #3e4451;
             --link-color: #61afef;
             --link-hover-color: #528bce;
+            --fn-name-color: #7B97E5FF;
             --code-color: #e5c07b;
             --no-doc-color: #888;
             --header-color: #e6efff;
@@ -108,7 +109,7 @@ const htmlTemplateStr = `
         .function-name {
             font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, Courier, monospace;
             font-size: 1.2em;
-            color: var(--code-color);
+            color: var(--fn-name-color);
         }
         .description {
             margin-top: 10px;
@@ -197,6 +198,17 @@ type FuncDoc struct {
 	Name      string
 	Signature string
 	Doc       *pyle.DocstringObj
+}
+
+func exprToString(e pyle.Expr) string {
+	if e == nil {
+		return ""
+	}
+	if ve, ok := e.(*pyle.VariableExpr); ok {
+		return ve.Name.Value
+	}
+	// Fallback for other potential type expressions
+	return e.TypeString()
 }
 
 // --- Main Application Logic ---
@@ -293,7 +305,6 @@ func generateUserDocs(inputFile, outputFile string) {
 		os.Exit(1)
 	}
 
-
 	l := pyle.NewLexer(inputFile, string(source))
 	tokens, lexErr := l.Tokenize()
 	if lexErr.IsErr() {
@@ -307,24 +318,64 @@ func generateUserDocs(inputFile, outputFile string) {
 		fmt.Fprintf(os.Stderr, "Parser error in %s: %v\n", inputFile, result.Err)
 		os.Exit(1)
 	}
-	ast := result.Value
+
+    ast := result.Value
 
 	var userFuncs []FuncDoc
 	for _, stmt := range ast.Statements {
 		if fn, ok := stmt.(*pyle.FunctionDefStmt); ok {
-			var paramNames []string
+			// Signature generation
+			var paramParts []string
 			for _, p := range fn.Params {
-				paramNames = append(paramNames, p.Value)
-			}
-			signature := fmt.Sprintf("%s(%s)", fn.Name.Value, strings.Join(paramNames, ", "))
-
-			var doc *pyle.DocstringObj
-			if len(fn.Body.Statements) > 0 {
-				if strExpr, ok := fn.Body.Statements[0].(*pyle.StringExpr); ok {
-					doc = &pyle.DocstringObj{Description: strExpr.Value}
+				part := p.Name.Value
+				if p.Type != nil {
+					part += ": " + exprToString(p.Type)
 				}
+				paramParts = append(paramParts, part)
 			}
+		signature := fmt.Sprintf("%s(%s)", fn.Name.Value, strings.Join(paramParts, ", "))
+		if fn.ReturnType != nil {
+			signature += " -> " + exprToString(fn.ReturnType)
+		}
+
+		// Doc object generation
+		doc := &pyle.DocstringObj{}
+		hasDocContent := false
+
+		// Try to get description from docstring
+		bodyStmts := fn.Body.Statements
+		if len(bodyStmts) > 0 {
+			if strExpr, ok := bodyStmts[0].(*pyle.StringExpr); ok {
+				doc.Description = strings.TrimSpace(strExpr.Value)
+				hasDocContent = true
+			}
+		}
+
+		// Populate params and returns from type hints
+		var paramDocs []pyle.ParamDoc
+		for _, p := range fn.Params {
+			if p.Type != nil {
+				paramDocs = append(paramDocs, pyle.ParamDoc{
+					Name:        p.Name.Value,
+					Description: exprToString(p.Type), // Using the type as the description
+				})
+			}
+		}
+		if len(paramDocs) > 0 {
+			doc.Params = paramDocs
+			hasDocContent = true
+		}
+
+		if fn.ReturnType != nil {
+			doc.Returns = exprToString(fn.ReturnType)
+			hasDocContent = true
+		}
+
+		if hasDocContent {
 			userFuncs = append(userFuncs, FuncDoc{Name: fn.Name.Value, Signature: signature, Doc: doc})
+		} else {
+			userFuncs = append(userFuncs, FuncDoc{Name: fn.Name.Value, Signature: signature, Doc: nil})
+		}
 		}
 	}
 
@@ -333,6 +384,7 @@ func generateUserDocs(inputFile, outputFile string) {
 		Sections: []Section{{Title: "Functions", Funcs: userFuncs}},
 	}, outputFile)
 }
+
 
 func renderTemplate(data TemplateData, outputFile string) {
 	tmpl, err := template.New("docs").Parse(htmlTemplateStr)

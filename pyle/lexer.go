@@ -186,6 +186,9 @@ func (l *Lexer) Tokenize() ([]Token, Result[Token]) {
 			if l.peek(0) == '=' {
 				l.advance()
 				l.addToken(TokenMinusEquals, "-=", startLoc)
+			} else if l.peek(0) == '>' {
+				l.advance()
+				l.addToken(TokenArrow, "->", startLoc)
 			} else {
 				l.addToken(TokenMinus, "-", startLoc)
 			}

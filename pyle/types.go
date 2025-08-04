@@ -62,6 +62,7 @@ const (
 	TokenMulEquals
 	TokenDivEquals
 	TokenModEquals
+	TokenArrow
 )
 
 func (t TokenType) String() string {
@@ -102,6 +103,8 @@ func (t TokenType) String() string {
 		"TokenMinusEquals",
 		"TokenMulEquals",
 		"TokenDivEquals",
+		"TokenModEquals",
+		"TokenArrow",
 	}[t]
 }
 

@@ -132,6 +132,7 @@ func (s *Block) MarshalJSON() ([]byte, error) {
 type VarDeclareStmt struct {
 	Token       *Token
 	Names      []*Token
+	Type        Expr
 	Initializer Expr
 	IsConst     bool
 }
@@ -656,7 +657,7 @@ func (a *WhileStmt) TypeString() string { return "" }
 func (s *WhileStmt) GetToken() *Token { return s.Token }
 func (s *WhileStmt) String() string {
 	return fmt.Sprintf("WhileStmt (\n  Condition: %v\n  Body: %v\n)",
-		s.Cond, s.Body)
+		 s.Cond, s.Body)
 }
 func (s *WhileStmt) stmtNode()        {}
 func (s *WhileStmt) MarshalJSON() ([]byte, error) {
@@ -670,16 +671,29 @@ func (s *WhileStmt) MarshalJSON() ([]byte, error) {
 	})
 }
 
+type Parameter struct {
+	Name *Token
+	Type Expr
+}
+
+func (p *Parameter) String() string {
+	if p.Type != nil {
+		return fmt.Sprintf("%s: %s", p.Name.Value, p.Type.String())
+	}
+	return p.Name.Value
+}
+
 type FunctionExpr struct {
-	Token *Token
-	Params []*Token
-	Body *Block
+	Token      *Token
+	Params     []*Parameter
+	Body       *Block
+	ReturnType Expr
 }
 func (a *FunctionExpr) TypeString() string { return "" }
 func (e *FunctionExpr) GetToken() *Token { return e.Token }
 func (e *FunctionExpr) String() string {
 	return fmt.Sprintf("FunctionExpr (\n  Parameters: %v\n  Body: %v\n)",
-		e.Params, e.Body)
+		 e.Params, e.Body)
 }
 func (e *FunctionExpr) exprNode() {}
 func (e *FunctionExpr) MarshalJSON() ([]byte, error) {
@@ -694,10 +708,11 @@ func (e *FunctionExpr) MarshalJSON() ([]byte, error) {
 }
 
 type FunctionDefStmt struct {
-	Token *Token
-	Name *Token
-	Params []*Token
-	Body *Block
+	Token      *Token
+	Name       *Token
+	Params     []*Parameter
+	Body       *Block
+	ReturnType Expr
 }
 
 func (a *FunctionDefStmt) TypeString() string { return "" }

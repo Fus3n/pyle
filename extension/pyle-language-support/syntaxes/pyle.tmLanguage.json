@@ -5,6 +5,7 @@
     { "include": "#constant-declarations" },
     { "include": "#functions" },
     { "include": "#keywords" },
+    { "include": "#type-hints" },
     { "include": "#function-calls" },
     { "include": "#language-constants" },
     { "include": "#range" },
@@ -29,6 +30,10 @@
         {
           "name": "constant.language.pyle",
           "match": "\\b(null|true|false)\\b"
+        },
+        {
+          "name": "variable.other.constant.pyle",
+          "match": "\\b(string|number|func|array)\\b"
         },
         {
           "name": "variable.language.self.pyle",
