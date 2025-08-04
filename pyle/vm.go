@@ -38,7 +38,7 @@ func NewVM() *VM {
 
 func (vm *VM) AddGlobal(name string, value Object) Error {
 	if _, ok := vm.globals[name]; ok {
-		return NewRuntimeError(fmt.Sprintf("Global variable '%s' already defined", name), nil)
+		return vm.runtimeError("Global variable '%s' already defined", name)
 	}
 	vm.globals[name] = &Variable{Name: name, Value: value, IsConst: false}
 	return nil
@@ -46,7 +46,7 @@ func (vm *VM) AddGlobal(name string, value Object) Error {
 
 func (vm *VM) LoadBuiltins() error {
 	for name, fn := range Builtins {
-		doc := BuiltinDocs[name] // doc is now *DocstringObj, or nil
+		doc := BuiltinDocs[name]
 		err := vm.RegisterGOFunction(name, fn, doc)
 		if err != nil {
 			return err
@@ -65,7 +65,6 @@ func (vm *VM) RegisterGOFunction(name string, fn any, doc *DocstringObj) error {
 	return nil
 }
 
-// Reset VM state and run the instructions
 func (vm *VM) Interpret(bytecodeChunk []Instruction, constants []Object) Result[Object] {
 	vm.bytecodeChunk = bytecodeChunk
 	vm.constants = constants
@@ -77,12 +76,7 @@ func (vm *VM) Interpret(bytecodeChunk []Instruction, constants []Object) Result[
 	return vm.run(0)
 }
 
-// CallFunction provides a Go-native way to call a Pyle function.
-// This is the primary API for interoperability.
 func (vm *VM) CallFunction(callable Object, args []Object) (Object, Error) {
-	// This function is now a wrapper around the internal call handler.
-	// It's primarily for external Go code to call into the VM.
-	// We place the callable and args on the stack and call the handler.
 	stackBottom := len(vm.stack)
 	vm.push(callable)
 	for _, arg := range args {
@@ -93,48 +87,35 @@ func (vm *VM) CallFunction(callable Object, args []Object) (Object, Error) {
 		return nil, err
 	}
 
-	// After handleCall, the VM's main loop (`run`) will execute the function.
-	// We need to run the VM until the call frame we just created is popped.
 	initialFrameCount := len(vm.frames)
 	runResult := vm.run(initialFrameCount)
 	if runResult.Err != nil {
 		return nil, runResult.Err
 	}
 
-	// After the run, the return value should be on top of the stack.
-	// We need to be careful to retrieve it correctly.
 	if len(vm.stack) > stackBottom {
 		returnVal := vm.stack[len(vm.stack)-1]
-		vm.stack = vm.stack[:stackBottom] // Clean up the stack
+		vm.stack = vm.stack[:stackBottom] 
 		return returnVal, nil
 	}
 
-	// If the stack is empty or at its original level, it means the function
-	// might have not returned a value, so we return null.
 	return NullObj{}, nil
 }
 
-// callPyleFuncFromNative is an internal helper for native Go methods to call a Pyle function.
-// It correctly manages the VM's execution loop to only run the called function and then return.
 func (vm *VM) callPyleFuncFromNative(callable Object, args []Object) (Object, Error) {
 	initialStackSize := len(vm.stack)
 	initialFrameDepth := len(vm.frames)
 
-	// Manually push the function and argument onto the stack
 	vm.push(callable)
 	for _, arg := range args {
 		vm.push(arg)
 	}
 
-	// Use the internal handleCall to set up the frame
 	pyleFuncCalled, err := vm.handleCall(len(args), nil)
 	if err != nil {
 		return nil, err
 	}
 
-	// If a Pyle function was called, a new frame was pushed. We need to run the VM
-	// to execute it. If a native function was called, it already executed,
-	// and the result is on the stack.
 	if pyleFuncCalled {
 		runResult := vm.run(len(vm.frames))
 		if runResult.Err != nil {
@@ -143,7 +124,6 @@ func (vm *VM) callPyleFuncFromNative(callable Object, args []Object) (Object, Er
 	}
 
 	var result Object = NullObj{}
-	// After the run, the result is on top of the stack.
 	if len(vm.stack) > initialStackSize {
 		result, err = vm.pop()
 		if err != nil {
@@ -151,7 +131,6 @@ func (vm *VM) callPyleFuncFromNative(callable Object, args []Object) (Object, Er
 		}
 	}
 
-	// Ensure the stack and frames are restored to their original state
 	if len(vm.stack) > initialStackSize {
 		vm.stack = vm.stack[:initialStackSize]
 	}
@@ -165,7 +144,7 @@ func (vm *VM) callPyleFuncFromNative(callable Object, args []Object) (Object, Er
 func (vm *VM) handleCall(numArgs int, currentTok *Token) (bool, Error) {
 	calleeIdx := len(vm.stack) - 1 - numArgs
 	if calleeIdx < 0 {
-		return false, NewRuntimeError("Stack underflow during call setup", currentTok)
+		return false, vm.runtimeError("Stack underflow during call setup")
 	}
 
 	callee := vm.stack[calleeIdx]
@@ -173,27 +152,14 @@ func (vm *VM) handleCall(numArgs int, currentTok *Token) (bool, Error) {
 
 	switch c := callee.(type) {
 	case *BoundMethodObj:
-		// For bound methods, the receiver becomes the first argument.
-		// We replace the BoundMethodObj on the stack with the actual method.
 		vm.stack[calleeIdx] = c.Method
-
-		// We need to insert the receiver into the arguments list on the stack.
-		// The arguments are currently at vm.stack[calleeIdx+1 : calleeIdx+1+numArgs].
-
-		// Let's make space for the receiver.
-		vm.push(nil) // Grow stack by 1. The value doesn't matter.
-
-		// Shift arguments to the right.
+		vm.push(nil)
 		copy(vm.stack[calleeIdx+2:], vm.stack[calleeIdx+1:calleeIdx+1+numArgs])
-
-		// Insert the receiver as the first argument.
 		vm.stack[calleeIdx+1] = c.Receiver
-
-		// Now we can call the underlying method with one additional argument.
 		return vm.handleCall(numArgs+1, currentTok)
 	case *FunctionObj:
 		if numArgs != c.Arity {
-			return false, NewRuntimeError(fmt.Sprintf("Function '%s' expected %d arguments, but got %d", c.Name, c.Arity, numArgs), currentTok)
+			return false, vm.runtimeError("Function '%s' expected %d arguments, but got %d", c.Name, c.Arity, numArgs)
 		}
 
 		frame := &CallFrame{
@@ -203,23 +169,21 @@ func (vm *VM) handleCall(numArgs int, currentTok *Token) (bool, Error) {
 		}
 		vm.frames = append(vm.frames, frame)
 		vm.ip = *c.StartIP
-		return true, nil // Pyle function was called, new frame was pushed.
+		return true, nil 
 
 	case *NativeFuncObj:
 		result, err := c.Call(vm, args, nil)
 		if err != nil {
 			return false, err
 		}
-		vm.stack = vm.stack[:calleeIdx] // Pop callee and args
+		vm.stack = vm.stack[:calleeIdx] 
 		vm.push(result)
-		return false, nil // Native function was called, no new frame.
+		return false, nil
 
 	default:
-		return false, NewRuntimeError(fmt.Sprintf("Cannot call non-function type '%s'", callee.Type()), currentTok)
+		return false, vm.runtimeError("Cannot call non-function type '%s'", callee.Type())
 	}
 }
-
-
 
 func (vm *VM) currentInstruction() *Instruction {
 	if vm.ip >= len(vm.bytecodeChunk) {
@@ -234,7 +198,7 @@ func (vm *VM) push(value Object) {
 
 func (vm *VM) pop() (Object, Error) {
 	if len(vm.stack) == 0 {
-		return nil, NewRuntimeError("Stack underflow, cannot pop value", nil)
+		return nil, vm.runtimeError("Stack underflow, cannot pop value")
 	}
 	index := len(vm.stack) - 1
 	value := vm.stack[index]
@@ -244,7 +208,7 @@ func (vm *VM) pop() (Object, Error) {
 
 func (vm *VM) popCallFrame() (CallFrame, Error) {
 	if len(vm.frames) == 0 {
-		return CallFrame{}, NewRuntimeError("No call frames to pop", nil)
+		return CallFrame{}, vm.runtimeError("No call frames to pop")
 	}
 	frame := vm.frames[len(vm.frames)-1]
 	vm.frames = vm.frames[:len(vm.frames)-1]
@@ -253,7 +217,7 @@ func (vm *VM) popCallFrame() (CallFrame, Error) {
 
 func (vm *VM) popEnv() Error {
 	if len(vm.environments) == 0 {
-		return NewRuntimeError("No environments to pop", nil)
+		return vm.runtimeError("No environments to pop")
 	}
 	vm.environments = vm.environments[:len(vm.environments)-1]
 	return nil
@@ -312,17 +276,17 @@ func (vm *VM) run(targetFrameDepth int) Result[Object] {
 			name := vm.constants[nameIdx].(StringObj).Value
 			variable, ok := vm.globals[name]
 			if !ok {
-				return ResErr[Object](NewRuntimeError(fmt.Sprintf("Undefined variable '%s'", name), currentTok))
+				return ResErr[Object](vm.runtimeError("Undefined variable '%s'", name))
 			}
 			vm.push(variable.Value)
 		case OpSetGlobal:
 			nameIdx := *operand.(*int)
 			name := vm.constants[nameIdx].(StringObj).Value
 			if _, ok := vm.globals[name]; !ok {
-				return ResErr[Object](NewRuntimeError(fmt.Sprintf("Undefined variable '%s'", name), currentTok))
+				return ResErr[Object](vm.runtimeError("Undefined variable '%s'", name))
 			}
 			if vm.globals[name].IsConst {
-				return ResErr[Object](NewRuntimeError(fmt.Sprintf("Cannot assign to constant variable '%s'", name), currentTok))
+				return ResErr[Object](vm.runtimeError("Cannot assign to constant variable '%s'", name))
 			}
 			value, err := vm.pop()
 			if err != nil {
@@ -333,15 +297,15 @@ func (vm *VM) run(targetFrameDepth int) Result[Object] {
 			nameIdx := *operand.(*int)
 			name := vm.constants[nameIdx].(StringObj).Value
 			if len(vm.environments) == 0 {
-				return ResErr[Object](NewRuntimeError("No active local scope active for OP_DEF_LOCAL", currentTok))
+				return ResErr[Object](vm.runtimeError("No active local scope active for OP_DEF_LOCAL"))
 			}
 			if len(vm.stack) == 0 {
-				return ResErr[Object](NewRuntimeError("Stack underflow for OP_DEF_LOCAL", currentTok))
+				return ResErr[Object](vm.runtimeError("Stack underflow for OP_DEF_LOCAL"))
 			}
 
 			currentScope := vm.environments[len(vm.environments)-1]
 			if _, ok := currentScope[name]; ok {
-				return ResErr[Object](NewRuntimeError(fmt.Sprintf("Local variable '%s' already defined in this scope", name), currentTok))
+				return ResErr[Object](vm.runtimeError("Local variable '%s' already defined in this scope", name))
 			}
 
 			val, err := vm.pop()
@@ -368,22 +332,22 @@ func (vm *VM) run(targetFrameDepth int) Result[Object] {
 			if variable, ok := vm.globals[name]; ok {
 				vm.push(variable.Value)
 			} else {
-				return ResErr[Object](NewRuntimeError(fmt.Sprintf("Undefined variable '%s'", name), currentTok))
+				return ResErr[Object](vm.runtimeError("Undefined variable '%s'", name))
 			}
 		case OpDefConstLocal:
 			nameIdx := *operand.(*int)
 			name := vm.constants[nameIdx].(StringObj).Value
 
 			if len(vm.environments) == 0 {
-				return ResErr[Object](NewRuntimeError("No active local scope active for OP_DEF_CONST_LOCAL", currentTok))
+				return ResErr[Object](vm.runtimeError("No active local scope active for OP_DEF_CONST_LOCAL"))
 			}
 			if len(vm.stack) == 0 {
-				return ResErr[Object](NewRuntimeError("Stack underflow for OP_DEF_CONST_LOCAL", currentTok))
+				return ResErr[Object](vm.runtimeError("Stack underflow for OP_DEF_CONST_LOCAL"))
 			}
 
 			currentScope := vm.environments[len(vm.environments)-1]
 			if _, ok := currentScope[name]; ok {
-				return ResErr[Object](NewRuntimeError(fmt.Sprintf("Local variable '%s' already defined in this scope", name), currentTok))
+				return ResErr[Object](vm.runtimeError("Local variable '%s' already defined in this scope", name))
 			}
 
 			val, err := vm.pop()
@@ -395,7 +359,7 @@ func (vm *VM) run(targetFrameDepth int) Result[Object] {
 			nameIdx := *operand.(*int)
 			name := vm.constants[nameIdx].(StringObj).Value
 			if len(vm.stack) == 0 {
-				return ResErr[Object](NewRuntimeError("Stack underflow for OP_SET_LOCAL", currentTok))
+				return ResErr[Object](vm.runtimeError("Stack underflow for OP_SET_LOCAL"))
 			}
 
 			valToAssign, err := vm.pop()
@@ -408,7 +372,7 @@ func (vm *VM) run(targetFrameDepth int) Result[Object] {
 				scope := vm.environments[i]
 				if variable, ok := scope[name]; ok {
 					if variable.IsConst {
-						return ResErr[Object](NewRuntimeError(fmt.Sprintf("Cannot assign to const local variable '%s'", name), currentTok))
+						return ResErr[Object](vm.runtimeError("Cannot assign to const local variable '%s'", name))
 					}
 					variable.Value = valToAssign
 					assigned = true
@@ -421,11 +385,11 @@ func (vm *VM) run(targetFrameDepth int) Result[Object] {
 
 			if variable, ok := vm.globals[name]; ok {
 				if variable.IsConst {
-					return ResErr[Object](NewRuntimeError(fmt.Sprintf("Cannot assign to const global variable '%s'", name), currentTok))
+					return ResErr[Object](vm.runtimeError("Cannot assign to const global variable '%s'", name))
 				}
 				variable.Value = valToAssign
 			} else {
-				return ResErr[Object](NewRuntimeError(fmt.Sprintf("Cannot assign to undefined variable '%s'", name), currentTok))
+				return ResErr[Object](vm.runtimeError("Cannot assign to undefined variable '%s'", name))
 			}
 
 		case OpAdd, OpSubtract, OpMultiply, OpDivide, OpModulo:
@@ -443,7 +407,7 @@ func (vm *VM) run(targetFrameDepth int) Result[Object] {
 
 		case OpReturn:
 			if len(vm.stack) == 0 {
-				return ResErr[Object](NewRuntimeError("Stack underflow for OP_RETURN (no return value).", currentTok))
+				return ResErr[Object](vm.runtimeError("Stack underflow for OP_RETURN (no return value)."))
 			}
 			returnVal, err := vm.pop()
 			if err != nil {
@@ -451,34 +415,29 @@ func (vm *VM) run(targetFrameDepth int) Result[Object] {
 			}
 
 			if len(vm.frames) == 0 {
-				// If no frames, this is the end of the main script
 				return ResOk(returnVal)
 			}
 
-			// Pop the current frame
 			frame, err := vm.popCallFrame()
 			if err != nil {
 				return ResErr[Object](err)
 			}
 
-			// Restore the instruction pointer
 			vm.ip = frame.ReturnIP
 
-			// Restore the environment
 			for len(vm.environments) > frame.EnvDepth {
 				if err := vm.popEnv(); err != nil {
 					return ResErr[Object](err)
 				}
 			}
 
-			// Restore the stack to its state before the call, then push the return value
 			vm.stack = vm.stack[:frame.StackSlot]
 			vm.push(returnVal)
 
 		case OpBuildKwargs:
 			numKwargs := *operand.(*int)
 			if len(vm.stack) < numKwargs+1 {
-				return ResErr[Object](NewRuntimeError("Stack underflow for OP_BUILD_KWARGS", currentTok))
+				return ResErr[Object](vm.runtimeError("Stack underflow for OP_BUILD_KWARGS"))
 			}
 		case OpCall:
 			numArgs := *operand.(*int)
@@ -494,7 +453,6 @@ func (vm *VM) run(targetFrameDepth int) Result[Object] {
 				return ResErr[Object](err)
 			}
 
-			// Use the AttributeGetter interface for robust access
 			if getter, ok := obj.(AttributeGetter); ok {
 				attr, found, err := getter.GetAttribute(name)
 				if err != nil {
@@ -506,7 +464,6 @@ func (vm *VM) run(targetFrameDepth int) Result[Object] {
 				}
 			}
 
-			// Fallback for types that don't implement AttributeGetter or attribute not found
 			return ResErr[Object](NewRuntimeError(fmt.Sprintf("type '%s' has no attribute '%s'", obj.Type(), name), currentTok))
 		case OpSetAttr:
 			nameIdx := *operand.(*int)
