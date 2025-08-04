@@ -20,6 +20,7 @@ type VM struct {
 	constants     []Object
 	ip            int
 	stack         []Object
+	sp            int // Stack pointer
 	globals       map[string]*Variable
 	environments  []map[string]*Variable
 	frames        []*CallFrame
@@ -28,7 +29,8 @@ type VM struct {
 
 func NewVM() *VM {
 	return &VM{
-		stack:        make([]Object, 0, InitialStackCapacity),
+		stack:        make([]Object, InitialStackCapacity),
+		sp:           0,
 		globals:      make(map[string]*Variable),
 		environments: make([]map[string]*Variable, 0),
 		frames:       make([]*CallFrame, 0),
@@ -69,7 +71,7 @@ func (vm *VM) Interpret(bytecodeChunk []Instruction, constants []Object) Result[
 	vm.bytecodeChunk = bytecodeChunk
 	vm.constants = constants
 	vm.ip = 0
-	vm.stack = vm.stack[:0]
+	vm.sp = 0
 	vm.frames = vm.frames[:0]
 	vm.environments = vm.environments[:0]
 
@@ -77,7 +79,7 @@ func (vm *VM) Interpret(bytecodeChunk []Instruction, constants []Object) Result[
 }
 
 func (vm *VM) CallFunction(callable Object, args []Object) (Object, Error) {
-	stackBottom := len(vm.stack)
+	stackBottom := vm.sp
 	vm.push(callable)
 	for _, arg := range args {
 		vm.push(arg)
@@ -93,9 +95,9 @@ func (vm *VM) CallFunction(callable Object, args []Object) (Object, Error) {
 		return nil, runResult.Err
 	}
 
-	if len(vm.stack) > stackBottom {
-		returnVal := vm.stack[len(vm.stack)-1]
-		vm.stack = vm.stack[:stackBottom] 
+	if vm.sp > stackBottom {
+		returnVal := vm.stack[vm.sp-1]
+		vm.sp = stackBottom
 		return returnVal, nil
 	}
 
@@ -103,7 +105,7 @@ func (vm *VM) CallFunction(callable Object, args []Object) (Object, Error) {
 }
 
 func (vm *VM) callPyleFuncFromNative(callable Object, args []Object) (Object, Error) {
-	initialStackSize := len(vm.stack)
+	initialStackSize := vm.sp
 	initialFrameDepth := len(vm.frames)
 
 	vm.push(callable)
@@ -124,15 +126,15 @@ func (vm *VM) callPyleFuncFromNative(callable Object, args []Object) (Object, Er
 	}
 
 	var result Object = NullObj{}
-	if len(vm.stack) > initialStackSize {
+	if vm.sp > initialStackSize {
 		result, err = vm.pop()
 		if err != nil {
 			return nil, err
 		}
 	}
 
-	if len(vm.stack) > initialStackSize {
-		vm.stack = vm.stack[:initialStackSize]
+	if vm.sp > initialStackSize {
+		vm.sp = initialStackSize
 	}
 	for len(vm.frames) > initialFrameDepth {
 		vm.popCallFrame()
@@ -142,13 +144,13 @@ func (vm *VM) callPyleFuncFromNative(callable Object, args []Object) (Object, Er
 }
 
 func (vm *VM) handleCall(numArgs int, currentTok *Token) (bool, Error) {
-	calleeIdx := len(vm.stack) - 1 - numArgs
+	calleeIdx := vm.sp - 1 - numArgs
 	if calleeIdx < 0 {
 		return false, vm.runtimeError("Stack underflow during call setup")
 	}
 
 	callee := vm.stack[calleeIdx]
-	args := vm.stack[calleeIdx+1:]
+	args := vm.stack[calleeIdx+1 : vm.sp]
 
 	switch c := callee.(type) {
 	case *BoundMethodObj:
@@ -176,7 +178,7 @@ func (vm *VM) handleCall(numArgs int, currentTok *Token) (bool, Error) {
 		if err != nil {
 			return false, err
 		}
-		vm.stack = vm.stack[:calleeIdx] 
+		vm.sp = calleeIdx
 		vm.push(result)
 		return false, nil
 
@@ -193,17 +195,20 @@ func (vm *VM) currentInstruction() *Instruction {
 }
 
 func (vm *VM) push(value Object) {
-	vm.stack = append(vm.stack, value)
+	if vm.sp >= len(vm.stack) {
+		vm.stack = append(vm.stack, value)
+	} else {
+		vm.stack[vm.sp] = value
+	}
+	vm.sp++
 }
 
 func (vm *VM) pop() (Object, Error) {
-	if len(vm.stack) == 0 {
+	if vm.sp == 0 {
 		return nil, vm.runtimeError("Stack underflow, cannot pop value")
 	}
-	index := len(vm.stack) - 1
-	value := vm.stack[index]
-	vm.stack = vm.stack[:index]
-	return value, nil
+	vm.sp--
+	return vm.stack[vm.sp], nil
 }
 
 func (vm *VM) popCallFrame() (CallFrame, Error) {
@@ -299,7 +304,7 @@ func (vm *VM) run(targetFrameDepth int) Result[Object] {
 			if len(vm.environments) == 0 {
 				return ResErr[Object](vm.runtimeError("No active local scope active for OP_DEF_LOCAL"))
 			}
-			if len(vm.stack) == 0 {
+			if vm.sp == 0 {
 				return ResErr[Object](vm.runtimeError("Stack underflow for OP_DEF_LOCAL"))
 			}
 
@@ -341,7 +346,7 @@ func (vm *VM) run(targetFrameDepth int) Result[Object] {
 			if len(vm.environments) == 0 {
 				return ResErr[Object](vm.runtimeError("No active local scope active for OP_DEF_CONST_LOCAL"))
 			}
-			if len(vm.stack) == 0 {
+			if vm.sp == 0 {
 				return ResErr[Object](vm.runtimeError("Stack underflow for OP_DEF_CONST_LOCAL"))
 			}
 
@@ -358,7 +363,7 @@ func (vm *VM) run(targetFrameDepth int) Result[Object] {
 		case OpSetLocal:
 			nameIdx := *operand.(*int)
 			name := vm.constants[nameIdx].(StringObj).Value
-			if len(vm.stack) == 0 {
+			if vm.sp == 0 {
 				return ResErr[Object](vm.runtimeError("Stack underflow for OP_SET_LOCAL"))
 			}
 
@@ -406,7 +411,7 @@ func (vm *VM) run(targetFrameDepth int) Result[Object] {
 			}
 
 		case OpReturn:
-			if len(vm.stack) == 0 {
+			if vm.sp == 0 {
 				return ResErr[Object](vm.runtimeError("Stack underflow for OP_RETURN (no return value)."))
 			}
 			returnVal, err := vm.pop()
@@ -431,12 +436,12 @@ func (vm *VM) run(targetFrameDepth int) Result[Object] {
 				}
 			}
 
-			vm.stack = vm.stack[:frame.StackSlot]
+			vm.sp = frame.StackSlot
 			vm.push(returnVal)
 
 		case OpBuildKwargs:
 			numKwargs := *operand.(*int)
-			if len(vm.stack) < numKwargs+1 {
+			if vm.sp < numKwargs+1 {
 				return ResErr[Object](vm.runtimeError("Stack underflow for OP_BUILD_KWARGS"))
 			}
 		case OpCall:
@@ -497,7 +502,7 @@ func (vm *VM) run(targetFrameDepth int) Result[Object] {
 		case OpNull:
 			vm.push(NullObj{})
 		case OpAnd:
-			if len(vm.stack) < 2 {
+			if vm.sp < 2 {
 				return ResErr[Object](NewRuntimeError("Stack underflow for OP_AND", currentTok))
 			}
 			right, err := vm.pop()
@@ -512,7 +517,7 @@ func (vm *VM) run(targetFrameDepth int) Result[Object] {
 			vm.push(BooleanObj{Value: left.IsTruthy() && right.IsTruthy()})
 
 		case OpOr:
-			if len(vm.stack) < 2 {
+			if vm.sp < 2 {
 				return ResErr[Object](NewRuntimeError("Stack underflow for OP_OR", currentTok))
 			}
 			right, err := vm.pop()
@@ -527,7 +532,7 @@ func (vm *VM) run(targetFrameDepth int) Result[Object] {
 			vm.push(BooleanObj{Value: left.IsTruthy() || right.IsTruthy()})
 
 		case OpNegate:
-			if len(vm.stack) == 0 {
+			if vm.sp == 0 {
 				return ResErr[Object](NewRuntimeError("Stack underflow for OP_NEGATE", currentTok))
 			}
 
@@ -543,7 +548,7 @@ func (vm *VM) run(targetFrameDepth int) Result[Object] {
 				return ResErr[Object](NewRuntimeError("Operand of unary OP_NEGATE must be a number", currentTok))
 			}
 		case OpNot:
-			if len(vm.stack) == 0 {
+			if vm.sp == 0 {
 				return ResErr[Object](NewRuntimeError("Stack underflow for OP_NOT", currentTok))
 			}
 			value, err := vm.pop()
@@ -554,7 +559,7 @@ func (vm *VM) run(targetFrameDepth int) Result[Object] {
 			vm.push(BooleanObj{Value: !value.IsTruthy()})
 
 		case OpBuildRange:
-			if len(vm.stack) < 3 {
+			if vm.sp < 3 {
 				return ResErr[Object](NewRuntimeError("Stack underflow for OP_BUILD_RANGE", currentTok))
 			}
 
@@ -593,7 +598,7 @@ func (vm *VM) run(targetFrameDepth int) Result[Object] {
 			)
 
 		case OpIterNew:
-			if len(vm.stack) == 0 {
+			if vm.sp == 0 {
 				return ResErr[Object](NewRuntimeError("Stack underflow for OP_ITER_NEW", currentTok))
 			}
 			iterable, err := vm.pop()
@@ -610,11 +615,11 @@ func (vm *VM) run(targetFrameDepth int) Result[Object] {
 		case OpIterNextOrJump:
 			offset := *operand.(*int)
 
-			if len(vm.stack) == 0 {
+			if vm.sp == 0 {
 				return ResErr[Object](NewRuntimeError("Stack underflow for OP_ITER_NEXT_OR_JUMP", currentTok))
 			}
 
-			iterator, ok := vm.stack[len(vm.stack)-1].(Iterator)
+			iterator, ok := vm.stack[vm.sp-1].(Iterator)
 			if !ok {
 				return ResErr[Object](NewRuntimeError("Object on stack is not an iterator", currentTok))
 			}
@@ -641,7 +646,7 @@ func (vm *VM) run(targetFrameDepth int) Result[Object] {
 
 		case OpBuildList:
 			numElms := *operand.(*int)
-			if len(vm.stack) < numElms {
+			if vm.sp < numElms {
 				return ResErr[Object](NewRuntimeError("Stack underflow for OP_BUILD_LIST", currentTok))
 			}
 
@@ -656,7 +661,7 @@ func (vm *VM) run(targetFrameDepth int) Result[Object] {
 			vm.push(&ArrayObj{Elements: elements})
 		case OpBuildMap:
 			numProps := *operand.(*int)
-			if len(vm.stack) < numProps*2 {
+			if vm.sp < numProps*2 {
 				return ResErr[Object](NewRuntimeError("Stack underflow for OP_BUILD_MAP", currentTok))
 			}
 
@@ -678,7 +683,7 @@ func (vm *VM) run(targetFrameDepth int) Result[Object] {
 			}
 			vm.push(obj)
 		case OpIndexGet:
-			if len(vm.stack) < 2 {
+			if vm.sp < 2 {
 				return ResErr[Object](NewRuntimeError("Stack underflow for OP_INDEX_GET", currentTok))
 			}
 
@@ -733,7 +738,7 @@ func (vm *VM) run(targetFrameDepth int) Result[Object] {
 				return ResErr[Object](NewRuntimeError(fmt.Sprintf("Object of type '%s' does not support indexing", collection.Type()), currentTok))
 			}
 		case OpIndexSet:
-			if len(vm.stack) < 3 {
+			if vm.sp < 3 {
 				return ResErr[Object](NewRuntimeError("Stack underflow for OP_INDEX_SET", currentTok))
 			}
 			value, err := vm.pop()
@@ -778,8 +783,8 @@ func (vm *VM) run(targetFrameDepth int) Result[Object] {
 	}
 
 	var lastVal Object = nil
-	if len(vm.stack) > 0 {
-		lastVal = vm.stack[len(vm.stack)-1]
+	if vm.sp > 0 {
+		lastVal = vm.stack[vm.sp-1]
 	}
 	return ResOk(lastVal)
 }
@@ -802,7 +807,7 @@ func (vm *VM) coerceIndexToInt(idxObj Object) (int, bool, Error) {
 }
 
 func (vm *VM) binaryOp(op OpCode, currentTok *Token) Error {
-	if len(vm.stack) < 2 {
+	if vm.sp < 2 {
 		return NewRuntimeError(fmt.Sprintf("Stack underflow for %s", op), currentTok)
 	}
 	right, err := vm.pop()
@@ -873,7 +878,7 @@ func (vm *VM) binaryOp(op OpCode, currentTok *Token) Error {
 }
 
 func (vm *VM) binaryOpCompare(op OpCode, currentTok *Token) Error {
-	if len(vm.stack) < 2 {
+	if vm.sp < 2 {
 		return NewRuntimeError(fmt.Sprintf("Stack underflow for %s", op), currentTok)
 	}
 	right, err := vm.pop()
