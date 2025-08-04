@@ -2,6 +2,7 @@ package pyle
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 )
 
@@ -29,6 +30,107 @@ func methodStringReplace(receiver StringObj, old string, new string) (string, er
 }
 func methodStringSplit(receiver StringObj, sep string) ([]string, error) {
 	return strings.Split(receiver.Value, sep), nil
+}
+
+func formatArgument(arg Object, spec string) (string, error) {
+	if spec == "" || spec == "s" {
+		return arg.String(), nil
+	}
+
+	if spec == "d" {
+		num, ok := arg.(NumberObj)
+		if !ok || !num.IsInt {
+			return "", fmt.Errorf("expected an integer for 'd' format specifier, got %s", arg.Type())
+		}
+		return strconv.FormatInt(int64(num.Value), 10), nil
+	}
+
+	if strings.HasSuffix(spec, "f") {
+		num, ok := arg.(NumberObj)
+		if !ok {
+			return "", fmt.Errorf("expected a number for 'f' format specifier, got %s", arg.Type())
+		}
+
+		precision := -1 // default precision
+		specWithoutF := spec[:len(spec)-1]
+		if specWithoutF != "" {
+			if !strings.HasPrefix(specWithoutF, ".") {
+				return "", fmt.Errorf("invalid format specifier for 'f': %s", spec)
+			}
+			precisionStr := specWithoutF[1:]
+			if p, err := strconv.Atoi(precisionStr); err == nil {
+				precision = p
+			} else {
+				return "", fmt.Errorf("invalid precision for 'f' format specifier: %s", spec)
+			}
+		}
+		return strconv.FormatFloat(num.Value, 'f', precision, 64), nil
+	}
+
+	return "", fmt.Errorf("unsupported format specifier: %s", spec)
+}
+
+func methodStringFormat(receiver StringObj, args ...Object) (string, error) {
+	var builder strings.Builder
+	var argIndex int
+	s := receiver.Value
+	lastIndex := 0
+
+	for {
+		p := strings.IndexAny(s[lastIndex:], "{}")
+		if p == -1 {
+			builder.WriteString(s[lastIndex:])
+			break
+		}
+		p += lastIndex
+
+		builder.WriteString(s[lastIndex:p])
+
+		if s[p] == '{' {
+			if p+1 < len(s) && s[p+1] == '{' {
+				builder.WriteByte('{')
+				lastIndex = p + 2
+				continue
+			}
+
+			end := strings.IndexByte(s[p+1:], '}')
+			if end == -1 {
+				return "", fmt.Errorf("unmatched '{' in format string")
+			}
+			end += p + 1
+
+			if argIndex >= len(args) {
+				return "", fmt.Errorf("not enough arguments for format string")
+			}
+			arg := args[argIndex]
+			argIndex++
+
+			specWithColon := s[p+1 : end]
+			var spec string
+			if colonIndex := strings.Index(specWithColon, ":"); colonIndex != -1 {
+				spec = specWithColon[colonIndex+1:]
+			} else {
+				spec = specWithColon
+			}
+
+			formatted, err := formatArgument(arg, spec)
+			if err != nil {
+				return "", err
+			}
+			builder.WriteString(formatted)
+
+			lastIndex = end + 1
+		} else { // s[p] == '}'
+			if p+1 < len(s) && s[p+1] == '}' {
+				builder.WriteByte('}')
+				lastIndex = p + 2
+				continue
+			}
+			return "", fmt.Errorf("single '}' encountered in format string")
+		}
+	}
+
+	return builder.String(), nil
 }
 
 // --- Array Methods ---
@@ -102,7 +204,6 @@ func methodArrayMap(vm *VM, receiver *ArrayObj, fn Object) (Object, error) {
 
 }
 
-
 // --- Map Methods ---
 func methodMapKeys(receiver *MapObj) (Object, error) {
 	return NewMapIterator(receiver, MapIteratorModeKeys), nil
@@ -126,10 +227,11 @@ func init() {
 	}
 
 	BuiltinMethods["string"] = map[string]*NativeFuncObj{
-		"len":  mustCreate("len", methodStringLen),
+		"len":       mustCreate("len", methodStringLen),
 		"trimSpace": mustCreate("trimSpace", methodStringTrimSpace),
-		"replace": mustCreate("replace", methodStringReplace),
-		"split": mustCreate("split", methodStringSplit),
+		"replace":   mustCreate("replace", methodStringReplace),
+		"split":     mustCreate("split", methodStringSplit),
+		"format":    mustCreate("format", methodStringFormat),
 	}
 
 	BuiltinMethods["array"] = map[string]*NativeFuncObj{
