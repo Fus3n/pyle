@@ -5,7 +5,7 @@ import (
 	"reflect"
 )
 
-func CreateNativeFunction(name string, fn any) (*NativeFuncObj, error) {
+func CreateNativeFunction(name string, fn any, doc *DocstringObj) (*NativeFuncObj, error) {
 	fnValue := reflect.ValueOf(fn)
 	fnType := fnValue.Type()
 
@@ -54,6 +54,7 @@ func CreateNativeFunction(name string, fn any) (*NativeFuncObj, error) {
 	return &NativeFuncObj{
 		Name:     name,
 		Arity:    len(metadata.Args),
+		Doc:      doc,
 		Metadata: metadata,
 		Call:     callFunc,
 	}, nil

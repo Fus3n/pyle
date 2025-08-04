@@ -148,3 +148,21 @@ var Builtins = map[string]any{
 	"exit":        nativeExit,
 	"asciiCode":   nativeAsciiCode,
 }
+
+var BuiltinDocs = map[string]*DocstringObj{
+	"echo": {
+		Description: "echo(...values) -> null\n\nPrints the given values to the console, separated by spaces.",
+		Params:      []ParamDoc{{"values", "A variable number of objects to print."}},
+		Returns:     "null",
+	},
+	"scan": {
+		Description: "scan(prompt) -> string\n\nReads a line of input from the user after displaying a prompt.",
+		Params:      []ParamDoc{{"prompt", "The string to display to the user."}},
+		Returns:     "The user's input as a string.",
+	},
+	"type": {
+		Description: "type(object) -> string\n\nReturns the type of an object as a string.",
+		Params:      []ParamDoc{{"object", "The object to inspect."}},
+		Returns:     "The type name as a string.",
+	},
+}

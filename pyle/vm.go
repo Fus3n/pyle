@@ -46,7 +46,8 @@ func (vm *VM) AddGlobal(name string, value Object) Error {
 
 func (vm *VM) LoadBuiltins() error {
 	for name, fn := range Builtins {
-		err := vm.RegisterGOFunction(name, fn)
+		doc := BuiltinDocs[name] // doc is now *DocstringObj, or nil
+		err := vm.RegisterGOFunction(name, fn, doc)
 		if err != nil {
 			return err
 		}
@@ -54,8 +55,8 @@ func (vm *VM) LoadBuiltins() error {
 	return nil
 }
 
-func (vm *VM) RegisterGOFunction(name string, fn any) error {
-	nativeFunc, err := CreateNativeFunction(name, fn)
+func (vm *VM) RegisterGOFunction(name string, fn any, doc *DocstringObj) error {
+	nativeFunc, err := CreateNativeFunction(name, fn, doc)
 	if err != nil {
 		return err
 	}
@@ -493,34 +494,19 @@ func (vm *VM) run(targetFrameDepth int) Result[Object] {
 				return ResErr[Object](err)
 			}
 
-			objTypeName := obj.Type()
-			if methods, ok := BuiltinMethods[objTypeName]; ok {
-				if method, exists := methods[name]; exists {
-					boundMethod := &BoundMethodObj{Receiver: obj, Method: method}
-					vm.push(boundMethod)
-					continue
-				}
-			}
-
-			if pyleMap, ok := obj.(*MapObj); ok {
-				attr, ok := vm.constants[nameIdx].(StringObj)
-				if !ok {
-					return ResErr[Object](NewRuntimeError("Object attribute for dot access must be a string", currentTok))
-				}
-
-				val, found, err := pyleMap.Get(attr)
+			// Use the AttributeGetter interface for robust access
+			if getter, ok := obj.(AttributeGetter); ok {
+				attr, found, err := getter.GetAttribute(name)
 				if err != nil {
-					return ResErr[Object](NewRuntimeError(err.Error(), currentTok))
+					return ResErr[Object](err)
 				}
-
 				if found {
-					vm.push(val)
+					vm.push(attr)
 					continue
 				}
-				vm.push(NullObj{})
-				continue
 			}
 
+			// Fallback for types that don't implement AttributeGetter or attribute not found
 			return ResErr[Object](NewRuntimeError(fmt.Sprintf("type '%s' has no attribute '%s'", obj.Type(), name), currentTok))
 		case OpSetAttr:
 			nameIdx := *operand.(*int)

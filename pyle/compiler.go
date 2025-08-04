@@ -627,9 +627,27 @@ func (c *Compiler) visitFunctionDefStmt(node *FunctionDefStmt) error {
 		c.emitInstruct(OpDefLocal, &nameIdx, node.Params[i])
 	}
 
+	// Check for docstring
+	var doc *DocstringObj
+	bodyStmts := node.Body.Statements
+	if len(bodyStmts) > 0 {
+		if strExpr, ok := bodyStmts[0].(*StringExpr); ok {
+			doc = &DocstringObj{Description: strExpr.Value}
+			// Compile the docstring expression (it will be popped) and then remove it from the list
+			// so we don't compile it again.
+			if err := c.compileNode(strExpr); err != nil {
+				return err
+			}
+			c.emitSingleInstruct(OpPop)
+			bodyStmts = bodyStmts[1:]
+		}
+	}
+
 	// compile body
-	if err := c.compileNode(node.Body); err != nil {
-		return err
+	for _, stmt := range bodyStmts {
+		if err := c.compileNode(stmt); err != nil {
+			return err
+		}
 	}
 
 	// Implicit return if no explicit return was encountered in the body.
@@ -653,6 +671,7 @@ func (c *Compiler) visitFunctionDefStmt(node *FunctionDefStmt) error {
 	funcObj := FunctionObj{
 		Name:    pyleFnName,
 		Arity:   len(node.Params),
+		Doc:     doc,
 		StartIP: &functionStartIp,
 	}
 
@@ -689,9 +708,27 @@ func (c *Compiler) visitFunctionExpr(node *FunctionExpr) error {
 		c.emitInstruct(OpDefLocal, &nameIdx, node.Params[i])
 	}
 
+	// Check for docstring
+	var doc *DocstringObj
+	bodyStmts := node.Body.Statements
+	if len(bodyStmts) > 0 {
+		if strExpr, ok := bodyStmts[0].(*StringExpr); ok {
+			doc = &DocstringObj{Description: strExpr.Value}
+			// Compile the docstring expression (it will be popped) and then remove it from the list
+			// so we don't compile it again.
+			if err := c.compileNode(strExpr); err != nil {
+				return err
+			}
+			c.emitSingleInstruct(OpPop)
+			bodyStmts = bodyStmts[1:]
+		}
+	}
+
 	// compile body
-	if err := c.compileNode(node.Body); err != nil {
-		return err
+	for _, stmt := range bodyStmts {
+		if err := c.compileNode(stmt); err != nil {
+			return err
+		}
 	}
 
 	// Implicit return if no explicit return was encountered in the body.
@@ -713,6 +750,7 @@ func (c *Compiler) visitFunctionExpr(node *FunctionExpr) error {
 	funcObj := FunctionObj{
 		Name:    "<lambda>",
 		Arity:   len(node.Params),
+		Doc:     doc,
 		StartIP: &functionStartIp,
 	}
 

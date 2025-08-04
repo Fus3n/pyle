@@ -12,6 +12,8 @@ import (
 	"strings"
 )
 
+// --- Interfaces ---
+
 type Iterator interface {
 	Object
 	Next() (Object, bool)
@@ -30,6 +32,61 @@ type Hashable interface {
 
 type Comparable interface {
 	Compare(other Object) (int, error)
+}
+
+// AttributeGetter allows for more robust dot-access (.attr) on objects.
+type AttributeGetter interface {
+	GetAttribute(name string) (Object, bool, Error)
+}
+
+// --- Documentation Types ---
+
+type ParamDoc struct {
+	Name        string
+	Description string
+}
+
+type DocstringObj struct {
+	Description string
+	Params      []ParamDoc
+	Returns     string
+}
+
+func (d *DocstringObj) GetAttribute(name string) (Object, bool, Error) {
+	switch name {
+	case "description":
+		return StringObj{Value: d.Description}, true, nil
+	case "params":
+		paramStrings := make([]Object, len(d.Params))
+		for i, p := range d.Params {
+			paramStrings[i] = StringObj{Value: fmt.Sprintf("%s: %s", p.Name, p.Description)}
+		}
+		return &ArrayObj{Elements: paramStrings}, true, nil
+	case "returns":
+		return StringObj{Value: d.Returns}, true, nil
+	}
+	return nil, false, nil
+}
+
+func (d *DocstringObj) String() string {
+	var b strings.Builder
+	b.WriteString(d.Description)
+	if len(d.Params) > 0 {
+		b.WriteString("\n\nParams:\n")
+		for _, p := range d.Params {
+			b.WriteString(fmt.Sprintf("  %s: %s\n", p.Name, p.Description))
+		}
+	}
+	if d.Returns != "" {
+		b.WriteString("\nReturns:\n")
+		b.WriteString(fmt.Sprintf("  %s\n", d.Returns))
+	}
+	return b.String()
+}
+func (d *DocstringObj) Type() string     { return "docstring" }
+func (d *DocstringObj) IsTruthy() bool   { return d.Description != "" }
+func (d *DocstringObj) Iter() (Iterator, Error) {
+	return nil, NewRuntimeError("docstring object is not iterable", nil)
 }
 
 // --- Core Types ---
@@ -78,6 +135,16 @@ type StringObj struct {
 	Value string
 }
 
+func (s StringObj) GetAttribute(name string) (Object, bool, Error) {
+	if methods, ok := BuiltinMethods[s.Type()]; ok {
+		if method, exists := methods[name]; exists {
+			// The method is bound to the receiver `s`
+			boundMethod := &BoundMethodObj{Receiver: s, Method: method}
+			return boundMethod, true, nil
+		}
+	}
+	return nil, false, nil
+}
 func (s StringObj) String() string { return s.Value }
 func (s StringObj) Type() string   { return "string" }
 func (s StringObj) IsTruthy() bool { return s.Value != "" }
@@ -155,6 +222,15 @@ type ArrayObj struct {
 	Elements []Object
 }
 
+func (a *ArrayObj) GetAttribute(name string) (Object, bool, Error) {
+	if methods, ok := BuiltinMethods[a.Type()]; ok {
+		if method, exists := methods[name]; exists {
+			boundMethod := &BoundMethodObj{Receiver: a, Method: method}
+			return boundMethod, true, nil
+		}
+	}
+	return nil, false, nil
+}
 func (a *ArrayObj) String() string {
 	var elements []string
 	for _, e := range a.Elements {
@@ -177,6 +253,27 @@ type MapPair struct {
 
 type MapObj struct {
 	Pairs map[uint32][]MapPair
+}
+
+func (o *MapObj) GetAttribute(name string) (Object, bool, Error) {
+	// First, check for built-in map methods
+	if methods, ok := BuiltinMethods[o.Type()]; ok {
+		if method, exists := methods[name]; exists {
+			boundMethod := &BoundMethodObj{Receiver: o, Method: method}
+			return boundMethod, true, nil
+		}
+	}
+
+	// If not a method, treat as key access
+	val, found, err := o.Get(StringObj{Value: name})
+	if err != nil {
+		return nil, false, NewRuntimeError(err.Error(), nil)
+	}
+	if found {
+		return val, true, nil
+	}
+
+	return NullObj{}, true, nil // Return null if key not found
 }
 
 func NewMap() *MapObj {
@@ -491,8 +588,18 @@ type FunctionMetadata struct {
 type NativeFuncObj struct {
 	Name     string
 	Arity    int
+	Doc      *DocstringObj
 	Metadata *FunctionMetadata
 	Call     func(vm *VM, args []Object, kwargs map[string]Object) (Object, Error)
+}
+func (f *NativeFuncObj) GetAttribute(name string) (Object, bool, Error) {
+	if name == "doc" {
+		if f.Doc != nil {
+			return f.Doc, true, nil
+		}
+		return NullObj{}, true, nil
+	}
+	return nil, false, nil
 }
 func (f *NativeFuncObj) String() string { return fmt.Sprintf("<native fn %s>", f.Name) }
 func (f *NativeFuncObj) Type() string   { return "native_function" }
@@ -519,7 +626,17 @@ func (f *NativeFuncObj) Compare(other Object) (int, error) {
 type FunctionObj struct {
 	Name    string
 	Arity   int
+	Doc     *DocstringObj
 	StartIP *int
+}
+func (f *FunctionObj) GetAttribute(name string) (Object, bool, Error) {
+	if name == "doc" {
+		if f.Doc != nil {
+			return f.Doc, true, nil
+		}
+		return NullObj{}, true, nil
+	}
+	return nil, false, nil
 }
 func (f *FunctionObj) String() string { return fmt.Sprintf("<fn %s at %p>", f.Name, f) }
 func (f *FunctionObj) Type() string   { return "function" }
@@ -548,6 +665,14 @@ type BoundMethodObj struct {
 	Receiver Object
 	Method   Object
 }
+
+func (b *BoundMethodObj) GetAttribute(name string) (Object, bool, Error) {
+	if getter, ok := b.Method.(AttributeGetter); ok {
+		return getter.GetAttribute(name)
+	}
+	return nil, false, nil
+}
+
 func (b *BoundMethodObj) String() string {
 	return fmt.Sprintf("<bound method %s of %s>", b.Method.String(), b.Receiver.String())
 }

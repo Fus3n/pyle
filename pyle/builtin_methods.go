@@ -17,6 +17,7 @@ func isFunc(obj Object) bool {
 
 // BuiltinMethods holds the native methods for Pyle's built-in types.
 var BuiltinMethods map[string]map[string]*NativeFuncObj
+var BuiltinMethodDocs map[string]map[string]*DocstringObj
 
 // --- String Methods ---
 func methodStringLen(receiver StringObj) (int, error) {
@@ -31,7 +32,6 @@ func methodStringReplace(receiver StringObj, old string, new string) (string, er
 func methodStringSplit(receiver StringObj, sep string) ([]string, error) {
 	return strings.Split(receiver.Value, sep), nil
 }
-
 func formatArgument(arg Object, spec string) (string, error) {
 	if spec == "" || spec == "s" {
 		return arg.String(), nil
@@ -69,7 +69,6 @@ func formatArgument(arg Object, spec string) (string, error) {
 
 	return "", fmt.Errorf("unsupported format specifier: %s", spec)
 }
-
 func methodStringFormat(receiver StringObj, args ...Object) (string, error) {
 	var builder strings.Builder
 	var argIndex int
@@ -132,6 +131,31 @@ func methodStringFormat(receiver StringObj, args ...Object) (string, error) {
 
 	return builder.String(), nil
 }
+func methodStringContains(receiver StringObj, substr StringObj) (BooleanObj, error) {
+	return BooleanObj{Value: strings.Contains(receiver.Value, substr.Value)}, nil
+}
+func methodStringHasPrefix(receiver StringObj, prefix StringObj) (BooleanObj, error) {
+	return BooleanObj{Value: strings.HasPrefix(receiver.Value, prefix.Value)}, nil
+}
+func methodStringHasSuffix(receiver StringObj, suffix StringObj) (BooleanObj, error) {
+	return BooleanObj{Value: strings.HasSuffix(receiver.Value, suffix.Value)}, nil
+}
+func methodStringToLower(receiver StringObj) (StringObj, error) {
+	return StringObj{Value: strings.ToLower(receiver.Value)}, nil
+}
+func methodStringToUpper(receiver StringObj) (StringObj, error) {
+	return StringObj{Value: strings.ToUpper(receiver.Value)}, nil
+}
+func methodStringIndexOf(receiver StringObj, substr StringObj) (NumberObj, error) {
+	return NumberObj{Value: float64(strings.Index(receiver.Value, substr.Value)), IsInt: true}, nil
+}
+func methodStringRepeat(receiver StringObj, count NumberObj) (StringObj, error) {
+	if !count.IsInt || count.Value < 0 {
+		return StringObj{}, fmt.Errorf("count must be a non-negative integer")
+	}
+	return StringObj{Value: strings.Repeat(receiver.Value, int(count.Value))}, nil
+}
+
 
 // --- Array Methods ---
 func methodArrayLen(receiver *ArrayObj) (int, error) {
@@ -144,7 +168,7 @@ func methodArrayAppend(receiver *ArrayObj, value Object) (Object, error) {
 func methodArrayPop(receiver *ArrayObj) (Object, error) {
 	if len(receiver.Elements) == 0 {
 		return NullObj{}, nil
-	}	
+	}
 	last := receiver.Elements[len(receiver.Elements)-1]
 	receiver.Elements = receiver.Elements[:len(receiver.Elements)-1]
 	return last, nil
@@ -224,37 +248,66 @@ func methodMapHas(receiver *MapObj, key Object) (bool, error) {
 
 func init() {
 	BuiltinMethods = make(map[string]map[string]*NativeFuncObj)
+	BuiltinMethodDocs = make(map[string]map[string]*DocstringObj)
 
-	mustCreate := func(name string, fn any) *NativeFuncObj {
-		nativeFn, err := CreateNativeFunction(name, fn)
+	// Helper to create native functions and panic on error
+	mustCreate := func(name string, fn any, doc *DocstringObj) *NativeFuncObj {
+		nativeFn, err := CreateNativeFunction(name, fn, doc)
 		if err != nil {
 			panic(err)
 		}
 		return nativeFn
 	}
 
+	// --- String Docs & Methods ---
+	BuiltinMethodDocs["string"] = map[string]*DocstringObj{
+		"len": {Description: "len() -> int\n\nReturns the number of characters in the string."},
+		"replace": {
+			Description: "replace(old, new) -> string\n\nReturns a new string with all occurrences of 'old' replaced by 'new'.",
+			Params: []ParamDoc{
+				{"old", "The substring to be replaced."},
+				{"new", "The substring to replace with."},
+			},
+			Returns: "A new string with replacements made.",
+		},
+	}
 	BuiltinMethods["string"] = map[string]*NativeFuncObj{
-		"len":       mustCreate("len", methodStringLen),
-		"trimSpace": mustCreate("trimSpace", methodStringTrimSpace),
-		"replace":   mustCreate("replace", methodStringReplace),
-		"split":     mustCreate("split", methodStringSplit),
-		"format":    mustCreate("format", methodStringFormat),
+		"len":       mustCreate("len", methodStringLen, BuiltinMethodDocs["string"]["len"]),
+		"trimSpace": mustCreate("trimSpace", methodStringTrimSpace, nil),
+		"replace":   mustCreate("replace", methodStringReplace, BuiltinMethodDocs["string"]["replace"]),
+		"split":     mustCreate("split", methodStringSplit, nil),
+		"format":    mustCreate("format", methodStringFormat, nil),
+		"contains":  mustCreate("contains", methodStringContains, nil),
+		"hasPrefix": mustCreate("hasPrefix", methodStringHasPrefix, nil),
+		"hasSuffix": mustCreate("hasSuffix", methodStringHasSuffix, nil),
+		"toLower":   mustCreate("toLower", methodStringToLower, nil),
+		"toUpper":   mustCreate("toUpper", methodStringToUpper, nil),
+		"indexOf":   mustCreate("indexOf", methodStringIndexOf, nil),
+		"repeat":    mustCreate("repeat", methodStringRepeat, nil),
 	}
 
+	// --- Array Docs & Methods ---
+	BuiltinMethodDocs["array"] = map[string]*DocstringObj{
+		"len":    {Description: "len() -> int\n\nReturns the number of elements in the array."},
+		"append": {Description: "append(value)\n\nAppends a value to the end of the array in-place."},
+	}
 	BuiltinMethods["array"] = map[string]*NativeFuncObj{
-		"len":    mustCreate("len", methodArrayLen),
-		"append": mustCreate("append", methodArrayAppend),
-		// other useful array methods
-		"pop": mustCreate("pop", methodArrayPop),
-		"reverse": mustCreate("reverse", methodArrayReverse),
-		"filter":  mustCreate("filter", methodArrayFilter),
-		"map": mustCreate("map", methodArrayMap),
+		"len":     mustCreate("len", methodArrayLen, BuiltinMethodDocs["array"]["len"]),
+		"append":  mustCreate("append", methodArrayAppend, BuiltinMethodDocs["array"]["append"]),
+		"pop":     mustCreate("pop", methodArrayPop, nil),
+		"reverse": mustCreate("reverse", methodArrayReverse, nil),
+		"filter":  mustCreate("filter", methodArrayFilter, nil),
+		"map":     mustCreate("map", methodArrayMap, nil),
 	}
 
+	// --- Map Docs & Methods ---
+	BuiltinMethodDocs["map"] = map[string]*DocstringObj{
+		"keys": {Description: "keys() -> iterator\n\nReturns an iterator over the map's keys."},
+	}
 	BuiltinMethods["map"] = map[string]*NativeFuncObj{
-		"keys":   mustCreate("keys", methodMapKeys),
-		"values": mustCreate("values", methodMapValues),
-		"items":  mustCreate("items", methodMapItems),
-		"has":    mustCreate("has", methodMapHas),
+		"keys":   mustCreate("keys", methodMapKeys, BuiltinMethodDocs["map"]["keys"]),
+		"values": mustCreate("values", methodMapValues, nil),
+		"items":  mustCreate("items", methodMapItems, nil),
+		"has":    mustCreate("has", methodMapHas, nil),
 	}
 }
