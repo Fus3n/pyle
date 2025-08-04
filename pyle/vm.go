@@ -493,6 +493,15 @@ func (vm *VM) run(targetFrameDepth int) Result[Object] {
 				return ResErr[Object](err)
 			}
 
+			objTypeName := obj.Type()
+			if methods, ok := BuiltinMethods[objTypeName]; ok {
+				if method, exists := methods[name]; exists {
+					boundMethod := &BoundMethodObj{Receiver: obj, Method: method}
+					vm.push(boundMethod)
+					continue
+				}
+			}
+
 			if pyleMap, ok := obj.(*MapObj); ok {
 				attr, ok := vm.constants[nameIdx].(StringObj)
 				if !ok {
@@ -505,22 +514,11 @@ func (vm *VM) run(targetFrameDepth int) Result[Object] {
 				}
 
 				if found {
-					if fn, isFunc := val.(*FunctionObj); isFunc && fn.Arity > 0 {
-						vm.push(&BoundMethodObj{Receiver: obj, Method: val})
-					} else {
-						vm.push(val)
-					}
+					vm.push(val)
 					continue
 				}
-			}
-
-			objTypeName := obj.Type()
-			if methods, ok := BuiltinMethods[objTypeName]; ok {
-				if method, exists := methods[name]; exists {
-					boundMethod := &BoundMethodObj{Receiver: obj, Method: method}
-					vm.push(boundMethod)
-					continue
-				}
+				vm.push(NullObj{})
+				continue
 			}
 
 			return ResErr[Object](NewRuntimeError(fmt.Sprintf("type '%s' has no attribute '%s'", obj.Type(), name), currentTok))

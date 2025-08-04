@@ -214,6 +214,13 @@ func methodMapValues(receiver *MapObj) (Object, error) {
 func methodMapItems(receiver *MapObj) (Object, error) {
 	return NewMapIterator(receiver, MapIteratorModeItems), nil
 }
+func methodMapHas(receiver *MapObj, key Object) (bool, error) {
+	_, ok, err := receiver.Get(key)
+	if err != nil {
+		return false, err
+	}
+	return ok, nil
+}
 
 func init() {
 	BuiltinMethods = make(map[string]map[string]*NativeFuncObj)
@@ -248,5 +255,6 @@ func init() {
 		"keys":   mustCreate("keys", methodMapKeys),
 		"values": mustCreate("values", methodMapValues),
 		"items":  mustCreate("items", methodMapItems),
+		"has":    mustCreate("has", methodMapHas),
 	}
 }
