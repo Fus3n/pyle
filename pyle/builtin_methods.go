@@ -225,7 +225,11 @@ func methodArrayMap(vm *VM, receiver *ArrayObj, fn Object) (Object, error) {
 		mapped[i] = result
 	}
 	return &ArrayObj{Elements: mapped}, nil
-
+}
+func methodArrayToTuple(receiver *ArrayObj) (Object, error) {
+	elements := make([]Object, len(receiver.Elements))
+	copy(elements, receiver.Elements)
+	return &TupleObj{Elements: elements}, nil
 }
 
 // --- Map Methods ---
@@ -298,6 +302,7 @@ func init() {
 		"reverse": mustCreate("reverse", methodArrayReverse, nil),
 		"filter":  mustCreate("filter", methodArrayFilter, nil),
 		"map":     mustCreate("map", methodArrayMap, nil),
+		"toTuple": mustCreate("toTuple", methodArrayToTuple, nil),
 	}
 
 	// --- Map Docs & Methods ---

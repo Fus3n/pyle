@@ -1,11 +1,22 @@
-const start = perfCounter()
-let a = 0
-let b = 1
-for _ in 0:2000 {
-    let temp = a
-    a = b
-    b = temp + b
+fn fib(n) {
+    if n <= 1 {
+        return n
+    }
+    return fib(n-1) + fib(n-2)
 }
+
+const start = perfCounter()
+const r = fib(15)
 const end = perfCounter()
 echo("Time taken: {} ns".format(end - start))
-echo("Result:", a)
+echo("Result:", r)
+
+let vals = ["Hello", "world"]
+const codes = []
+
+for val in vals {
+    const charCodes = array(val).map(fn(x) { return asciiCode(x) }).toTuple()
+    codes.append(charCodes)
+}
+
+echo(codes)
