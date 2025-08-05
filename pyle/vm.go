@@ -337,7 +337,7 @@ func (vm *VM) run(targetFrameDepth int) Result[Object] {
 			if variable, ok := vm.globals[name]; ok {
 				vm.push(variable.Value)
 			} else {
-				return ResErr[Object](vm.runtimeError("Undefined variable '%s'", name))
+				return ResErr[Object](vm.runtimeError("Undefined local variable '%s'", name))
 			}
 		case OpDefConstLocal:
 			nameIdx := *operand.(*int)

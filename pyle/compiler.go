@@ -78,6 +78,16 @@ func (c *Compiler) emitInstruct(opcode OpCode, operand any, token *Token) int {
 	return instructIdx
 }
 
+func (c *Compiler) enterScope() {
+	c.scopeDepth++
+	c.emitSingleInstruct(OpEnterScope)
+}
+
+func (c *Compiler) exitScope() {
+	c.scopeDepth--
+	c.emitSingleInstruct(OpExitScope)
+}
+
 // helper function when both operand and token is nil
 func (c *Compiler) emitSingleInstruct(opcode OpCode) int {
 	return c.emitInstruct(opcode, nil, nil)
@@ -177,8 +187,7 @@ func (c *Compiler) compileNode(node ASTNode) error {
 func (c *Compiler) visitBlock(node *Block) error {
 	createNewScope := node.GetToken() != nil
 	if createNewScope {
-		c.scopeDepth++
-		c.emitSingleInstruct(OpEnterScope)
+		c.enterScope()
 	}
 
 	for _, stmt := range node.Statements {
@@ -193,8 +202,7 @@ func (c *Compiler) visitBlock(node *Block) error {
 	}
 
 	if createNewScope {
-		c.emitSingleInstruct(OpExitScope)
-		c.scopeDepth--
+		c.exitScope()
 	}
 	return nil
 }
@@ -408,8 +416,7 @@ func (c *Compiler) visitForInStmt(node *ForInStmt) error {
 	c.loopStartPatches = append(c.loopStartPatches, []int{})
 	c.loopEndPatches = append(c.loopEndPatches, []int{})
 
-	c.scopeDepth++
-	c.emitSingleInstruct(OpEnterScope) // Create a new scope for the loop variable
+	c.enterScope() // Create a new scope for the loop variable
 
 	// 1. Compile iterable and create iterator
 	if err := c.compileNode(node.Iterable); err != nil {
@@ -467,8 +474,7 @@ func (c *Compiler) visitForInStmt(node *ForInStmt) error {
 
 	// 8. Pop the exhausted/broken-from iterator and exit the variable's scope
 	c.emitSingleInstruct(OpPop) // Pop iterator
-	c.emitSingleInstruct(OpExitScope)
-	c.scopeDepth--
+	c.exitScope()
 	c.loopLevel--
 	c.loopStartPatches = c.loopStartPatches[:len(c.loopStartPatches)-1]
 	c.loopEndPatches = c.loopEndPatches[:len(c.loopEndPatches)-1]
@@ -616,9 +622,7 @@ func (c *Compiler) visitFunctionDefStmt(node *FunctionDefStmt) error {
 	// Store current scope depth to restore after compiling function body
 	// as function body compilation is self-contained regarding scope changes it makes.
 	enclosingScopeDepth := c.scopeDepth
-	c.scopeDepth++ // Entering function's own lexical scope context immediately
-
-	c.emitInstruct(OpEnterScope, nil, node.GetToken())
+	c.enterScope()
 
 	// loop over params in reverse and add to constant and def local
 	for i := len(node.Params) - 1; i >= 0; i-- {
@@ -650,8 +654,6 @@ func (c *Compiler) visitFunctionDefStmt(node *FunctionDefStmt) error {
 			return err
 		}
 	}
-
-	// Implicit return if no explicit return was encountered in the body.
 
 	c.emitInstruct(OpExitScope, nil, node.GetToken())
 
@@ -698,9 +700,7 @@ func (c *Compiler) visitFunctionExpr(node *FunctionExpr) error {
 	// Store current scope depth to restore after compiling function body
 	// as function body compilation is self-contained regarding scope changes it makes.
 	enclosingScopeDepth := c.scopeDepth
-	c.scopeDepth++ // Entering function's own lexical scope context immediately
-
-	c.emitInstruct(OpEnterScope, nil, node.GetToken())
+	c.enterScope()  // Entering function's own lexical scope context immediately
 
 	// loop over params in reverse and add to constant and def local
 	for i := len(node.Params) - 1; i >= 0; i-- {
