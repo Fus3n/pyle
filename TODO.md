@@ -21,7 +21,7 @@
 - [x] For Comparable types create new comparable interface and streamline those process like equals, greater tahn function with functions
 - [ ] For imports, return a pyle object from Go's side with values being functions
 - [ ] Proper Structure to hold modules, importing file support
-
+- [x] Optional type hints support
 
 ## Interpreter
 - [ ] Apply Constant Folding Optimization

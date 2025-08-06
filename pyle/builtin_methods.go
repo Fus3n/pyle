@@ -155,6 +155,16 @@ func methodStringRepeat(receiver StringObj, count NumberObj) (StringObj, error) 
 	}
 	return StringObj{Value: strings.Repeat(receiver.Value, int(count.Value))}, nil
 }
+func methodStringAsciiAt(receiver StringObj, index NumberObj) (NumberObj, error) {
+	if !index.IsInt {
+		return NumberObj{}, fmt.Errorf("index must be an integer")
+	}
+	idx := int(index.Value)
+	if idx < 0 || idx >= len(receiver.Value) {
+		return NumberObj{}, fmt.Errorf("index out of bounds: %d", idx)
+	}
+	return NumberObj{Value: float64(receiver.Value[idx]), IsInt: true}, nil
+}
 
 
 // --- Array Methods ---
@@ -303,12 +313,15 @@ func init() {
 		"split":     mustCreate("split", methodStringSplit, nil),
 		"format":    mustCreate("format", methodStringFormat, nil),
 		"contains":  mustCreate("contains", methodStringContains, nil),
-		"hasPrefix": mustCreate("hasPrefix", methodStringHasPrefix, nil),
-		"hasSuffix": mustCreate("hasSuffix", methodStringHasSuffix, nil),
+		"startsWith":mustCreate("startsWith", methodStringHasPrefix, nil),
+		"endsWith":  mustCreate("endsWith", methodStringHasSuffix, nil),
 		"toLower":   mustCreate("toLower", methodStringToLower, nil),
 		"toUpper":   mustCreate("toUpper", methodStringToUpper, nil),
 		"indexOf":   mustCreate("indexOf", methodStringIndexOf, nil),
 		"repeat":    mustCreate("repeat", methodStringRepeat, nil),
+		"asciiAt":   mustCreate("asciiAt", methodStringAsciiAt, nil),
+		// suggest some more functions
+
 	}
 
 	// --- Array Docs & Methods ---

@@ -21,9 +21,6 @@ fn getAsciiCodesRaw(str: string) {
 }
 
 
-echo(getAsciiCodesRaw("Hello worlda"))
-
-
 fn benchmark() {
     const testString = "The quick brown fox jumps over the lazy dog"
     const iterations = 10000
