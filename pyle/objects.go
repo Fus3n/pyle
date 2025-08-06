@@ -586,11 +586,11 @@ type FunctionMetadata struct {
 }
 
 type NativeFuncObj struct {
-	Name     string
-	Arity    int
-	Doc      *DocstringObj
-	Metadata *FunctionMetadata
-	Call     func(vm *VM, args []Object, kwargs map[string]Object) (Object, Error)
+	Name        string
+	Arity       int
+	Doc         *DocstringObj
+	DirectCall  any // Holds a direct, fast-path function pointer. e.g. NativeFunc1, NativeFunc2
+	ReflectCall func(vm *VM, args []Object) (Object, Error) // Reflection-based fallback
 }
 func (f *NativeFuncObj) GetAttribute(name string) (Object, bool, Error) {
 	if name == "doc" {
@@ -608,8 +608,15 @@ func (f *NativeFuncObj) Iter() (Iterator, Error) {
 	return nil, NewRuntimeError(fmt.Sprintf("object of type '%s' is not iterable", f.Type()), nil)
 }
 func (f *NativeFuncObj) Hash() uint32 {
+	var ptr uintptr
+	if f.DirectCall != nil {
+		ptr = reflect.ValueOf(f.DirectCall).Pointer()
+	} else if f.ReflectCall != nil {
+		ptr = reflect.ValueOf(f.ReflectCall).Pointer()
+	}
+
 	h := fnv.New32a()
-	binary.Write(h, binary.LittleEndian, f.Metadata.FnValue.Pointer())
+	binary.Write(h, binary.LittleEndian, ptr)
 	return h.Sum32()
 }
 func (f *NativeFuncObj) Compare(other Object) (int, error) {
@@ -617,8 +624,25 @@ func (f *NativeFuncObj) Compare(other Object) (int, error) {
 	if !ok {
 		return strings.Compare(f.Type(), other.Type()), nil
 	}
-	if f.Metadata.FnValue.Pointer() == otherFunc.Metadata.FnValue.Pointer() {
+
+	var ptr1, ptr2 uintptr
+	if f.DirectCall != nil {
+		ptr1 = reflect.ValueOf(f.DirectCall).Pointer()
+	} else if f.ReflectCall != nil {
+		ptr1 = reflect.ValueOf(f.ReflectCall).Pointer()
+	}
+
+	if otherFunc.DirectCall != nil {
+		ptr2 = reflect.ValueOf(otherFunc.DirectCall).Pointer()
+	} else if otherFunc.ReflectCall != nil {
+		ptr2 = reflect.ValueOf(otherFunc.ReflectCall).Pointer()
+	}
+
+	if ptr1 == ptr2 {
 		return 0, nil
+	}
+	if ptr1 < ptr2 {
+		return -1, nil
 	}
 	return 1, nil
 }

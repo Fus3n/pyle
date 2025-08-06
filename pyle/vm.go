@@ -54,6 +54,30 @@ func (vm *VM) LoadBuiltins() error {
 			return err
 		}
 	}
+
+	// temporary solution for grouped values/modules
+	timeFuncs := map[string]any{
+		"time":    nativeTime,
+		"timeNs":  nativeTimeNs,
+		"timeMs": nativeTimeMs,
+	}
+
+	mapObj := NewMap()
+	
+	for name, fn := range timeFuncs {
+		doc := BuiltinDocs[name]
+		nativeFunc, err := CreateNativeFunction(name, fn, doc)
+		if err != nil {
+			return err
+		}
+		keyVal := StringObj{Value: name}
+		err = mapObj.Set(keyVal, nativeFunc)
+		if err != nil {
+			return err
+		}
+	}
+	
+	vm.AddGlobal("time", mapObj)
 	return nil
 }
 
@@ -154,6 +178,35 @@ func (vm *VM) handleCall(numArgs int, currentTok *Token) (bool, Error) {
 
 	switch c := callee.(type) {
 	case *BoundMethodObj:
+		if nativeMethod, ok := c.Method.(*NativeFuncObj); ok && nativeMethod.DirectCall != nil {
+			newArgs := make([]Object, len(args)+1)
+			newArgs[0] = c.Receiver
+			copy(newArgs[1:], args)
+
+			if len(newArgs) != nativeMethod.Arity {
+				return false, vm.runtimeError("Method '%s' expected %d arguments, but got %d", nativeMethod.Name, nativeMethod.Arity, len(newArgs))
+			}
+
+			var result Object
+			var err Error
+
+			switch nativeMethod.Arity {
+			case 2:
+				if fn, ok := nativeMethod.DirectCall.(NativeFunc2); ok {
+					result, err = fn(vm, newArgs[0], newArgs[1])
+				}
+			}
+
+			if err != nil {
+				return false, err
+			}
+			if result != nil {
+				vm.sp = calleeIdx
+				vm.push(result)
+				return false, nil
+			}
+		}
+
 		vm.stack[calleeIdx] = c.Method
 		vm.push(nil)
 		copy(vm.stack[calleeIdx+2:], vm.stack[calleeIdx+1:calleeIdx+1+numArgs])
@@ -173,13 +226,47 @@ func (vm *VM) handleCall(numArgs int, currentTok *Token) (bool, Error) {
 		vm.ip = *c.StartIP
 		return true, nil 
 	case *NativeFuncObj:
-		result, err := c.Call(vm, args, nil)
-		if err != nil {
-			return false, err
+		if c.DirectCall != nil {
+			if numArgs != c.Arity {
+				return false, vm.runtimeError("Function '%s' expected %d arguments, but got %d", c.Name, c.Arity, numArgs)
+			}
+			
+			var result Object
+			var err Error
+
+			switch c.Arity {
+			case 0:
+				if fn, ok := c.DirectCall.(NativeFunc0); ok {
+					result, err = fn(vm)
+				}
+			case 1:
+				if fn, ok := c.DirectCall.(NativeFunc1); ok {
+					result, err = fn(vm, args[0])
+				}
+			}
+
+			if err != nil {
+				return false, err
+			}
+			if result != nil {
+				vm.sp = calleeIdx
+				vm.push(result)
+				return false, nil
+			}
 		}
-		vm.sp = calleeIdx
-		vm.push(result)
-		return false, nil
+
+		if c.ReflectCall != nil {
+			// The arity check for reflection-based calls is handled inside ReflectCall
+			result, err := c.ReflectCall(vm, args)
+			if err != nil {
+				return false, err
+			}
+			vm.sp = calleeIdx
+			vm.push(result)
+			return false, nil
+		}
+
+		return false, vm.runtimeError("Cannot call uncallable native function '%s'", c.Name)
 
 	default:
 		return false, vm.runtimeError("Cannot call non-function type '%s'", callee.Type())

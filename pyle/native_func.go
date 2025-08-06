@@ -5,15 +5,102 @@ import (
 	"reflect"
 )
 
+// --- Fast Path Function Types ---
+type NativeFunc0 func(vm *VM) (Object, Error)
+type NativeFunc1 func(vm *VM, arg Object) (Object, Error)
+type NativeFunc2 func(vm *VM, arg1, arg2 Object) (Object, Error)
+
 func CreateNativeFunction(name string, fn any, doc *DocstringObj) (*NativeFuncObj, error) {
+	if directCall, arity, ok := createDirectCall(fn); ok {
+		return &NativeFuncObj{
+			Name:       name,
+			Arity:      arity,
+			Doc:        doc,
+			DirectCall: directCall,
+		}, nil
+	}
+
+	metadata, err := analyzeFunction(fn)
+	if err != nil {
+		return nil, fmt.Errorf("could not create native function '%s': %w", name, err)
+	}
+	metadata.Name = name
+
+	return &NativeFuncObj{
+		Name:        name,
+		Arity:       len(metadata.Args),
+		Doc:         doc,
+		ReflectCall: createReflectCall(metadata),
+	}, nil
+}
+
+func createDirectCall(fn any) (any, int, bool) {
+	switch f := fn.(type) {
+	case func() (NumberObj, error):
+		return NativeFunc0(func(vm *VM) (Object, Error) {
+			res, err := f()
+			if err != nil {
+				return nil, NewRuntimeError(err.Error(), nil)
+			}
+			return res, nil
+		}), 0, true
+
+	case func(Object) (int, error):
+		return NativeFunc1(func(vm *VM, arg Object) (Object, Error) {
+			res, err := f(arg)
+			if err != nil {
+				return nil, NewRuntimeError(err.Error(), nil)
+			}
+			return CreateInt(int64(res)), nil
+		}), 1, true
+
+	case func(StringObj, string) ([]string, error):
+		return NativeFunc2(func(vm *VM, arg1, arg2 Object) (Object, Error) {
+			receiver, ok := arg1.(StringObj)
+			if !ok {
+				return nil, NewRuntimeError(fmt.Sprintf("expected a string receiver, got %s", arg1.Type()), nil)
+			}
+			sep, ok := arg2.(StringObj)
+			if !ok {
+				return nil, NewRuntimeError(fmt.Sprintf("expected a string separator, got %s", arg2.Type()), nil)
+			}
+			res, err := f(receiver, sep.Value)
+			if err != nil {
+				return nil, NewRuntimeError(err.Error(), nil)
+			}
+			elements := make([]Object, len(res))
+			for i, s := range res {
+				elements[i] = StringObj{Value: s}
+			}
+			return &ArrayObj{Elements: elements}, nil
+		}), 2, true
+
+	case func(*ArrayObj, Object) (Object, error):
+		return NativeFunc2(func(vm *VM, arg1, arg2 Object) (Object, Error) {
+			receiver, ok := arg1.(*ArrayObj)
+			if !ok {
+				return nil, NewRuntimeError(fmt.Sprintf("expected an array receiver, got %s", arg1.Type()), nil)
+			}
+			res, err := f(receiver, arg2)
+			if err != nil {
+				return nil, NewRuntimeError(err.Error(), nil)
+			}
+			return res, nil
+		}), 2, true
+
+	default:
+		return nil, 0, false
+	}
+}
+
+func analyzeFunction(fn any) (*FunctionMetadata, error) {
 	fnValue := reflect.ValueOf(fn)
 	fnType := fnValue.Type()
 
 	if fnType.Kind() != reflect.Func {
-		return nil, fmt.Errorf("Not a function: %v", fn)
+		return nil, fmt.Errorf("value is not a function")
 	}
 
-	// Check if the first argument is a *VM
 	wantsVM := false
 	argOffset := 0
 	if fnType.NumIn() > 0 && fnType.In(0) == reflect.TypeOf((*VM)(nil)) {
@@ -21,69 +108,42 @@ func CreateNativeFunction(name string, fn any, doc *DocstringObj) (*NativeFuncOb
 		argOffset = 1
 	}
 
-	// Pre-compute metadata
 	metadata := &FunctionMetadata{
-		Name:         name,
-		Args:         make([]ArgSpec, fnType.NumIn()-argOffset),
-		Returns:      make([]reflect.Type, fnType.NumOut()),
-		IsVariadic:   fnType.IsVariadic(),
-		FnValue:      fnValue,
-		WantsVM:      wantsVM,
+		Args:       make([]ArgSpec, fnType.NumIn()-argOffset),
+		Returns:    make([]reflect.Type, fnType.NumOut()),
+		IsVariadic: fnType.IsVariadic(),
+		FnValue:    fnValue,
+		WantsVM:    wantsVM,
 	}
 
-	// Pre-process argument types
 	for i := 0; i < len(metadata.Args); i++ {
-		metadata.Args[i] = ArgSpec{
-			Type: fnType.In(i + argOffset),
-			Name: fmt.Sprintf("arg%d", i),
-		}
+		metadata.Args[i] = ArgSpec{Type: fnType.In(i + argOffset)}
 	}
-
-	// Pre-process return types
 	for i := 0; i < fnType.NumOut(); i++ {
 		metadata.Returns[i] = fnType.Out(i)
 	}
-
 	if fnType.NumOut() > 1 && fnType.Out(1).Implements(reflect.TypeOf((*error)(nil)).Elem()) {
 		metadata.ReturnsError = true
 	}
-
-	// Pre-create the optimized call function
-	callFunc := createCallFunc(metadata)
-
-	return &NativeFuncObj{
-		Name:     name,
-		Arity:    len(metadata.Args),
-		Doc:      doc,
-		Metadata: metadata,
-		Call:     callFunc,
-	}, nil
+	return metadata, nil
 }
 
-func createCallFunc(metadata *FunctionMetadata) func(*VM, []Object, map[string]Object) (Object, Error) {
-    argConverters := make([]func(Object) (reflect.Value, error), len(metadata.Args))
-    for i, argSpec := range metadata.Args {
-        argConverters[i] = createTypeConverter(argSpec.Type)
-    }
+func createReflectCall(metadata *FunctionMetadata) func(*VM, []Object) (Object, Error) {
+	argConverters := make([]func(Object) (reflect.Value, error), len(metadata.Args))
+	for i, argSpec := range metadata.Args {
+		argConverters[i] = createTypeConverter(argSpec.Type)
+	}
 
-    return func(vm *VM, args []Object, kwargs map[string]Object) (Object, Error) {
-        if len(kwargs) > 0 {
-			return nil, NewRuntimeError("keyword arguments not supported for native functions", nil)
-		}
-
-		// Arity check
+	return func(vm *VM, args []Object) (Object, Error) {
 		numArgs := len(args)
 		expectedArity := len(metadata.Args)
 		if metadata.IsVariadic {
-			// For variadic functions, we need at least (Arity - 1) arguments.
-			// The last arg in metadata.Args is the variadic slice itself.
 			if numArgs < expectedArity-1 {
 				return nil, NewRuntimeError(
 					fmt.Sprintf("function '%s' expected at least %d arguments, but got %d",
 						metadata.Name, expectedArity-1, numArgs), nil)
 			}
 		} else {
-			// Exact match for non-variadic functions.
 			if numArgs != expectedArity {
 				return nil, NewRuntimeError(
 					fmt.Sprintf("function '%s' expected %d arguments, but got %d",
@@ -91,62 +151,60 @@ func createCallFunc(metadata *FunctionMetadata) func(*VM, []Object, map[string]O
 			}
 		}
 
-        in := make([]reflect.Value, 0, len(args)+1) // +1 for VM
-        if metadata.WantsVM {
-            in = append(in, reflect.ValueOf(vm))
-        }
-        
-        // Convert regular arguments
-        numRegularArgs := len(metadata.Args)
-        if metadata.IsVariadic {
-            numRegularArgs--
-        }
-        for i := 0; i < numRegularArgs; i++ {
-            converted, err := argConverters[i](args[i])
-            if err != nil {
-                return nil, NewRuntimeError(fmt.Sprintf("argument %d: %v", i+1, err), nil)
-            }
-            in = append(in, converted)
-        }
+		in := make([]reflect.Value, 0, len(args)+1)
+		if metadata.WantsVM {
+			in = append(in, reflect.ValueOf(vm))
+		}
 
-        // Convert variadic arguments
-        if metadata.IsVariadic {
-            variadicType := metadata.Args[len(metadata.Args)-1].Type.Elem()
-            for i := numRegularArgs; i < len(args); i++ {
-                converted, err := createTypeConverter(variadicType)(args[i])
-                if err != nil {
-                    return nil, NewRuntimeError(fmt.Sprintf("variadic argument %d: %v", i+1, err), nil)
-                }
-                in = append(in, converted)
-            }
-        }
+		numRegularArgs := len(metadata.Args)
+		if metadata.IsVariadic {
+			numRegularArgs--
+		}
+		for i := 0; i < numRegularArgs; i++ {
+			converted, err := argConverters[i](args[i])
+			if err != nil {
+				return nil, NewRuntimeError(fmt.Sprintf("argument %d: %v", i+1, err), nil)
+			}
+			in = append(in, converted)
+		}
 
-        results := metadata.FnValue.Call(in)
+		if metadata.IsVariadic {
+			variadicType := metadata.Args[len(metadata.Args)-1].Type.Elem()
+			for i := numRegularArgs; i < len(args); i++ {
+				converted, err := createTypeConverter(variadicType)(args[i])
+				if err != nil {
+					return nil, NewRuntimeError(fmt.Sprintf("variadic argument %d: %v", i+1, err), nil)
+				}
+				in = append(in, converted)
+			}
+		}
 
-        if metadata.ReturnsError {
-            if len(results) > 1 && !results[1].IsNil() {
-                if err, ok := results[1].Interface().(error); ok {
-                    return nil, NewRuntimeError(err.Error(), nil)
-                }
-            }
+		results := metadata.FnValue.Call(in)
+
+		if metadata.ReturnsError {
+			if len(results) > 1 && !results[1].IsNil() {
+				if err, ok := results[1].Interface().(error); ok {
+					return nil, NewRuntimeError(err.Error(), nil)
+				}
+			}
 			res, err := convertGoValueToVMObject(results[0])
 			if err != nil {
 				return nil, NewRuntimeError(err.Error(), nil)
 			}
 
-            return res, nil
-        }
+			return res, nil
+		}
 
-        if len(results) > 0 {
+		if len(results) > 0 {
 			res, err := convertGoValueToVMObject(results[0])
 			if err != nil {
 				return nil, NewRuntimeError(err.Error(), nil)
 			}
-            return res, nil
-        }
+			return res, nil
+		}
 
-        return NullObj{}, nil
-    }
+		return NullObj{}, nil
+	}
 }
 
 // Pre-compiled type converters for common types

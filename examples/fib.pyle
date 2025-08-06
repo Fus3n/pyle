@@ -5,8 +5,8 @@ fn fib(n) {
     return fib(n-1) + fib(n-2)
 }
 
-const start = perfCounter()
-const r = fib(35)
-const end = perfCounter()
-echo("Time taken: {} ns".format(end - start))
+const start = time.time() // time in seconds
+const r = fib(25)
+const end = time.time()
+echo("Time taken: {} s".format(end - start))
 echo("Result:", r)

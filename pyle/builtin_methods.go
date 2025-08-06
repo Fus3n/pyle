@@ -182,7 +182,6 @@ func methodArrayReverse(receiver *ArrayObj) (Object, error) {
 }
 func methodArrayFilter(vm *VM, receiver *ArrayObj, fn Object) (Object, error) {
 	if _, ok := fn.(NullObj); ok {
-		// No-op if fn is null
 		return receiver, nil
 	}
 
@@ -192,13 +191,11 @@ func methodArrayFilter(vm *VM, receiver *ArrayObj, fn Object) (Object, error) {
 
 	var filtered []Object
 	for _, elem := range receiver.Elements {
-		// Use the new internal helper to handle the call
 		result, err := vm.callPyleFuncFromNative(fn, []Object{elem})
 		if err != nil {
 			return nil, err
 		}
 
-		// Include the element if the function returned a truthy value
 		if result.IsTruthy() {
 			filtered = append(filtered, elem)
 		}
@@ -211,14 +208,37 @@ func methodArrayMap(vm *VM, receiver *ArrayObj, fn Object) (Object, error) {
 		// No-op if fn is null
 		return receiver, nil
 	}
+
 	// Ensure the passed object is a callable function
-	if !isFunc(fn) {
-		return nil, fmt.Errorf("expected a function for filter, got %s", fn.Type())
+	_, isPyleFunc := fn.(*FunctionObj)
+	nativeFunc, isNativeFunc := fn.(*NativeFuncObj)
+
+	if !isPyleFunc && !isNativeFunc {
+		return nil, fmt.Errorf("expected a function for map, got %s", fn.Type())
 	}
 
 	mapped := make([]Object, len(receiver.Elements))
 	for i, elem := range receiver.Elements {
-		result, err := vm.callPyleFuncFromNative(fn, []Object{elem})
+		var result Object
+		var err Error
+
+		// FAST PATH for native functions
+		if isNativeFunc && nativeFunc.DirectCall != nil {
+			if nativeFunc.Arity != 1 {
+				return nil, fmt.Errorf("map function must have arity of 1")
+			}
+			if directFn, ok := nativeFunc.DirectCall.(NativeFunc1); ok {
+				result, err = directFn(vm, elem)
+			} else {
+				// This should not happen if Arity is correct, but is a safe fallback.
+				// It now correctly uses the original 'fn' object.
+				result, err = vm.callPyleFuncFromNative(fn, []Object{elem})
+			}
+		} else {
+			// SLOW PATH for Pyle functions or reflection-based native functions
+			result, err = vm.callPyleFuncFromNative(fn, []Object{elem})
+		}
+
 		if err != nil {
 			return nil, err
 		}
@@ -274,6 +294,7 @@ func init() {
 			},
 			Returns: "A new string with replacements made.",
 		},
+		// .. more needed
 	}
 	BuiltinMethods["string"] = map[string]*NativeFuncObj{
 		"len":       mustCreate("len", methodStringLen, BuiltinMethodDocs["string"]["len"]),

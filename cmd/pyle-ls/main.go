@@ -3,9 +3,9 @@ package main
 import (
 	"fmt"
 	"log"
-	"sync" // Import the sync package for the mutex
+	"sync"
 
-	"pylevm/pyle" // Import your existing pyle language package
+	"pylevm/pyle"
 
 	"github.com/tliron/commonlog"
 	"github.com/tliron/glsp"
@@ -17,7 +17,6 @@ import (
 
 const (
 	lsName = "pyle-ls"
-	// Using protocol constants directly is safer
 	CIKFunction = protocol.CompletionItemKindFunction
 	CIKVariable = protocol.CompletionItemKindVariable
 	CIKKeyword  = protocol.CompletionItemKindKeyword
@@ -27,7 +26,6 @@ var (
 	version   string = "0.0.1"
 	handler   protocol.Handler
 
-	// Added mutex for concurrent access safety
 	documentsMutex sync.RWMutex
 	documents      = make(map[string]string)
 )

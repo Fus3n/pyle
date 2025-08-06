@@ -42,8 +42,14 @@ func nativeTuple(objs ...Object) (*TupleObj, error) {
 	return &TupleObj{Elements: elems}, nil
 }
 
-func nativePerfCounter() (float64, error) {
-	return float64(time.Now().UnixNano()), nil
+func nativeTimeNs() (int64, error) {
+	return time.Now().UnixNano(), nil
+}
+func nativeTimeMs() (int64, error) {
+	return time.Now().UnixMilli(), nil
+}
+func nativeTime() (int64, error) {
+	return time.Now().Unix(), nil
 }
 
 func nativeInt(obj Object) (NumberObj, error) {
@@ -171,7 +177,6 @@ func nativeAsciiCode(obj Object) (int, error) {
 var Builtins = map[string]any{
 	"echo":        builtinEcho,
 	"scan":        nativeScan,
-	"perfCounter": nativePerfCounter,
 	"tuple":       nativeTuple,
 	"type":        nativeType,
 	"int":         nativeInt,
