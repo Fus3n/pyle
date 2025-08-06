@@ -1,22 +1,50 @@
-fn fib(n) {
-    if n <= 1 {
-        return n
+fn getAsciiCodes(str: string) {
+    return str.split(" ").map(fn(x) {
+        const wordCodes = array(x).map(fn (y) {
+            return asciiCode(y)
+        })
+        return wordCodes
+    })
+}
+
+fn getAsciiCodesRaw(str: string) {
+    const words = str.split(" ")
+    const result = []
+    for word in words {
+        const wordCodes = []
+        for char in array(word) {
+            wordCodes.append(asciiCode(char))
+        }
+        result.append(wordCodes)
     }
-    return fib(n-1) + fib(n-2)
+    return result
 }
 
-const start = perfCounter()
-const r = fib(15)
-const end = perfCounter()
-echo("Time taken: {} ns".format(end - start))
-echo("Result:", r)
 
-let vals = ["Hello", "world"]
-const codes = []
+echo(getAsciiCodesRaw("Hello worlda"))
 
-for val in vals {
-    const charCodes = array(val).map(fn(x) { return asciiCode(x) }).toTuple()
-    codes.append(charCodes)
+
+fn benchmark() {
+    const testString = "The quick brown fox jumps over the lazy dog"
+    const iterations = 10000
+
+    const start1 = perfCounter()
+    for i in 0:iterations {
+        getAsciiCodes(testString)
+    }
+    const end1 = perfCounter()
+    const time1 = end1 - start1
+
+    const start2 = perfCounter()
+    for i in 0:iterations {
+        getAsciiCodesRaw(testString)
+    }
+    const end2 = perfCounter()
+    const time2 = end2 - start2
+
+    echo("Functional version time: {}s".format(time1))
+    echo("Imperative version time: {}s".format(time2))
+    echo("Difference: {}s ({:.2f}%)".format(time1 - time2, (time1/time2 - 1) * 100))
 }
 
-echo(codes)
+benchmark()

@@ -172,7 +172,6 @@ func (vm *VM) handleCall(numArgs int, currentTok *Token) (bool, Error) {
 		vm.frames = append(vm.frames, frame)
 		vm.ip = *c.StartIP
 		return true, nil 
-
 	case *NativeFuncObj:
 		result, err := c.Call(vm, args, nil)
 		if err != nil {
@@ -301,6 +300,8 @@ func (vm *VM) run(targetFrameDepth int) Result[Object] {
 		case OpDefLocal:
 			nameIdx := *operand.(*int)
 			name := vm.constants[nameIdx].(StringObj).Value
+
+			// name := vm.constants[nameIdx].(StringObj).Value
 			if len(vm.environments) == 0 {
 				return ResErr[Object](vm.runtimeError("No active local scope active for OP_DEF_LOCAL"))
 			}
@@ -319,25 +320,25 @@ func (vm *VM) run(targetFrameDepth int) Result[Object] {
 			}
 			currentScope[name] = &Variable{Name: name, Value: val, IsConst: false}
 		case OpGetLocal:
-			nameIdx := *operand.(*int)
-			name := vm.constants[nameIdx].(StringObj).Value
-			found := false
-			for i := len(vm.environments) - 1; i >= 0; i-- {
-				scope := vm.environments[i]
-				if variable, ok := scope[name]; ok {
-					vm.push(variable.Value)
-					found = true
-					break
-				}
-			}
-			if found {
-				break
+			varScoped := operand.(*VariableScoped)
+			
+			var targetDepth int
+			if len(vm.frames) > 0 {
+				frame := vm.frames[len(vm.frames)-1]
+				targetDepth = frame.EnvDepth + varScoped.Depth
+			} else {
+				targetDepth = varScoped.Depth
 			}
 
-			if variable, ok := vm.globals[name]; ok {
+			if targetDepth < 0 || targetDepth >= len(vm.environments) {
+				return ResErr[Object](vm.runtimeError("Internal error: invalid scope depth for '%s'", varScoped.Name))
+			}
+
+			scope := vm.environments[targetDepth]
+			if variable, ok := scope[varScoped.Name]; ok {
 				vm.push(variable.Value)
 			} else {
-				return ResErr[Object](vm.runtimeError("Undefined local variable '%s'", name))
+				return ResErr[Object](vm.runtimeError("Undefined local variable '%s'", varScoped.Name))
 			}
 		case OpDefConstLocal:
 			nameIdx := *operand.(*int)
@@ -361,40 +362,34 @@ func (vm *VM) run(targetFrameDepth int) Result[Object] {
 			}
 			currentScope[name] = &Variable{Name: name, Value: val, IsConst: true}
 		case OpSetLocal:
-			nameIdx := *operand.(*int)
-			name := vm.constants[nameIdx].(StringObj).Value
-			if vm.sp == 0 {
-				return ResErr[Object](vm.runtimeError("Stack underflow for OP_SET_LOCAL"))
-			}
+			varScoped := operand.(*VariableScoped)
 
 			valToAssign, err := vm.pop()
 			if err != nil {
 				return ResErr[Object](err)
 			}
 
-			assigned := false
-			for i := len(vm.environments) - 1; i >= 0; i-- {
-				scope := vm.environments[i]
-				if variable, ok := scope[name]; ok {
-					if variable.IsConst {
-						return ResErr[Object](vm.runtimeError("Cannot assign to const local variable '%s'", name))
-					}
-					variable.Value = valToAssign
-					assigned = true
-					break
-				}
-			}
-			if assigned {
-				break
+			var targetDepth int
+			if len(vm.frames) > 0 {
+				// if there are active call frames adjust frame depth
+				frame := vm.frames[len(vm.frames)-1]
+				targetDepth = frame.EnvDepth + varScoped.Depth
+			} else {
+				targetDepth = varScoped.Depth
 			}
 
-			if variable, ok := vm.globals[name]; ok {
+			if targetDepth < 0 || targetDepth >= len(vm.environments) {
+				return ResErr[Object](vm.runtimeError("Internal error: invalid scope depth for '%s'", varScoped.Name))
+			}
+
+			scope := vm.environments[targetDepth]
+			if variable, ok := scope[varScoped.Name]; ok {
 				if variable.IsConst {
-					return ResErr[Object](vm.runtimeError("Cannot assign to const global variable '%s'", name))
+					return ResErr[Object](vm.runtimeError("Cannot assign to const local variable '%s'", varScoped.Name))
 				}
 				variable.Value = valToAssign
 			} else {
-				return ResErr[Object](vm.runtimeError("Cannot assign to undefined variable '%s'", name))
+				return ResErr[Object](vm.runtimeError("Cannot assign to undefined local variable '%s'", varScoped.Name))
 			}
 
 		case OpAdd, OpSubtract, OpMultiply, OpDivide, OpModulo:

@@ -4,6 +4,25 @@ import (
 	"fmt"
 )
 
+type VariableScoped struct {
+	Name    string
+	IsConst bool
+	Depth   int
+}
+
+func NewVarScoped(name string, isConst bool, depth int) *VariableScoped {
+	return &VariableScoped{
+		Name:    name,
+		IsConst: isConst,
+		Depth:   depth,
+	}
+}
+
+type LoopScope struct {
+	startPatches []int
+	endPatches   []int
+	depth        int
+}
 
 type Compiler struct {
 	bytecodeChunk []Instruction
@@ -11,9 +30,10 @@ type Compiler struct {
 	scopeDepth    int
 	tokenMap      map[int]Token
 
-	loopLevel        int
-	loopStartPatches [][]int
-	loopEndPatches   [][]int
+	loopLevel      int
+	loopScopes     []*LoopScope
+	locals         []map[string]*VariableScoped
+	funcBaseDepths []int
 }
 
 type BytecodeChunk struct {
@@ -30,8 +50,9 @@ func NewCompiler() *Compiler {
 		scopeDepth:       0,
 		tokenMap:         map[int]Token{},
 		loopLevel:        0,
-		loopStartPatches: [][]int{},
-		loopEndPatches:   [][]int{},
+		loopScopes:       []*LoopScope{},
+		locals:           []map[string]*VariableScoped{},
+		funcBaseDepths:   []int{0},
 	}
 	return c
 }
@@ -43,8 +64,8 @@ func (c *Compiler) Compile(node ASTNode) (*BytecodeChunk, error) {
 	c.scopeDepth = 0
 	c.tokenMap = make(map[int]Token)
 	c.loopLevel = 0
-	c.loopStartPatches = [][]int{}
-	c.loopEndPatches = [][]int{}
+	c.loopScopes = []*LoopScope{}
+	c.funcBaseDepths = []int{0}
 
 	// c.emitSingleInstruct(OpEnterScope)
 	// c.scopeDepth = 1
@@ -81,11 +102,24 @@ func (c *Compiler) emitInstruct(opcode OpCode, operand any, token *Token) int {
 func (c *Compiler) enterScope() {
 	c.scopeDepth++
 	c.emitSingleInstruct(OpEnterScope)
+	c.locals = append(c.locals, map[string]*VariableScoped{})
 }
 
 func (c *Compiler) exitScope() {
 	c.scopeDepth--
 	c.emitSingleInstruct(OpExitScope)
+	c.locals = c.locals[:len(c.locals)-1]
+}
+
+
+func (c *Compiler) addLocal(varName string, isConst bool) *VariableScoped {
+	absDepth := len(c.locals) - 1
+	baseDepth := c.funcBaseDepths[len(c.funcBaseDepths)-1]
+	relDepth := absDepth - baseDepth
+
+	locVar := NewVarScoped(varName, isConst, relDepth)
+	c.locals[absDepth][varName] = locVar // Store in the map using absolute depth
+	return locVar
 }
 
 // helper function when both operand and token is nil
@@ -250,17 +284,31 @@ func (c *Compiler) visitBinaryOp(node *BinaryOp) error {
 	return nil
 }
 
+// calculate variable depth
+func (c *Compiler) findVariable(name string) (int, bool) {
+	for i := len(c.locals) - 1; i >= 0; i-- {
+		if _, ok := c.locals[i][name]; ok {
+			return i, true
+		}
+	}
+	return -1, false
+}
+
+
 func (c *Compiler) visitVariableExpr(node *VariableExpr) error {
 	varName := node.Name.Value
-	nameIdx := c.addConstant(StringObj{Value: varName})
-	
 	if c.scopeDepth > 0 {
 		if _, ok := Builtins[varName]; !ok {
-			c.emitInstruct(OpGetLocal, &nameIdx, node.Name)
-			return nil
+			if depth, ok := c.findVariable(varName); ok {
+				// get var
+				varV := c.locals[depth][varName]
+				c.emitInstruct(OpGetLocal, varV, node.Name)
+				return nil
+			}
 		} 
 	} 
 
+	nameIdx := c.addConstant(StringObj{Value: varName})
 	c.emitInstruct(OpGetGlobal, &nameIdx, node.Name)
 	return nil
 }
@@ -294,6 +342,7 @@ func (c *Compiler) visitVarDeclareStmt(node *VarDeclareStmt) error {
 	varNameStr := node.Names[0].Value
 	nameIdx := c.addConstant(StringObj{Value: varNameStr})
 
+
 	var opCode OpCode 
 
 	if c.scopeDepth > 0 {
@@ -302,6 +351,7 @@ func (c *Compiler) visitVarDeclareStmt(node *VarDeclareStmt) error {
 		} else {
 			opCode = OpDefLocal
 		}
+		c.addLocal(varNameStr, node.IsConst)
 		c.emitInstruct(opCode, &nameIdx, node.GetToken())
 	} else {
 		if node.IsConst {
@@ -322,8 +372,13 @@ func (c *Compiler) visitAssignStmt(node *AssignStmt) error {
 	varNameStr := node.Name.Value
 	nameIdx := c.addConstant(StringObj{Value: varNameStr})
 
-	if c.scopeDepth > 0 {
-		c.emitInstruct(OpSetLocal, &nameIdx, node.GetToken())
+	depth, ok := c.findVariable(varNameStr)
+	if ok {
+		scopedVar := c.locals[depth][varNameStr]
+		if scopedVar.IsConst {
+			return fmt.Errorf("Cannot assign to constant variable '%s' at %s", varNameStr, node.GetToken().GetFileLoc())
+		}
+		c.emitInstruct(OpSetLocal, scopedVar, node.GetToken())
 	} else {
 		c.emitInstruct(OpSetGlobal, &nameIdx, node.GetToken())
 	}
@@ -408,76 +463,72 @@ func (c *Compiler) visitBoolean(node *BooleanExpr) error {
 		c.emitInstruct(OpFalse, nil, node.GetToken())
 	}
 	return nil
-
 }
 
 func (c *Compiler) visitForInStmt(node *ForInStmt) error {
 	c.loopLevel++
-	c.loopStartPatches = append(c.loopStartPatches, []int{})
-	c.loopEndPatches = append(c.loopEndPatches, []int{})
+	c.enterScope() // Enter scope for loop variable FIRST
+	c.loopScopes = append(c.loopScopes, &LoopScope{depth: c.scopeDepth})
 
-	c.enterScope() // Create a new scope for the loop variable
-
-	// 1. Compile iterable and create iterator
+	// Compile iterable and create iterator
 	if err := c.compileNode(node.Iterable); err != nil {
 		return err
 	}
 	c.emitSingleInstruct(OpIterNew)
 
-	// First, we must DECLARE the loop variable in the new scope.
-	// We initialize it to null; it will be set on the first iteration.
+	// declare loop variable to null; it will be set on the first iteration.
 	nullConst := c.addConstant(NullObj{})
 	c.emitInstruct(OpConst, &nullConst, nil)
 	loopVarName := node.LoopVariable.Value
 	nameIdx := c.addConstant(StringObj{Value: loopVarName})
-	c.emitInstruct(OpDefLocal, &nameIdx, node.LoopVariable) // Defines the local var 'i'
+	
+	locVar := c.addLocal(loopVarName, false)
+	c.emitInstruct(OpDefLocal, &nameIdx, node.LoopVariable) 
 
-	// 2. Mark the top of the loop
+	// Mark the top of the loop
 	loopStartIP := len(c.bytecodeChunk)
 
-	// 3. Emit the forward jump placeholder
+	// Emit the forward jump placeholder
 	placeholder := -1
 	jumpForwardInstrIdx := c.emitInstruct(OpIterNextOrJump, &placeholder, node.GetToken())
 	addressAfterForwardJump := len(c.bytecodeChunk)
 
-	// 4. If the jump didn't happen, the new value is on top of the stack.
+	// If the jump didnt happen, the new value is on top of the stack.
 	//    Set the loop variable to this new value.
-	c.emitInstruct(OpSetLocal, &nameIdx, node.LoopVariable)
+	c.emitInstruct(OpSetLocal, locVar, node.LoopVariable)
 
-	// 5. Compile the loop body
-	if err := c.compileNode(&node.Body); err != nil {
+	// Compile the loop body
+	if err := c.visitBlock(&node.Body); err != nil {
 		return err
 	}
 
 	// Patch continue jumps to loopStartIP
-	for _, patchIdx := range c.loopStartPatches[len(c.loopStartPatches)-1] {
+	for _, patchIdx := range c.loopScopes[len(c.loopScopes)-1].startPatches {
 		offsetToLoopStart := loopStartIP - (patchIdx + 1)
 		c.bytecodeChunk[patchIdx].Operand = &offsetToLoopStart
 	}
 
-	// 6. Emit the backward jump to the top of the loop
+	// Emit the backward jump to the top of the loop
 	addressOfNextInstruction := len(c.bytecodeChunk) + 1
 	offsetBack := loopStartIP - addressOfNextInstruction
 	c.emitInstruct(OpJump, &offsetBack, nil)
 
-	// 7. Patch the forward jump (when iterator is exhausted)
-	// This jump should land on the OpPop instruction.
+	// Patch the forward jump (when iterator is exhausted)
 	breakHandlerIP := len(c.bytecodeChunk)
 	offsetForward := breakHandlerIP - addressAfterForwardJump
 	c.bytecodeChunk[jumpForwardInstrIdx].Operand = &offsetForward
 
 	// Patch break jumps to the same spot
-	for _, patchIdx := range c.loopEndPatches[len(c.loopEndPatches)-1] {
+	for _, patchIdx := range c.loopScopes[len(c.loopScopes)-1].endPatches {
 		offsetToBreakHandler := breakHandlerIP - (patchIdx + 1)
 		c.bytecodeChunk[patchIdx].Operand = &offsetToBreakHandler
 	}
 
-	// 8. Pop the exhausted/broken-from iterator and exit the variable's scope
+	// Pop the exhausted/broken-from iterator and exit the variable's scope
 	c.emitSingleInstruct(OpPop) // Pop iterator
 	c.exitScope()
 	c.loopLevel--
-	c.loopStartPatches = c.loopStartPatches[:len(c.loopStartPatches)-1]
-	c.loopEndPatches = c.loopEndPatches[:len(c.loopEndPatches)-1]
+	c.loopScopes = c.loopScopes[:len(c.loopScopes)-1]
 	return nil
 }
 
@@ -508,8 +559,7 @@ func (c *Compiler) visitIndexExpr(node *IndexExpr) error {
 
 func (c *Compiler) visitWhileStmt(node *WhileStmt) error {
 	c.loopLevel++
-	c.loopStartPatches = append(c.loopStartPatches, []int{})
-	c.loopEndPatches = append(c.loopEndPatches, []int{})
+	c.loopScopes = append(c.loopScopes, &LoopScope{depth: c.scopeDepth})
 
 	loopStartIP := len(c.bytecodeChunk)
 
@@ -529,7 +579,7 @@ func (c *Compiler) visitWhileStmt(node *WhileStmt) error {
 	}
 
 	// Patch continue jumps
-	for _, patchIdx := range c.loopStartPatches[len(c.loopStartPatches)-1] {
+	for _, patchIdx := range c.loopScopes[len(c.loopScopes)-1].startPatches {
 		offsetToLoopStart := loopStartIP - (patchIdx + 1)
 		c.bytecodeChunk[patchIdx].Operand = &offsetToLoopStart
 	}
@@ -545,13 +595,12 @@ func (c *Compiler) visitWhileStmt(node *WhileStmt) error {
 	c.bytecodeChunk[exitLoopJumpIdx].Operand = &offsetForward
 
 	// Patch break jumps
-	for _, patchIdx := range c.loopEndPatches[len(c.loopEndPatches)-1] {
+	for _, patchIdx := range c.loopScopes[len(c.loopScopes)-1].endPatches {
 		offsetToAfterLoop := afterLoopIP - (patchIdx + 1)
 		c.bytecodeChunk[patchIdx].Operand = &offsetToAfterLoop
 	}
 
-	c.loopStartPatches = c.loopStartPatches[:len(c.loopStartPatches)-1]
-	c.loopEndPatches = c.loopEndPatches[:len(c.loopEndPatches)-1]
+	c.loopScopes = c.loopScopes[:len(c.loopScopes)-1]
 	c.loopLevel--
 	return nil
 }
@@ -623,12 +672,15 @@ func (c *Compiler) visitFunctionDefStmt(node *FunctionDefStmt) error {
 	// as function body compilation is self-contained regarding scope changes it makes.
 	enclosingScopeDepth := c.scopeDepth
 	c.enterScope()
+	c.funcBaseDepths = append(c.funcBaseDepths, c.scopeDepth-1)
 
 	// loop over params in reverse and add to constant and def local
 	for i := len(node.Params) - 1; i >= 0; i-- {
 		param := node.Params[i]
 		paramName := param.Name.Value
 		nameIdx := c.addConstant(StringObj{Value: paramName})
+		
+		c.addLocal(paramName, false)
 		c.emitInstruct(OpDefLocal, &nameIdx, param.Name)
 	}
 
@@ -656,13 +708,16 @@ func (c *Compiler) visitFunctionDefStmt(node *FunctionDefStmt) error {
 	}
 
 	c.emitInstruct(OpExitScope, nil, node.GetToken())
+	c.locals = c.locals[:len(c.locals)-1] // This is just the second half of exitScope
 
 	implNull := c.addConstant(NullObj{})
 	c.emitInstruct(OpConst, &implNull, nil)
 	c.emitInstruct(OpReturn, nil, node.GetToken())
 
-	// Restore compiler's scope_depth to what it was before this function def.
+	// Restore compiler's state to what it was before this function def.
+	c.funcBaseDepths = c.funcBaseDepths[:len(c.funcBaseDepths)-1]
 	c.scopeDepth = enclosingScopeDepth
+	c.locals = c.locals[:c.scopeDepth]
 
 	// Patch the initial jump to skip over the function's body.
 	addressAfterBody := len(c.bytecodeChunk)
@@ -697,16 +752,17 @@ func (c *Compiler) visitFunctionExpr(node *FunctionExpr) error {
 	jmpOverBodyIdx := c.emitInstruct(OpJump, &placeholder, node.GetToken())
 	functionStartIp := len(c.bytecodeChunk)
 
-	// Store current scope depth to restore after compiling function body
-	// as function body compilation is self-contained regarding scope changes it makes.
 	enclosingScopeDepth := c.scopeDepth
-	c.enterScope()  // Entering function's own lexical scope context immediately
+	c.enterScope()
+	c.funcBaseDepths = append(c.funcBaseDepths, c.scopeDepth-1)
 
 	// loop over params in reverse and add to constant and def local
 	for i := len(node.Params) - 1; i >= 0; i-- {
 		param := node.Params[i]
 		paramName := param.Name.Value
 		nameIdx := c.addConstant(StringObj{Value: paramName})
+
+		c.addLocal(paramName, false)
 		c.emitInstruct(OpDefLocal, &nameIdx, param.Name)
 	}
 
@@ -716,12 +772,10 @@ func (c *Compiler) visitFunctionExpr(node *FunctionExpr) error {
 	if len(bodyStmts) > 0 {
 		if strExpr, ok := bodyStmts[0].(*StringExpr); ok {
 			doc = &DocstringObj{Description: strExpr.Value}
-			// Compile the docstring expression (it will be popped) and then remove it from the list
-			// so we don't compile it again.
 			if err := c.compileNode(strExpr); err != nil {
 				return err
 			}
-			c.emitSingleInstruct(OpPop)
+			c.emitSingleInstruct(OpPop) // pop doc
 			bodyStmts = bodyStmts[1:]
 		}
 	}
@@ -736,13 +790,16 @@ func (c *Compiler) visitFunctionExpr(node *FunctionExpr) error {
 	// Implicit return if no explicit return was encountered in the body.
 
 	c.emitInstruct(OpExitScope, nil, node.GetToken())
-
+	c.locals = c.locals[:len(c.locals)-1] // This is just the second half of exitScope
+	
 	implNull := c.addConstant(NullObj{})
 	c.emitInstruct(OpConst, &implNull, nil)
 	c.emitInstruct(OpReturn, nil, node.GetToken())
 
-	// Restore compiler's scope_depth to what it was before this function def.
+	// Restore compiler's state to what it was before this function def.
+	c.funcBaseDepths = c.funcBaseDepths[:len(c.funcBaseDepths)-1]
 	c.scopeDepth = enclosingScopeDepth
+	c.locals = c.locals[:c.scopeDepth]
 
 	// Patch the initial jump to skip over the function's body.
 	addressAfterBody := len(c.bytecodeChunk)
@@ -795,10 +852,15 @@ func (c *Compiler) visitBreakStmt(node *BreakStmt) error {
 		return fmt.Errorf("CompileError: 'break' outside loop at: %s", node.GetToken().GetFileLoc())
 	}
 
+	numScopesToPop := c.scopeDepth - c.loopScopes[c.loopLevel-1].depth
+	for range numScopesToPop {
+		c.emitSingleInstruct(OpExitScope)
+	}
+
 	placeholder := -1
 	jmpIdx := c.emitInstruct(OpJump, &placeholder, node.GetToken())
 
-	c.loopEndPatches[len(c.loopEndPatches)-1] = append(c.loopEndPatches[len(c.loopEndPatches)-1], jmpIdx)
+	c.loopScopes[c.loopLevel-1].endPatches = append(c.loopScopes[c.loopLevel-1].endPatches, jmpIdx)
 	return nil
 }
 
@@ -807,10 +869,16 @@ func (c *Compiler) visitContinueStmt(node *ContinueStmt) error {
 		return fmt.Errorf("CompileError: 'continue' outside loop at: %s", node.GetToken().GetFileLoc())
 	}
 
+	// Pop any scopes created inside the loop body before jumping.
+	numScopesToPop := c.scopeDepth - c.loopScopes[c.loopLevel-1].depth
+	for i := 0; i < numScopesToPop; i++ {
+		c.emitSingleInstruct(OpExitScope)
+	}
+
 	placeholder := -1
 	jmpIdx := c.emitInstruct(OpJump, &placeholder, node.GetToken())
 
-	c.loopStartPatches[len(c.loopStartPatches)-1] = append(c.loopStartPatches[len(c.loopStartPatches)-1], jmpIdx)
+	c.loopScopes[c.loopLevel-1].startPatches = append(c.loopScopes[c.loopLevel-1].startPatches, jmpIdx)
 	return nil
 }
 
