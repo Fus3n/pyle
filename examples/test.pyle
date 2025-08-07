@@ -28,7 +28,7 @@ fn benchmark() {
     const start1 = time.perfCounter()
     for i in 0:iterations {
         getAsciiCodes(testString)
-    }
+    } 
     const end1 = time.perfCounter()
     const time1 = end1 - start1
 

@@ -364,32 +364,95 @@ func (l *Lexer) parseNumber() Result[Token] {
 }
 
 func (l *Lexer) parseString() Result[Token] {
-	strs := []rune{}
-	startCol := l.col
-	startLine := l.line
-	startQuote := l.currChar
+    // Supports escape sequences: \n, \r, \t, \\, \", \\', \b, \f, \v, \0
+    runes := []rune{}
+    startCol := l.col
+    startLine := l.line
+    quote := l.currChar
+	
 
-	l.advance()
+    l.advance() // consume opening quote
 
-	for l.hasChar() && l.currChar != startQuote {
-		strs = append(strs, l.currChar)
-		l.advance()
-	}
+    for l.hasChar() {
+        if l.currChar == quote {
+            l.advance() // consume closing quote
+            loc := NewLoc(startLine, startCol, &l.col)
+            return ResOk(l.getToken(TokenString, string(runes), loc))
+        }
 
-	if !l.hasChar() || l.currChar != startQuote {
-		colEnd := l.col - 1
-		if len(strs) == 0 {
-			colEnd = l.col
-		}
-		return l.createError(
-			fmt.Sprintf("Unterminated string literal at line %d, column %d", startLine, startCol),
-			NewLoc(startLine, startCol, &colEnd),
-		)
-	}
+        if l.currChar == '\\' { // escape sequence
+            escLine := l.line
+            escCol := l.col
+            l.advance()
+            if !l.hasChar() {
+                colEnd := escCol
+                return l.createError(
+                    fmt.Sprintf("Unterminated escape sequence at line %d, column %d", escLine, escCol),
+                    NewLoc(escLine, escCol, &colEnd),
+                )
+            }
 
-	l.advance()
-	loc := NewLoc(startLine, startCol, &l.col)
-	return ResOk(l.getToken(TokenString, string(strs), loc))
+            switch l.currChar {
+            case 'n':
+                runes = append(runes, '\n')
+                l.advance()
+            case 'r':
+                runes = append(runes, '\r')
+                l.advance()
+            case 't':
+                runes = append(runes, '\t')
+                l.advance()
+            case 'b':
+                runes = append(runes, '\b')
+                l.advance()
+            case 'f':
+                runes = append(runes, '\f')
+                l.advance()
+            case 'v':
+                runes = append(runes, '\v')
+                l.advance()
+            case '0':
+                runes = append(runes, '\x00')
+                l.advance()
+            case '\\':
+                runes = append(runes, '\\')
+                l.advance()
+            case '"':
+                runes = append(runes, '"')
+                l.advance()
+            case '\'':
+                runes = append(runes, '\'')
+                l.advance()
+            default:
+                bad := l.currChar
+                colEnd := l.col
+                return l.createError(
+                    fmt.Sprintf("Unknown escape sequence \\%c at line %d, column %d", bad, escLine, escCol),
+                    NewLoc(escLine, escCol, &colEnd),
+                )
+            }
+            continue
+        }
+
+        if l.currChar == '\n' {
+            // Unescaped newline inside string is not allowed
+            colEnd := l.col
+            return l.createError(
+                fmt.Sprintf("Unterminated string literal at line %d, column %d", startLine, startCol),
+                NewLoc(startLine, startCol, &colEnd),
+            )
+        }
+
+        runes = append(runes, l.currChar)
+        l.advance()
+    }
+
+    // EOF reached without closing quote
+    colEnd := l.col
+    return l.createError(
+        fmt.Sprintf("Unterminated string literal at line %d, column %d", startLine, startCol),
+        NewLoc(startLine, startCol, &colEnd),
+    )
 }
 
 func (l *Lexer) parseIdent() Result[Token] {
