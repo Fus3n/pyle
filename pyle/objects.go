@@ -52,6 +52,12 @@ type DocstringObj struct {
 	Returns     string
 }
 
+// new docstring obj easy ways to create it
+func NewDocstring(description string, params []ParamDoc, returns string) *DocstringObj {
+	return &DocstringObj{description, params, returns}
+}
+
+
 func (d *DocstringObj) GetAttribute(name string) (Object, bool, Error) {
 	switch name {
 	case "description":
@@ -244,6 +250,41 @@ func (a *ArrayObj) Iter() (Iterator, Error) {
 	return &ArrayIteratorObj{Array: a, index: 0}, nil
 }
 
+type ModuleObj struct {
+	Name    string
+	Methods *MapObj
+	Doc     *DocstringObj
+}
+
+func NewModule(name string) *ModuleObj {
+	return &ModuleObj{
+		Name:    name,
+		Methods: NewMap(),
+		Doc:     nil,
+	}
+}
+func (m *ModuleObj) GetAttribute(name string) (Object, bool, Error) {
+	val, found, err := m.Methods.GetStr(name)
+	if err != nil {
+		return nil, false, NewRuntimeError(err.Error(), nil)
+	}
+	if found {
+		return val, true, nil
+	}
+	if name == "doc" && m.Doc != nil  {
+		return m.Doc, true, nil
+	}
+	return NullObj{}, true, nil
+}
+func (m *ModuleObj) String() string {
+	return fmt.Sprintf("<module '%s'>", m.Name)
+}
+func (m *ModuleObj) Type() string   { return "module" }
+func (m *ModuleObj) IsTruthy() bool { return true }
+func (m *ModuleObj) Iter() (Iterator, Error) {
+	return nil, NewRuntimeError("module object is not iterable", nil)
+}
+
 // --- Hash Map Implementation ---
 
 type MapPair struct {
@@ -280,6 +321,10 @@ func NewMap() *MapObj {
 	return &MapObj{
 		Pairs: make(map[uint32][]MapPair),
 	}
+}
+
+func (o *MapObj) GetStr(key string) (Object, bool, error) {
+	return o.Get(StringObj{Value: key})
 }
 
 func (o *MapObj) Get(key Object) (Object, bool, error) {

@@ -5,7 +5,6 @@ import (
 	"os"
 	"strconv"
 	"strings"
-	"time"
 )
 
 func builtinEcho(vm *VM, args ...Object) (Object, error) {
@@ -42,15 +41,6 @@ func nativeTuple(objs ...Object) (*TupleObj, error) {
 	return &TupleObj{Elements: elems}, nil
 }
 
-func nativeTimeNs() (int64, error) {
-	return time.Now().UnixNano(), nil
-}
-func nativeTimeMs() (int64, error) {
-	return time.Now().UnixMilli(), nil
-}
-func nativeTime() (int64, error) {
-	return time.Now().Unix(), nil
-}
 
 func nativeInt(obj Object) (NumberObj, error) {
 	switch v := obj.(type) {

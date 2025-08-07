@@ -46,6 +46,27 @@ func (vm *VM) AddGlobal(name string, value Object) Error {
 	return nil
 }
 
+func (vm *VM) RegisterModule(name string, funcs map[string]any, doc *DocstringObj) Error {
+	module := NewModule(name)
+	module.Doc = doc
+	for funcName, fn := range funcs {
+		var fnDoc *DocstringObj
+		docMap, ok := BuiltinMethodDocs[name]
+		if ok {
+			fnDoc = docMap[funcName]
+		}
+		nativeFunc, err := CreateNativeFunction(funcName, fn, fnDoc)
+		if err != nil {
+			return vm.runtimeError("error creating native function '%s' for module '%s': %v", funcName, name, err)
+		}
+		if err := module.Methods.Set(StringObj{Value: funcName}, nativeFunc); err != nil {
+			return vm.runtimeError("error adding function '%s' to module '%s': %v", funcName, name, err)
+		}
+	}
+	return vm.AddGlobal(name, module)
+}
+
+
 func (vm *VM) LoadBuiltins() error {
 	for name, fn := range Builtins {
 		doc := BuiltinDocs[name]
@@ -55,29 +76,12 @@ func (vm *VM) LoadBuiltins() error {
 		}
 	}
 
-	// temporary solution for grouped values/modules
-	timeFuncs := map[string]any{
-		"time":    nativeTime,
-		"timeNs":  nativeTimeNs,
-		"timeMs": nativeTimeMs,
+	for name, functions := range BuiltinModules {
+		if err := vm.RegisterModule(name, functions, BuiltinModuleDocs[name]); err != nil {
+			return err
+		}
 	}
 
-	mapObj := NewMap()
-	
-	for name, fn := range timeFuncs {
-		doc := BuiltinDocs[name]
-		nativeFunc, err := CreateNativeFunction(name, fn, doc)
-		if err != nil {
-			return err
-		}
-		keyVal := StringObj{Value: name}
-		err = mapObj.Set(keyVal, nativeFunc)
-		if err != nil {
-			return err
-		}
-	}
-	
-	vm.AddGlobal("time", mapObj)
 	return nil
 }
 
