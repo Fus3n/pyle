@@ -11,6 +11,7 @@ type CallFrame struct {
 	ReturnIP  int
 	StackSlot int
 	EnvDepth  int
+    Closure   *ClosureObj
 }
 
 const InitialStackCapacity = 256
@@ -180,7 +181,7 @@ func (vm *VM) handleCall(numArgs int, currentTok *Token) (bool, Error) {
 	callee := vm.stack[calleeIdx]
 	args := vm.stack[calleeIdx+1 : vm.sp]
 
-	switch c := callee.(type) {
+    switch c := callee.(type) {
 	case *BoundMethodObj:
 		if nativeMethod, ok := c.Method.(*NativeFuncObj); ok && nativeMethod.DirectCall != nil {
 			newArgs := make([]Object, len(args)+1)
@@ -216,8 +217,21 @@ func (vm *VM) handleCall(numArgs int, currentTok *Token) (bool, Error) {
 		copy(vm.stack[calleeIdx+2:], vm.stack[calleeIdx+1:calleeIdx+1+numArgs])
 		vm.stack[calleeIdx+1] = c.Receiver
 		return vm.handleCall(numArgs+1, currentTok)
-	case *FunctionObj:
-		if numArgs != c.Arity {
+    case *ClosureObj:
+        if numArgs != c.Function.Arity {
+            return false, vm.runtimeError("Function '%s' expected %d arguments, but got %d", c.Function.Name, c.Function.Arity, numArgs)
+        }
+        frame := &CallFrame{
+            ReturnIP:  vm.ip,
+            StackSlot: calleeIdx,
+            EnvDepth:  len(vm.environments),
+            Closure:   c,
+        }
+        vm.frames = append(vm.frames, frame)
+        vm.ip = *c.Function.StartIP
+        return true, nil
+    case *FunctionObj:
+        if numArgs != c.Arity {
 			return false, vm.runtimeError("Function '%s' expected %d arguments, but got %d", c.Name, c.Arity, numArgs)
 		}
 
@@ -273,7 +287,7 @@ func (vm *VM) handleCall(numArgs int, currentTok *Token) (bool, Error) {
 		return false, vm.runtimeError("Cannot call uncallable native function '%s'", c.Name)
 
 	default:
-		return false, vm.runtimeError("Cannot call non-function type '%s'", callee.Type())
+		return false, vm.runtimeError("Cannot call non-function type '%s' at %s", callee.Type(), currentTok.GetFileLoc())
 	}
 }
 
@@ -340,9 +354,27 @@ func (vm *VM) run(targetFrameDepth int) Result[Object] {
 			if err != nil {
 				return ResErr[Object](err)
 			}
-		case OpConst:
+        case OpConst:
 			val := vm.constants[*operand.(*int)]
-			vm.push(val)
+			if fn, ok := val.(*FunctionObj); ok {
+				if fn.CaptureDepth > 0 {
+					numToCapture := fn.CaptureDepth
+					if numToCapture > len(vm.environments) {
+						// This should not happen in correct code, but as a safeguard:
+						numToCapture = len(vm.environments)
+					}
+					captured := make([]map[string]*Variable, 0, numToCapture)
+					// Capture from inner-most (end of slice) to outer-most
+					for i := 0; i < numToCapture; i++ {
+						captured = append(captured, vm.environments[len(vm.environments)-1-i])
+					}
+					vm.push(&ClosureObj{Function: fn, Captured: captured})
+				} else {
+					vm.push(fn) // No environments to capture, push raw function
+				}
+			} else {
+				vm.push(val)
+			}
 		case OpEnterScope:
 			vm.environments = append(vm.environments, make(map[string]*Variable))
 		case OpExitScope:
@@ -410,22 +442,31 @@ func (vm *VM) run(targetFrameDepth int) Result[Object] {
 				return ResErr[Object](err)
 			}
 			currentScope[name] = &Variable{Name: name, Value: val, IsConst: false}
-		case OpGetLocal:
+        case OpGetLocal:
 			varScoped := operand.(*VariableScoped)
-			
-			var targetDepth int
+			var scope map[string]*Variable
+
 			if len(vm.frames) > 0 {
 				frame := vm.frames[len(vm.frames)-1]
-				targetDepth = frame.EnvDepth + varScoped.Depth
+				// Check if the variable is in the current function's environment stack
+				if frame.EnvDepth <= len(vm.environments)-1-varScoped.Depth {
+					scope = vm.environments[len(vm.environments)-1-varScoped.Depth]
+				} else if frame.Closure != nil {
+					// It's a captured variable (upvalue)
+					upvalueIndex := varScoped.Depth - (len(vm.environments) - frame.EnvDepth)
+					if upvalueIndex >= 0 && upvalueIndex < len(frame.Closure.Captured) {
+						scope = frame.Closure.Captured[upvalueIndex]
+					}
+				}
 			} else {
-				targetDepth = varScoped.Depth
+				// Global script scope
+				scope = vm.environments[len(vm.environments)-1-varScoped.Depth]
 			}
 
-			if targetDepth < 0 || targetDepth >= len(vm.environments) {
-				return ResErr[Object](vm.runtimeError("Internal error: invalid scope depth for '%s'", varScoped.Name))
+			if scope == nil {
+				return ResErr[Object](vm.runtimeError("Undefined local variable '%s'", varScoped.Name))
 			}
 
-			scope := vm.environments[targetDepth]
 			if variable, ok := scope[varScoped.Name]; ok {
 				vm.push(variable.Value)
 			} else {
@@ -452,28 +493,35 @@ func (vm *VM) run(targetFrameDepth int) Result[Object] {
 				return ResErr[Object](err)
 			}
 			currentScope[name] = &Variable{Name: name, Value: val, IsConst: true}
-		case OpSetLocal:
+        case OpSetLocal:
 			varScoped := operand.(*VariableScoped)
-
 			valToAssign, err := vm.pop()
 			if err != nil {
 				return ResErr[Object](err)
 			}
+			var scope map[string]*Variable
 
-			var targetDepth int
 			if len(vm.frames) > 0 {
-				// if there are active call frames adjust frame depth
 				frame := vm.frames[len(vm.frames)-1]
-				targetDepth = frame.EnvDepth + varScoped.Depth
+				// Check if the variable is in the current function's environment stack
+				if frame.EnvDepth <= len(vm.environments)-1-varScoped.Depth {
+					scope = vm.environments[len(vm.environments)-1-varScoped.Depth]
+				} else if frame.Closure != nil {
+					// It's a captured variable (upvalue)
+					upvalueIndex := varScoped.Depth - (len(vm.environments) - frame.EnvDepth)
+					if upvalueIndex >= 0 && upvalueIndex < len(frame.Closure.Captured) {
+						scope = frame.Closure.Captured[upvalueIndex]
+					}
+				}
 			} else {
-				targetDepth = varScoped.Depth
+				// Global script scope
+				scope = vm.environments[len(vm.environments)-1-varScoped.Depth]
 			}
 
-			if targetDepth < 0 || targetDepth >= len(vm.environments) {
-				return ResErr[Object](vm.runtimeError("Internal error: invalid scope depth for '%s'", varScoped.Name))
+			if scope == nil {
+				return ResErr[Object](vm.runtimeError("Undefined local variable '%s'", varScoped.Name))
 			}
 
-			scope := vm.environments[targetDepth]
 			if variable, ok := scope[varScoped.Name]; ok {
 				if variable.IsConst {
 					return ResErr[Object](vm.runtimeError("Cannot assign to const local variable '%s'", varScoped.Name))
@@ -892,24 +940,12 @@ func (vm *VM) coerceIndexToInt(idxObj Object) (int, bool, Error) {
 	}
 }
 
-func (vm *VM) binaryOp(op OpCode, currentTok *Token) Error {
-	if vm.sp < 2 {
-		return NewRuntimeError(fmt.Sprintf("Stack underflow for %s", op), currentTok)
-	}
-	right, err := vm.pop()
-	if err != nil {
-		return err
-	}
-	left, err := vm.pop()
-	if err != nil {
-		return err
-	}
-
+func (vm *VM) doBinaryOp(op OpCode, left, right Object, currentTok *Token) (Object, Error) {
 	switch l := left.(type) {
 	case NumberObj:
 		r, ok := right.(NumberObj)
 		if !ok {
-			return NewRuntimeError(fmt.Sprintf("unsupported operand type(s) for %s: 'number' and '%s'", op, right.Type()), currentTok)
+			return nil, NewRuntimeError(fmt.Sprintf("unsupported operand type(s) for %s: 'number' and '%s'", op, right.Type()), currentTok)
 		}
 
 		var result float64
@@ -927,13 +963,13 @@ func (vm *VM) binaryOp(op OpCode, currentTok *Token) Error {
 			isInt = l.IsInt && r.IsInt
 		case OpDivide:
 			if r.Value == 0 {
-				return NewRuntimeError("Division by zero", currentTok)
+				return nil, NewRuntimeError("Division by zero", currentTok)
 			}
 			result = l.Value / r.Value
 			isInt = false
 		case OpModulo:
 			if r.Value == 0 {
-				return NewRuntimeError("Modulo by zero", currentTok)
+				return nil, NewRuntimeError("Modulo by zero", currentTok)
 			}
 			if l.IsInt && r.IsInt {
 				result = float64(int64(l.Value) % int64(r.Value))
@@ -943,22 +979,43 @@ func (vm *VM) binaryOp(op OpCode, currentTok *Token) Error {
 				isInt = false
 			}
 		}
-		vm.push(NumberObj{Value: result, IsInt: isInt})
+		return NumberObj{Value: result, IsInt: isInt}, nil
 
 	case StringObj:
 		if op == OpAdd {
 			if r, ok := right.(StringObj); ok {
-				vm.push(StringObj{Value: l.Value + r.Value})
+				return StringObj{Value: l.Value + r.Value}, nil
 			} else {
-				return NewRuntimeError(fmt.Sprintf("unsupported operand type(s) for +: 'string' and '%s'", right.Type()), currentTok)
+				return nil, NewRuntimeError(fmt.Sprintf("unsupported operand type(s) for +: 'string' and '%s'", right.Type()), currentTok)
 			}
 		} else {
-			return NewRuntimeError(fmt.Sprintf("unsupported operand type(s) for %s: 'string'", op), currentTok)
+			return nil, NewRuntimeError(fmt.Sprintf("unsupported operand type(s) for %s: 'string'", op), currentTok)
 		}
 
 	default:
-		return NewRuntimeError(fmt.Sprintf("unsupported operand type(s) for %s: '%s' and '%s'", op, left.Type(), right.Type()), currentTok)
+		return nil, NewRuntimeError(fmt.Sprintf("unsupported operand type(s) for %s: '%s' and '%s'", op, left.Type(), right.Type()), currentTok)
 	}
+}
+
+func (vm *VM) binaryOp(op OpCode, currentTok *Token) Error {
+	if vm.sp < 2 {
+		return NewRuntimeError(fmt.Sprintf("Stack underflow for %s", op), currentTok)
+	}
+	right, err := vm.pop()
+	if err != nil {
+		return err
+	}
+	left, err := vm.pop()
+	if err != nil {
+		return err
+	}
+
+	result, err := vm.doBinaryOp(op, left, right, currentTok)
+	if err != nil {
+		return err
+	}
+
+	vm.push(result)
 
 	return nil
 }
@@ -1016,33 +1073,59 @@ func (vm *VM) binaryOpCompare(op OpCode, currentTok *Token) Error {
 }
 
 func (vm *VM) inplaceOp(op OpCode, operand any, currentTok *Token) Error {
-	nameIdx := *operand.(*int)
-	name := vm.constants[nameIdx].(StringObj).Value
-
 	var variable *Variable
-	found := false
-	for i := len(vm.environments) - 1; i >= 0; i-- {
-		scope := vm.environments[i]
-		if v, ok := scope[name]; ok {
-			variable = v
-			found = true
-			break
-		}
-	}
 
-	if !found {
+	switch opand := operand.(type) {
+	case *VariableScoped:
+		var scope map[string]*Variable
+
+		if len(vm.frames) > 0 {
+			frame := vm.frames[len(vm.frames)-1]
+			// Check if the variable is in the current function's environment stack
+			if frame.EnvDepth <= len(vm.environments)-1-opand.Depth {
+				scope = vm.environments[len(vm.environments)-1-opand.Depth]
+			} else if frame.Closure != nil {
+				// It's a captured variable (upvalue)
+				upvalueIndex := opand.Depth - (len(vm.environments) - frame.EnvDepth)
+				if upvalueIndex >= 0 && upvalueIndex < len(frame.Closure.Captured) {
+					scope = frame.Closure.Captured[upvalueIndex]
+				}
+			}
+		} else {
+			// Global script scope
+			scope = vm.environments[len(vm.environments)-1-opand.Depth]
+		}
+
+		if scope == nil {
+			return vm.runtimeError("Undefined local variable '%s'", opand.Name)
+		}
+
+		if v, ok := scope[opand.Name]; ok {
+			variable = v
+		} else {
+			return vm.runtimeError("Undefined local variable '%s'", opand.Name)
+		}
+	case *int:
+		nameIdx := *opand
+		name := vm.constants[nameIdx].(StringObj).Value
 		if v, ok := vm.globals[name]; ok {
 			variable = v
 		} else {
-			return NewRuntimeError(fmt.Sprintf("Undefined variable '%s'", name), currentTok)
+			return vm.runtimeError("Undefined variable '%s'", name)
 		}
+	default:
+		return vm.runtimeError("internal VM error: unsupported operand type for inplace op")
 	}
 
 	if variable.IsConst {
-		return NewRuntimeError(fmt.Sprintf("Cannot assign to constant variable '%s'", name), currentTok)
+		return vm.runtimeError("Cannot assign to constant variable '%s'", variable.Name)
 	}
 
-	vm.push(variable.Value)
+	right, err := vm.pop()
+	if err != nil {
+		return err
+	}
+	left := variable.Value
 
 	var binaryOpCode OpCode
 	switch op {
@@ -1057,14 +1140,10 @@ func (vm *VM) inplaceOp(op OpCode, operand any, currentTok *Token) Error {
 	case OpInplaceModulo:
 		binaryOpCode = OpModulo
 	default:
-		return NewRuntimeError(fmt.Sprintf("internal VM error: unhandled inplace operator %s", op), currentTok)
+		return vm.runtimeError("internal VM error: unhandled inplace operator %s", op)
 	}
 
-	if err := vm.binaryOp(binaryOpCode, currentTok); err != nil {
-		return err
-	}
-
-	result, err := vm.pop()
+	result, err := vm.doBinaryOp(binaryOpCode, left, right, currentTok)
 	if err != nil {
 		return err
 	}

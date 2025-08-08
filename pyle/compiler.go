@@ -33,7 +33,6 @@ type Compiler struct {
 	loopLevel      int
 	loopScopes     []*LoopScope
 	locals         []map[string]*VariableScoped
-	funcBaseDepths []int
 }
 
 type BytecodeChunk struct {
@@ -52,7 +51,6 @@ func NewCompiler() *Compiler {
 		loopLevel:        0,
 		loopScopes:       []*LoopScope{},
 		locals:           []map[string]*VariableScoped{},
-		funcBaseDepths:   []int{0},
 	}
 	return c
 }
@@ -65,7 +63,6 @@ func (c *Compiler) Compile(node ASTNode) (*BytecodeChunk, error) {
 	c.tokenMap = make(map[int]Token)
 	c.loopLevel = 0
 	c.loopScopes = []*LoopScope{}
-	c.funcBaseDepths = []int{0}
 
 	// c.emitSingleInstruct(OpEnterScope)
 	// c.scopeDepth = 1
@@ -114,10 +111,8 @@ func (c *Compiler) exitScope() {
 
 func (c *Compiler) addLocal(varName string, isConst bool) *VariableScoped {
 	absDepth := len(c.locals) - 1
-	baseDepth := c.funcBaseDepths[len(c.funcBaseDepths)-1]
-	relDepth := absDepth - baseDepth
-
-	locVar := NewVarScoped(varName, isConst, relDepth)
+    // New locals live in the current scope, so their relative depth is 0
+    locVar := NewVarScoped(varName, isConst, 0)
 	c.locals[absDepth][varName] = locVar // Store in the map using absolute depth
 	return locVar
 }
@@ -299,14 +294,15 @@ func (c *Compiler) visitVariableExpr(node *VariableExpr) error {
 	varName := node.Name.Value
 	if c.scopeDepth > 0 {
 		if _, ok := Builtins[varName]; !ok {
-			if depth, ok := c.findVariable(varName); ok {
-				// get var
-				varV := c.locals[depth][varName]
-				c.emitInstruct(OpGetLocal, varV, node.Name)
+			if absDepth, ok := c.findVariable(varName); ok {
+				relDepth := c.scopeDepth - 1 - absDepth
+				orig := c.locals[absDepth][varName]
+				adjusted := NewVarScoped(orig.Name, orig.IsConst, relDepth)
+				c.emitInstruct(OpGetLocal, adjusted, node.Name)
 				return nil
 			}
-		} 
-	} 
+		}
+	}
 
 	nameIdx := c.addConstant(StringObj{Value: varName})
 	c.emitInstruct(OpGetGlobal, &nameIdx, node.Name)
@@ -370,16 +366,17 @@ func (c *Compiler) visitAssignStmt(node *AssignStmt) error {
 		return err
 	}
 	varNameStr := node.Name.Value
-	nameIdx := c.addConstant(StringObj{Value: varNameStr})
 
-	depth, ok := c.findVariable(varNameStr)
-	if ok {
-		scopedVar := c.locals[depth][varNameStr]
-		if scopedVar.IsConst {
+	if absDepth, ok := c.findVariable(varNameStr); ok {
+		orig := c.locals[absDepth][varNameStr]
+		if orig.IsConst {
 			return fmt.Errorf("Cannot assign to constant variable '%s' at %s", varNameStr, node.GetToken().GetFileLoc())
 		}
-		c.emitInstruct(OpSetLocal, scopedVar, node.GetToken())
+		relDepth := c.scopeDepth - 1 - absDepth
+		adjusted := NewVarScoped(orig.Name, orig.IsConst, relDepth)
+		c.emitInstruct(OpSetLocal, adjusted, node.GetToken())
 	} else {
+		nameIdx := c.addConstant(StringObj{Value: varNameStr})
 		c.emitInstruct(OpSetGlobal, &nameIdx, node.GetToken())
 	}
 
@@ -611,7 +608,6 @@ func (c *Compiler) visitCompoundAssignStmt(node *CompoundAssignStmt) error {
 	}
 
 	varNameStr := node.Name.Value
-	nameIdx := c.addConstant(StringObj{Value: varNameStr})
 
 	var opCode OpCode
 	switch node.Op.Kind {
@@ -629,7 +625,18 @@ func (c *Compiler) visitCompoundAssignStmt(node *CompoundAssignStmt) error {
 		return fmt.Errorf("compiler error: unsupported compound assignment operator '%s'", node.Op.Value)
 	}
 
-	c.emitInstruct(opCode, &nameIdx, node.GetToken())
+	if absDepth, ok := c.findVariable(varNameStr); ok {
+		orig := c.locals[absDepth][varNameStr]
+		if orig.IsConst {
+			return fmt.Errorf("Cannot assign to constant variable '%s' at %s", varNameStr, node.GetToken().GetFileLoc())
+		}
+		relDepth := c.scopeDepth - 1 - absDepth
+		adjusted := NewVarScoped(orig.Name, orig.IsConst, relDepth)
+		c.emitInstruct(opCode, adjusted, node.GetToken())
+	} else {
+		nameIdx := c.addConstant(StringObj{Value: varNameStr})
+		c.emitInstruct(opCode, &nameIdx, node.GetToken())
+	}
 	return nil
 }
 
@@ -672,7 +679,6 @@ func (c *Compiler) visitFunctionDefStmt(node *FunctionDefStmt) error {
 	// as function body compilation is self-contained regarding scope changes it makes.
 	enclosingScopeDepth := c.scopeDepth
 	c.enterScope()
-	c.funcBaseDepths = append(c.funcBaseDepths, c.scopeDepth-1)
 
 	// loop over params in reverse and add to constant and def local
 	for i := len(node.Params) - 1; i >= 0; i-- {
@@ -715,7 +721,6 @@ func (c *Compiler) visitFunctionDefStmt(node *FunctionDefStmt) error {
 	c.emitInstruct(OpReturn, nil, node.GetToken())
 
 	// Restore compiler's state to what it was before this function def.
-	c.funcBaseDepths = c.funcBaseDepths[:len(c.funcBaseDepths)-1]
 	c.scopeDepth = enclosingScopeDepth
 	c.locals = c.locals[:c.scopeDepth]
 
@@ -727,10 +732,11 @@ func (c *Compiler) visitFunctionDefStmt(node *FunctionDefStmt) error {
 	// Create the Pyle Function object
 	pyleFnName := node.Name.Value
 	funcObj := FunctionObj{
-		Name:    pyleFnName,
-		Arity:   len(node.Params),
-		Doc:     doc,
-		StartIP: &functionStartIp,
+		Name:         pyleFnName,
+		Arity:        len(node.Params),
+		Doc:          doc,
+		StartIP:      &functionStartIp,
+		CaptureDepth: c.scopeDepth,
 	}
 
 	funcConstIdx := c.addConstant(&funcObj)
@@ -754,7 +760,6 @@ func (c *Compiler) visitFunctionExpr(node *FunctionExpr) error {
 
 	enclosingScopeDepth := c.scopeDepth
 	c.enterScope()
-	c.funcBaseDepths = append(c.funcBaseDepths, c.scopeDepth-1)
 
 	// loop over params in reverse and add to constant and def local
 	for i := len(node.Params) - 1; i >= 0; i-- {
@@ -797,7 +802,6 @@ func (c *Compiler) visitFunctionExpr(node *FunctionExpr) error {
 	c.emitInstruct(OpReturn, nil, node.GetToken())
 
 	// Restore compiler's state to what it was before this function def.
-	c.funcBaseDepths = c.funcBaseDepths[:len(c.funcBaseDepths)-1]
 	c.scopeDepth = enclosingScopeDepth
 	c.locals = c.locals[:c.scopeDepth]
 
@@ -807,10 +811,11 @@ func (c *Compiler) visitFunctionExpr(node *FunctionExpr) error {
 	c.bytecodeChunk[jmpOverBodyIdx].Operand = &offset
 
 	funcObj := FunctionObj{
-		Name:    "<lambda>",
-		Arity:   len(node.Params),
-		Doc:     doc,
-		StartIP: &functionStartIp,
+		Name:         "<lambda>",
+		Arity:        len(node.Params),
+		Doc:          doc,
+		StartIP:      &functionStartIp,
+		CaptureDepth: c.scopeDepth,
 	}
 
 	funcConstIdx := c.addConstant(&funcObj)

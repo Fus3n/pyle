@@ -693,10 +693,11 @@ func (f *NativeFuncObj) Compare(other Object) (int, error) {
 }
 
 type FunctionObj struct {
-	Name    string
-	Arity   int
-	Doc     *DocstringObj
-	StartIP *int
+	Name         string
+	Arity        int
+	Doc          *DocstringObj
+	StartIP      *int
+	CaptureDepth int
 }
 func (f *FunctionObj) GetAttribute(name string) (Object, bool, Error) {
 	if name == "doc" {
@@ -729,6 +730,20 @@ func (f *FunctionObj) Compare(other Object) (int, error) {
 	return 1, nil
 }
 
+
+// ClosureObj represents a function along with captured lexical environments.
+// Captured holds references to environment maps from inner-most to outer-most.
+type ClosureObj struct {
+    Function *FunctionObj
+    Captured []map[string]*Variable
+}
+
+func (c *ClosureObj) String() string { return fmt.Sprintf("<closure %s>", c.Function.Name) }
+func (c *ClosureObj) Type() string   { return "closure" }
+func (c *ClosureObj) IsTruthy() bool { return true }
+func (c *ClosureObj) Iter() (Iterator, Error) {
+    return nil, NewRuntimeError(fmt.Sprintf("object of type '%s' is not iterable", c.Type()), nil)
+}
 
 type BoundMethodObj struct {
 	Receiver Object

@@ -263,6 +263,13 @@ func methodArrayToTuple(receiver *ArrayObj) (Object, error) {
 }
 
 // --- Map Methods ---
+func methodMapLen(receiver *MapObj) (int, error) {
+	count := 0
+	for _, bucket := range receiver.Pairs {
+		count += len(bucket)
+	}
+	return count, nil
+}
 func methodMapKeys(receiver *MapObj) (Object, error) {
 	return NewMapIterator(receiver, MapIteratorModeKeys), nil
 }
@@ -341,9 +348,11 @@ func init() {
 
 	// --- Map Docs & Methods ---
 	BuiltinMethodDocs["map"] = map[string]*DocstringObj{
+		"len":  {Description: "len() -> int\n\nReturns the number of key-value pairs in the map."},
 		"keys": {Description: "keys() -> iterator\n\nReturns an iterator over the map's keys."},
 	}
 	BuiltinMethods["map"] = map[string]*NativeFuncObj{
+		"len":    mustCreate("len", methodMapLen, BuiltinMethodDocs["map"]["len"]),
 		"keys":   mustCreate("keys", methodMapKeys, BuiltinMethodDocs["map"]["keys"]),
 		"values": mustCreate("values", methodMapValues, nil),
 		"items":  mustCreate("items", methodMapItems, nil),

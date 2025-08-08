@@ -1,0 +1,33 @@
+// Testing closures and scope capturing
+
+fn memoize(f) {
+    const cache = {}
+    return fn(arg) {
+        if cache.has(arg) {
+            return cache[arg]
+        }
+        const result = f(arg)
+        cache[arg] = result
+        return result
+    }
+}
+
+fn slowFib(n: int) {
+    if n < 2 {
+        return n
+    }
+    return slowFib(n - 2) + slowFib(n - 1)
+}
+
+const fib = memoize(slowFib)
+
+echo("fib(35) =", fib(35))
+let start = time.perfCounter()
+let end = time.perfCounter()
+echo("First call duration: {:.4f}s".format(end - start))
+
+start = time.perfCounter()
+echo("fib(35) =", fib(35))
+end = time.perfCounter()
+echo("Second call duration (cached): {:.4f}s".format(end - start))
+
