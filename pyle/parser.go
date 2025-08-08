@@ -289,26 +289,38 @@ func (p *Parser) variableDeclaration() Result[Stmt] {
 		typeHint = typeRes.Value
 	}
 
-	var initializer Expr = nil
+    var initializers []Expr
 
-	if p.match(TokenAssign) {
-		exprRes := p.expression()
-		if exprRes.IsErr() {
-			return ResErr[Stmt](exprRes.Err)
-		}
-		initializer = exprRes.Value
-	}
+    if p.match(TokenAssign) {
+        // Parse one or more expressions separated by commas
+        exprRes := p.expression()
+        if exprRes.IsErr() {
+            return ResErr[Stmt](exprRes.Err)
+        }
+        initializers = append(initializers, exprRes.Value)
+        for p.match(TokenComma) {
+            // stop if we see a semicolon or newline-like end; otherwise expect another expression
+            if p.check(TokenSemiColon) || p.check(TokenRCurlyBrace) || p.check(TokenEOF) {
+                break
+            }
+            exprRes := p.expression()
+            if exprRes.IsErr() {
+                return ResErr[Stmt](exprRes.Err)
+            }
+            initializers = append(initializers, exprRes.Value)
+        }
+    }
 
 	// Optional semicolon.
 	p.match(TokenSemiColon)
 
-	return ResOk[Stmt](&VarDeclareStmt{
-		Token:       keywordTok,
-		Names:       varNames,
-		Initializer: initializer,
-		IsConst:     isConst,
-		Type:        typeHint,
-	})
+    return ResOk[Stmt](&VarDeclareStmt{
+        Token:        keywordTok,
+        Names:        varNames,
+        Initializers: initializers,
+        IsConst:      isConst,
+        Type:         typeHint,
+    })
 }
 
 func (p *Parser) variableAssignment() Result[Stmt] {

@@ -46,8 +46,10 @@ func Walk(node ASTNode, visitor Visitor) {
 		for _, stmt := range n.Statements {
 			Walk(stmt, visitor)
 		}
-	case *VarDeclareStmt:
-		Walk(n.Initializer, visitor)
+    case *VarDeclareStmt:
+        for _, init := range n.Initializers {
+            Walk(init, visitor)
+        }
 	case *AssignStmt:
 		Walk(n.Value, visitor)
 	case *CompoundAssignStmt:
@@ -131,10 +133,10 @@ func (s *Block) MarshalJSON() ([]byte, error) {
 
 type VarDeclareStmt struct {
 	Token       *Token
-	Names      []*Token
-	Type        Expr
-	Initializer Expr
-	IsConst     bool
+    Names       []*Token
+    Type        Expr
+    Initializers []Expr
+    IsConst     bool
 }
 
 func (a *VarDeclareStmt) TypeString() string { return "" }
@@ -144,8 +146,8 @@ func (s *VarDeclareStmt) String() string {
 	for i, name := range s.Names {
 		names[i] = name.Value
 	}
-	return fmt.Sprintf("VarDeclareStmt (\n  Names: %v\n  Initializer: %v\n  IsConst: %t\n)", 
-		names, s.Initializer, s.IsConst)
+    return fmt.Sprintf("VarDeclareStmt (\n  Names: %v\n  Initializers: %v\n  IsConst: %t\n)", 
+        names, s.Initializers, s.IsConst)
 }
 func (s *VarDeclareStmt) stmtNode()        {}
 func (s *VarDeclareStmt) MarshalJSON() ([]byte, error) {

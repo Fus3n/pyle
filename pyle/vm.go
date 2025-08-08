@@ -816,6 +816,27 @@ func (vm *VM) run(targetFrameDepth int) Result[Object] {
 				}
 			}
 			vm.push(obj)
+		case OpUnpack:
+			expected := *operand.(*int)
+			if vm.sp == 0 {
+				return ResErr[Object](NewRuntimeError("Stack underflow for OP_UNPACK", currentTok))
+			}
+			value, err := vm.pop()
+			if err != nil { return ResErr[Object](err) }
+			switch v := value.(type) {
+			case *TupleObj:
+				if len(v.Elements) != expected {
+					return ResErr[Object](NewRuntimeError(fmt.Sprintf("unpack mismatch: expected %d values, got %d", expected, len(v.Elements)), currentTok))
+				}
+				for i := len(v.Elements) - 1; i >= 0; i-- { vm.push(v.Elements[i]) }
+			case *ArrayObj:
+				if len(v.Elements) != expected {
+					return ResErr[Object](NewRuntimeError(fmt.Sprintf("unpack mismatch: expected %d values, got %d", expected, len(v.Elements)), currentTok))
+				}
+				for i := len(v.Elements) - 1; i >= 0; i-- { vm.push(v.Elements[i]) }
+			default:
+				return ResErr[Object](NewRuntimeError(fmt.Sprintf("object of type '%s' is not unpackable", value.Type()), currentTok))
+			}
 		case OpIndexGet:
 			if vm.sp < 2 {
 				return ResErr[Object](NewRuntimeError("Stack underflow for OP_INDEX_GET", currentTok))

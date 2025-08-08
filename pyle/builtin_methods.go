@@ -8,7 +8,7 @@ import (
 
 func isFunc(obj Object) bool {
 	switch obj.(type) {
-	case *FunctionObj, *NativeFuncObj, *BoundMethodObj:
+    case *FunctionObj, *ClosureObj, *NativeFuncObj, *BoundMethodObj:
 		return true
 	default:
 		return false
@@ -195,22 +195,53 @@ func methodArrayFilter(vm *VM, receiver *ArrayObj, fn Object) (Object, error) {
 		return receiver, nil
 	}
 
-	if !isFunc(fn) {
+    if !isFunc(fn) {
 		return nil, fmt.Errorf("expected a function for filter, got %s", fn.Type())
 	}
 
-	var filtered []Object
-	for _, elem := range receiver.Elements {
-		result, err := vm.callPyleFuncFromNative(fn, []Object{elem})
-		if err != nil {
-			return nil, err
-		}
+    if len(receiver.Elements) == 0 {
+        return &ArrayObj{Elements: []Object{}}, nil
+    }
 
-		if result.IsTruthy() {
-			filtered = append(filtered, elem)
-		}
-	}
-	return &ArrayObj{Elements: filtered}, nil
+    // Fast-path metadata for natives
+    nativeFunc, isNativeFunc := fn.(*NativeFuncObj)
+
+    filtered := make([]Object, 0, len(receiver.Elements))
+    for _, elem := range receiver.Elements {
+        var result Object
+        var err Error
+
+        if isNativeFunc && nativeFunc.DirectCall != nil {
+            // Native direct call fast path: arity must be 1
+            if nativeFunc.Arity != 1 {
+                return nil, fmt.Errorf("filter function must have arity of 1")
+            }
+            if directFn, ok := nativeFunc.DirectCall.(NativeFunc1); ok {
+                result, err = directFn(vm, elem)
+            } else {
+                result, err = vm.callPyleFuncFromNative(fn, []Object{elem})
+            }
+        } else if isNativeFunc && nativeFunc.ReflectCall != nil {
+            // Reflection native fast path
+            result, err = nativeFunc.ReflectCall(vm, []Object{elem})
+        } else {
+            // Closures, Pyle functions, bound methods
+            result, err = vm.callPyleFuncFromNative(fn, []Object{elem})
+        }
+        if err != nil {
+            return nil, err
+        }
+
+        // Boolean specialization
+        if b, ok := result.(BooleanObj); ok {
+            if b.Value {
+                filtered = append(filtered, elem)
+            }
+        } else if result.IsTruthy() {
+            filtered = append(filtered, elem)
+        }
+    }
+    return &ArrayObj{Elements: filtered}, nil
 }
 
 func methodArrayMap(vm *VM, receiver *ArrayObj, fn Object) (Object, error) {
@@ -219,35 +250,35 @@ func methodArrayMap(vm *VM, receiver *ArrayObj, fn Object) (Object, error) {
 		return receiver, nil
 	}
 
-	// Ensure the passed object is a callable function
-	_, isPyleFunc := fn.(*FunctionObj)
-	nativeFunc, isNativeFunc := fn.(*NativeFuncObj)
-
-	if !isPyleFunc && !isNativeFunc {
-		return nil, fmt.Errorf("expected a function for map, got %s", fn.Type())
-	}
+    // Ensure the passed object is a callable function/closure/native/bound method
+    nativeFunc, isNativeFunc := fn.(*NativeFuncObj)
+    if !isFunc(fn) {
+        return nil, fmt.Errorf("expected a function for map, got %s", fn.Type())
+    }
 
 	mapped := make([]Object, len(receiver.Elements))
 	for i, elem := range receiver.Elements {
 		var result Object
 		var err Error
 
-		// FAST PATH for native functions
-		if isNativeFunc && nativeFunc.DirectCall != nil {
+        // FAST PATH for native functions
+        if isNativeFunc && nativeFunc.DirectCall != nil {
 			if nativeFunc.Arity != 1 {
 				return nil, fmt.Errorf("map function must have arity of 1")
 			}
 			if directFn, ok := nativeFunc.DirectCall.(NativeFunc1); ok {
 				result, err = directFn(vm, elem)
 			} else {
-				// This should not happen if Arity is correct, but is a safe fallback.
-				// It now correctly uses the original 'fn' object.
-				result, err = vm.callPyleFuncFromNative(fn, []Object{elem})
+                // Fallback to generic call if direct type mismatch
+                result, err = vm.callPyleFuncFromNative(fn, []Object{elem})
 			}
-		} else {
-			// SLOW PATH for Pyle functions or reflection-based native functions
-			result, err = vm.callPyleFuncFromNative(fn, []Object{elem})
-		}
+        } else if isNativeFunc && nativeFunc.ReflectCall != nil {
+            // Reflection native fast path
+            result, err = nativeFunc.ReflectCall(vm, []Object{elem})
+        } else {
+            // SLOW PATH: closures, Pyle functions, bound methods
+            result, err = vm.callPyleFuncFromNative(fn, []Object{elem})
+        }
 
 		if err != nil {
 			return nil, err

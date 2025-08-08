@@ -326,39 +326,65 @@ func (c *Compiler) visitCallExpr(node *CallExpr) error {
 }
 
 func (c *Compiler) visitVarDeclareStmt(node *VarDeclareStmt) error {
-	if node.Initializer != nil {
-		if err := c.compileNode(node.Initializer); err != nil {
-			return err
-		}
-	} else {
-		nullConst := c.addConstant(NullObj{});
-		c.emitInstruct(OpConst, nullConst, node.GetToken())
-	}
+    numNames := len(node.Names)
+    numInits := len(node.Initializers)
 
-	varNameStr := node.Names[0].Value
-	nameIdx := c.addConstant(StringObj{Value: varNameStr})
+    // Validate counts when multiple explicit initializers provided
+    if numInits > 1 && numInits != numNames {
+        return fmt.Errorf("CompileError: number of values (%d) does not match number of variables (%d) at %s", numInits, numNames, node.GetToken().GetFileLoc())
+    }
 
+    // Case 1: multiple names, single initializer -> will unpack at runtime
+    if numNames > 1 && numInits == 1 {
+        if err := c.compileNode(node.Initializers[0]); err != nil {
+            return err
+        }
+        // Ask VM to unpack into 'numNames' values (pushes in reverse order)
+        c.emitInstruct(OpUnpack, &numNames, node.GetToken())
 
-	var opCode OpCode 
+        // Define variables left-to-right; each OpDef* pops one value (top -> first name)
+        for _, nameTok := range node.Names {
+            var opCode OpCode
+            nameIdx := c.addConstant(StringObj{Value: nameTok.Value})
+            if c.scopeDepth > 0 {
+                if node.IsConst { opCode = OpDefConstLocal } else { opCode = OpDefLocal }
+                c.addLocal(nameTok.Value, node.IsConst)
+                c.emitInstruct(opCode, &nameIdx, nameTok)
+            } else {
+                if node.IsConst { opCode = OpDefConstGlobal } else { opCode = OpDefGlobal }
+                c.emitInstruct(opCode, &nameIdx, nameTok)
+            }
+        }
+        return nil
+    }
 
-	if c.scopeDepth > 0 {
-		if node.IsConst {
-			opCode = OpDefConstLocal
-		} else {
-			opCode = OpDefLocal
-		}
-		c.addLocal(varNameStr, node.IsConst)
-		c.emitInstruct(opCode, &nameIdx, node.GetToken())
-	} else {
-		if node.IsConst {
-			opCode = OpDefConstGlobal
-		} else {
-			opCode = OpDefGlobal
-		}
-		c.emitInstruct(opCode, &nameIdx, node.GetToken())
-	}
+    // Case 2: one-to-one mapping: define each name with its own initializer (or null)
+    if numNames >= 1 && (numInits == 0 || numInits == numNames) {
+        for i, nameTok := range node.Names {
+            if numInits == 0 {
+                nullConst := c.addConstant(NullObj{})
+                c.emitInstruct(OpConst, &nullConst, nameTok)
+            } else {
+                if err := c.compileNode(node.Initializers[i]); err != nil {
+                    return err
+                }
+            }
+            var opCode OpCode
+            nameIdx := c.addConstant(StringObj{Value: nameTok.Value})
+            if c.scopeDepth > 0 {
+                if node.IsConst { opCode = OpDefConstLocal } else { opCode = OpDefLocal }
+                c.addLocal(nameTok.Value, node.IsConst)
+                c.emitInstruct(opCode, &nameIdx, nameTok)
+            } else {
+                if node.IsConst { opCode = OpDefConstGlobal } else { opCode = OpDefGlobal }
+                c.emitInstruct(opCode, &nameIdx, nameTok)
+            }
+        }
+        return nil
+    }
 
-	return nil
+    // Fallback (should not be reachable)
+    return fmt.Errorf("CompileError: invalid variable declaration at %s", node.GetToken().GetFileLoc())
 }
 
 func (c *Compiler) visitAssignStmt(node *AssignStmt) error {

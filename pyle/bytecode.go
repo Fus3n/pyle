@@ -49,7 +49,7 @@ const (
 	OpSetAttr
 	OpCall
 	OpBuildKwargs
-	OpReturn
+		OpReturn
 	OpHalt
 	OpInplaceAdd
 	OpInplaceSubtract
@@ -57,6 +57,7 @@ const (
 	OpInplaceDivide
 	OpInplaceModulo
 	OpExit
+		OpUnpack
 )
 
 func (o OpCode) String() string {
@@ -112,6 +113,7 @@ func (o OpCode) String() string {
 		OpInplaceDivide:   "OP_INPLACE_DIVIDE",
 		OpInplaceModulo:   "OP_INPLACE_MODULO",
 		OpExit:            "OP_EXIT",
+		OpUnpack:          "OP_UNPACK",
 	}
 	if name, ok := names[o]; ok {
 		return name
