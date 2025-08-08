@@ -33,6 +33,8 @@ const htmlTemplateStr = `
             --header-color: #d4d4d4;
             --block-bg: #2d2d30;
 			--pre-bg: #1a1a1a;
+            --muted: #9aa0a6;
+            --accent: #c678dd;
         }
         html {
             scroll-behavior: smooth;
@@ -64,6 +66,39 @@ const htmlTemplateStr = `
 			padding-bottom: 10px;
 			border-bottom: 1px solid var(--border-color);
 		}
+        .sidebar .search {
+            position: sticky;
+            top: 0;
+            padding-bottom: 12px;
+            background: var(--sidebar-bg);
+        }
+        .sidebar input[type="text"] {
+            width: 100%;
+            box-sizing: border-box;
+            background: #1f1f1f;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            color: var(--text-color);
+            padding: 8px 10px;
+            outline: none;
+        }
+        .sidebar .controls {
+            display: flex;
+            gap: 8px;
+            margin-top: 8px;
+        }
+        .sidebar .controls button {
+            flex: 1 0 auto;
+            background: #333;
+            color: var(--text-color);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            padding: 6px 8px;
+            cursor: pointer;
+        }
+        .sidebar .controls button:hover {
+            background: #3a3a3a;
+        }
         .sidebar h2 {
             margin-top: 20px;
             font-size: 1.1em;
@@ -87,6 +122,10 @@ const htmlTemplateStr = `
         .sidebar li a:hover {
             background-color: #3e3e42;
             color: var(--link-hover-color);
+        }
+        .sidebar li a.active {
+            background-color: #3a3f44;
+            color: #fff;
         }
         .content {
             margin-left: var(--sidebar-width);
@@ -113,6 +152,22 @@ const htmlTemplateStr = `
 			font-style: italic;
 			color: #a0a0a0;
 		}
+        .section-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+        }
+        .section-toggle {
+            background: #333;
+            color: var(--text-color);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            padding: 4px 8px;
+            cursor: pointer;
+            font-size: 0.85em;
+        }
+        .section.collapsed .section-body { display: none; }
         .function-block {
             background-color: var(--block-bg);
             border: 1px solid var(--border-color);
@@ -132,7 +187,12 @@ const htmlTemplateStr = `
 			border-bottom: 1px solid var(--border-color);
 			white-space: pre-wrap;
 			word-break: break-all;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            cursor: pointer;
         }
+        .fn-toggle-indicator { color: var(--muted); font-size: 0.9em; }
         .description {
             margin-top: 15px;
             white-space: pre-wrap;
@@ -145,10 +205,11 @@ const htmlTemplateStr = `
 		.doc-details {
 			padding-bottom: 15px;
 		}
+        .function-block.collapsed .doc-details { display: none; }
         .params-title, .returns-title {
             font-weight: bold;
             margin-top: 15px;
-            color: #c678dd;
+            color: var(--accent);
         }
         .param {
             margin-left: 20px;
@@ -166,11 +227,32 @@ const htmlTemplateStr = `
 			font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, Courier, monospace;
 			color: var(--type-color);
 		}
+        #backToTop {
+            position: fixed;
+            right: 24px;
+            bottom: 24px;
+            width: 44px;
+            height: 44px;
+            border-radius: 50%;
+            border: 1px solid var(--border-color);
+            background: #333;
+            color: var(--text-color);
+            cursor: pointer;
+            display: none;
+        }
+        #backToTop.show { display: inline-flex; align-items: center; justify-content: center; }
     </style>
 </head>
 <body>
     <nav class="sidebar">
 		<h1>{{.Title}}</h1>
+        <div class="search">
+            <input type="text" id="searchBox" placeholder="Search functions, methods, modules..." aria-label="Search">
+            <div class="controls">
+                <button id="expandAll" title="Expand all">Expand All</button>
+                <button id="collapseAll" title="Collapse all">Collapse All</button>
+            </div>
+        </div>
         {{range .Sections}}
 			{{if .Funcs}}
 				<h2><a href="#section-{{.AnchorID}}">{{.Title}}</a></h2>
@@ -187,17 +269,25 @@ const htmlTemplateStr = `
         <h1>{{.Title}} Documentation</h1>
 
         {{range .Sections}}
-		{{if .Funcs}}
-        <section id="section-{{.AnchorID}}">
-            <h2>{{.Title}}</h2>
+        {{if .Funcs}}
+        <section id="section-{{.AnchorID}}" class="section">
+            <div class="section-header">
+                <h2 style="margin: 0;">{{.Title}}</h2>
+                <button class="section-toggle" data-target="section-{{.AnchorID}}" aria-expanded="true">Collapse</button>
+            </div>
 			{{if .Description}}
 				<p class="section-description">{{.Description}}</p>
 			{{end}}
+            <div class="section-body">
+            {{ $section := . }}
             {{range .Funcs}}
-                <div id="{{.AnchorID}}" class="function-block">
-                    <h3 class="function-name">{{.Signature}}</h3>
+                <div id="{{.AnchorID}}" class="function-block" data-name="{{.Name}}" data-signature="{{.Signature}}" data-section="section-{{$section.AnchorID}}" {{if .Doc}}data-description="{{.Doc.Description}}"{{end}}>
+                    <h3 class="function-name" role="button" aria-controls="{{.AnchorID}}-content" aria-expanded="false">
+                        <span>{{.Signature}}</span>
+                        <span class="fn-toggle-indicator">▼</span>
+                    </h3>
                      {{if .Doc}}
-                        <div class="doc-details">
+                        <div id="{{.AnchorID}}-content" class="doc-details">
 							<div class="description">{{.Doc.Description}}</div>
 							{{if .Doc.Params}}
 								<div class="params-title">Parameters:</div>
@@ -215,10 +305,160 @@ const htmlTemplateStr = `
                     {{end}}
                 </div>
             {{end}}
+            </div>
         </section>
-		{{end}}
+        {{end}}
         {{end}}
     </main>
+    <button id="backToTop" title="Back to top" aria-label="Back to top">↑</button>
+    <script>
+    (function() {
+        const q = (s, r=document) => r.querySelector(s);
+        const qa = (s, r=document) => Array.from(r.querySelectorAll(s));
+
+        // Collapsible sections
+        qa('.section').forEach((section, idx) => {
+            const toggleBtn = q('.section-toggle', section);
+            const body = q('.section-body', section);
+            const collapsedInitially = idx > 0; // collapse all but first section
+            if (collapsedInitially) {
+                section.classList.add('collapsed');
+                toggleBtn.setAttribute('aria-expanded', 'false');
+                toggleBtn.textContent = 'Expand';
+            }
+            toggleBtn?.addEventListener('click', () => {
+                const isCollapsed = section.classList.toggle('collapsed');
+                toggleBtn.setAttribute('aria-expanded', String(!isCollapsed));
+                toggleBtn.textContent = isCollapsed ? 'Expand' : 'Collapse';
+            });
+        });
+
+        // Collapsible function blocks
+        qa('.function-block').forEach(block => {
+            const header = q('.function-name', block);
+            const details = q('.doc-details', block);
+            block.classList.add('collapsed');
+            header?.setAttribute('aria-expanded', 'false');
+            header?.addEventListener('click', () => {
+                const isCollapsed = block.classList.toggle('collapsed');
+                header.setAttribute('aria-expanded', String(!isCollapsed));
+                const indicator = q('.fn-toggle-indicator', header);
+                if (indicator) indicator.textContent = isCollapsed ? '▼' : '▲';
+            });
+        });
+
+        // Expand/Collapse All
+        q('#expandAll')?.addEventListener('click', () => {
+            qa('.section').forEach(s => s.classList.remove('collapsed'));
+            qa('.section .section-toggle').forEach(b => { b.textContent = 'Collapse'; b.setAttribute('aria-expanded','true');});
+            qa('.function-block').forEach(b => b.classList.remove('collapsed'));
+            qa('.function-name').forEach(h => h.setAttribute('aria-expanded','true'));
+            qa('.fn-toggle-indicator').forEach(i => i.textContent = '▲');
+        });
+        q('#collapseAll')?.addEventListener('click', () => {
+            qa('.section').forEach((s, idx) => { if (idx>0) s.classList.add('collapsed'); });
+            qa('.section .section-toggle').forEach((b, idx) => { b.textContent = (idx>0)?'Expand':'Collapse'; b.setAttribute('aria-expanded', (idx===0)?'true':'false');});
+            qa('.function-block').forEach(b => b.classList.add('collapsed'));
+            qa('.function-name').forEach(h => h.setAttribute('aria-expanded','false'));
+            qa('.fn-toggle-indicator').forEach(i => i.textContent = '▼');
+        });
+
+        // Search/filter
+        const searchBox = q('#searchBox');
+        const filter = () => {
+            const term = (searchBox?.value || '').toLowerCase().trim();
+            const hasTerm = term.length > 0;
+            const sectionHasVisible = new Map();
+
+            qa('.function-block').forEach(block => {
+                const name = (block.getAttribute('data-name')||'').toLowerCase();
+                const sig = (block.getAttribute('data-signature')||'').toLowerCase();
+                const desc = (block.getAttribute('data-description')||'').toLowerCase();
+                const visible = !hasTerm || name.includes(term) || sig.includes(term) || desc.includes(term);
+                block.style.display = visible ? '' : 'none';
+                const sectionId = block.getAttribute('data-section');
+                if (visible && sectionId) sectionHasVisible.set(sectionId, true);
+                if (visible && hasTerm) {
+                    // Expand matched blocks and their sections for visibility
+                    block.classList.remove('collapsed');
+                    const header = q('.function-name', block);
+                    header?.setAttribute('aria-expanded','true');
+                    const ind = q('.fn-toggle-indicator', header); if (ind) ind.textContent='▲';
+                }
+            });
+
+            qa('.section').forEach(section => {
+                const id = section.id;
+                const anyVisible = !!sectionHasVisible.get(id) || !hasTerm; // keep open when no term
+                const items = qa('.function-block', section).filter(el => el.style.display !== 'none');
+                section.style.display = (items.length > 0) ? '' : 'none';
+                // auto-expand sections when searching
+                if (hasTerm) section.classList.remove('collapsed');
+                const btn = q('.section-toggle', section);
+                if (btn) { btn.textContent = (section.classList.contains('collapsed') ? 'Expand' : 'Collapse'); btn.setAttribute('aria-expanded', String(!section.classList.contains('collapsed')));}            
+            });
+
+            // Sidebar filtering
+            qa('.sidebar ul').forEach(list => {
+                qa('li', list).forEach(li => {
+                    const link = q('a', li);
+                    const txt = (link?.textContent||'').toLowerCase();
+                    const show = !hasTerm || txt.includes(term);
+                    li.style.display = show ? '' : 'none';
+                });
+            });
+        };
+        searchBox?.addEventListener('input', () => {
+            // debounce lightly
+            window.clearTimeout(searchBox._t);
+            searchBox._t = window.setTimeout(filter, 50);
+        });
+
+        // Active section highlight
+        const sectionLinks = new Map(qa('.sidebar h2 a').map(a => [a.getAttribute('href').slice(1), a]));
+        const observer = new IntersectionObserver(entries => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    const id = entry.target.id;
+                    qa('.sidebar li a').forEach(a => a.classList.remove('active'));
+                    const secLink = sectionLinks.get(id);
+                    if (secLink) secLink.classList.add('active');
+                }
+            });
+        }, { rootMargin: '0px 0px -70% 0px', threshold: 0.1 });
+        qa('section.section').forEach(sec => observer.observe(sec));
+
+        // Ensure clicking sidebar function links expands target
+        qa('.sidebar li a').forEach(a => {
+            a.addEventListener('click', e => {
+                const id = a.getAttribute('href').slice(1);
+                const el = document.getElementById(id);
+                if (!el) return;
+                // Expand parent section
+                const section = el.closest('.section');
+                if (section) {
+                    section.classList.remove('collapsed');
+                    const btn = q('.section-toggle', section);
+                    if (btn) { btn.textContent = 'Collapse'; btn.setAttribute('aria-expanded','true');}
+                }
+                // Expand function block
+                el.classList.remove('collapsed');
+                const header = q('.function-name', el);
+                header?.setAttribute('aria-expanded','true');
+                const ind = q('.fn-toggle-indicator', header); if (ind) ind.textContent='▲';
+            });
+        });
+
+        // Back to top
+        const back = q('#backToTop');
+        const onScroll = () => {
+            if (window.scrollY > 400) back.classList.add('show'); else back.classList.remove('show');
+        };
+        window.addEventListener('scroll', onScroll, { passive: true });
+        back?.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smooth' }));
+
+    })();
+    </script>
 </body>
 </html>
 `
