@@ -1,0 +1,155 @@
+// Complex script for testing
+// Practical Data Analyzer Example
+// This script demonstrates file I/O, data processing, and analysis in Pyle
+
+echo("=== Data Analyzer Example ===\n")
+
+// Function to generate sample data
+fn generateSampleData() {
+    const data = []
+    data.append("Name,Age,Score,Department")
+    data.append("Alice,30,95,Engineering")
+    data.append("Bob,25,87,Marketing")
+    data.append("Charlie,35,92,Sales")
+    data.append("Diana,28,78,Engineering")
+    data.append("Eve,32,88,Marketing")
+    data.append("Frank,29,91,Sales")
+    data.append("Grace,27,85,Engineering")
+    data.append("Henry,31,89,Marketing")
+    data.append("Ivy,26,93,Sales")
+    data.append("Jack,33,86,Engineering")
+    
+    const content = data.join("\n")
+    os.writeFile("employees.csv", content)
+    echo("Generated sample data in employees.csv")
+    return "employees.csv"
+}
+
+// Function to read and parse CSV data
+fn readCSV(filename) {
+    const content = os.readFile(filename)
+    const lines = content.split("\n")
+    const headers = lines[0].split(",")
+    
+    const records = []
+    let i = 1
+    while i < lines.len() {
+        if lines[i].len() > 0 {
+            const values = lines[i].split(",")
+            const record = {}
+            
+            let j = 0
+            while j < headers.len() and j < values.len() {
+                // Try to convert to number if possible
+                let value = values[j]
+                if value.contains(".") {
+                    // Try float conversion
+                    record[headers[j]] = float(value)
+                } else {
+                    record[headers[j]] = value
+                }
+                j = j + 1
+            }
+            
+            records.append(record)
+        }
+        i = i + 1
+    }
+    
+    return records
+}
+
+// Function to calculate average of a field
+fn calculateAverage(records, field) {
+    let sum = 0
+    let count = 0
+    
+    for record in records {
+        if record.has(field) {
+            sum = sum + int(record[field])
+            count = count + 1
+        }
+    }
+    
+    if count > 0 {
+        return sum / count
+    }
+    return 0
+}
+
+// Function to group records by a field
+fn groupBy(records, field) {
+    const groups = {} 
+
+    for record in records {
+        if record.has(field) {
+            const key = record[field]
+            if not groups.has(key) {
+                groups[key] = []
+            }
+            groups[key].append(record)
+        }
+    }
+    
+    return groups
+}
+
+// Function to find records with maximum value in a field
+fn findMax(records, field) {
+    if records.len() == 0 {
+        return null
+    }
+    
+    let maxRecord = records[0]
+    let maxValue = records[0][field]
+    
+    for record in records {
+        if record.has(field) and record[field] > maxValue {
+            maxValue = record[field]
+            maxRecord = record
+        }
+    }
+    
+    return maxRecord
+}
+
+// Main execution
+echo("--- Generating Sample Data ---")
+const filename = generateSampleData()
+
+echo("\n--- Reading and Analyzing Data ---")
+const employees = readCSV(filename)
+
+echo("Total employees: {}".format(employees.len()))
+
+// Calculate average age and score
+const avgAge = calculateAverage(employees, "Age")
+const avgScore = calculateAverage(employees, "Score")
+
+echo("Average age: {:.1f}".format(avgAge))
+echo("Average score: {:.1f}".format(avgScore))
+
+// Group by department
+echo("\n--- Department Analysis ---")
+const byDepartment = groupBy(employees, "Department")
+
+for item in byDepartment.items() {
+    const dept = item[0]
+    const deptEmployees = item[1]
+    const deptAvgScore = calculateAverage(deptEmployees, "Score")
+    echo("{}: {} employees, average score {:.1f}".format(dept, deptEmployees.len(), deptAvgScore))
+}
+
+// Find top performer
+echo("\n--- Top Performer ---")
+const topPerformer = findMax(employees, "Score")
+if topPerformer != null {
+    echo("Top performer: {} with score {} in {} department".format(
+        topPerformer["Name"], topPerformer["Score"], topPerformer["Department"]))
+}
+
+// Clean up
+os.remove(filename)
+echo("\nCleaned up sample data file")
+
+echo("\n=== Data Analyzer Complete ===")

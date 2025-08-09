@@ -7,44 +7,66 @@ fn getAsciiCodes(str: string) {
     })
 }
 
-fn getAsciiCodesRaw(str: string) {
-    const words = str.split(" ")
-    const result = []
-    for word in words {
-        const wordCodes = []
-        for char in array(word) {
-            wordCodes.append(asciiCode(char))
-        }
-        result.append(wordCodes)
-    }
-    return result
+fn testOs() {
+    const testFile = "testfile.txt"
+    const testDir = "testdir"
+    
+    // Test write/read
+    os.writeFile(testFile, "hello")
+    const content = os.readFile(testFile)
+    echo("Read content:", content)
+    
+    // Test append
+    os.appendFile(testFile, " world")
+    echo("Appended content:", os.readFile(testFile))
+    
+    // Test exists
+    echo("Exists:", os.exists(testFile))
+    
+    // Test mkdir
+    os.mkdir(testDir)
+    echo("Dir exists:", os.exists(testDir))
+    
+    // Test listdir
+    os.writeFile(testDir + "/file1.txt", "1")
+    os.writeFile(testDir + "/file2.txt", "2")
+    echo("Listdir:", os.listdir(testDir))
+    
+    // Test stat
+    const info = os.stat(testDir + "/file1.txt")
+    echo("Stat:", info)
+    echo("Size:", info.size)
+    echo("IsDir:", info.isDir)
+    
+    // Cleanup
+    os.remove(testFile)
+    os.remove(testDir + "/file1.txt")
+    os.remove(testDir + "/file2.txt")
+    os.remove(testDir)
 }
 
-
-fn benchmark() {
-    const testString = "The quick brown fox jumps over the lazy dog"
-    const iterations = 10000
-
-    const start1 = time.perfCounter()
-    for i in 0:iterations {
-        getAsciiCodes(testString)
-    } 
-    const end1 = time.perfCounter()
-    const time1 = end1 - start1
-
-    const start2 = time.perfCounter()
-    for i in 0:iterations {
-        getAsciiCodesRaw(testString)
+fn iter(items) {
+    const m = {}
+    for item in items {
+        echo(item)
     }
-    const end2 = time.perfCounter()
-    const time2 = end2 - start2
+}
+// testOs()
+const sa = [1, 2, 4, 5]
+iter(sa)
 
-    const diff_s = time1 - time2
-    const perc_diff = (time1 / time2 - 1) * 100
-
-    echo("Functional version time: {:.3f}s".format(time1))
-    echo("Imperative version time: {:.3f}s".format(time2))
-    echo("Difference: {:.3f}s ({:.2f}%)".format(diff_s, perc_diff))
+for i in [1, 2, 3, 4] { echo(i) } // works
+const vals = [1, 2, 4, 5]
+for i in vals {
+    echo(i) // works
 }
 
-benchmark()
+fn test(m) {
+    const a = {}
+    for i in m.items() {
+        echo(i[0], i[1])
+    }
+}
+
+const im = {name: "Asif", age: 25}
+test(im)

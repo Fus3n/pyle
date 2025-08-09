@@ -292,6 +292,16 @@ func methodArrayToTuple(receiver *ArrayObj) (Object, error) {
 	copy(elements, receiver.Elements)
 	return &TupleObj{Elements: elements}, nil
 }
+func methodArrayJoin(receiver *ArrayObj, sep string) (string, error) {
+	var sb strings.Builder
+	for i, elem := range receiver.Elements {
+		if i > 0 {
+			sb.WriteString(sep)
+		}
+		sb.WriteString(elem.String())
+	}
+	return sb.String(), nil
+}
 
 // --- Map Methods ---
 func methodMapLen(receiver *MapObj) (int, error) {
@@ -366,6 +376,13 @@ func init() {
 	BuiltinMethodDocs["array"] = map[string]*DocstringObj{
 		"len":    {Description: "len() -> int\n\nReturns the number of elements in the array."},
 		"append": {Description: "append(value)\n\nAppends a value to the end of the array in-place."},
+		"join":   {
+			Description: "join(separator) -> string\n\nJoins the elements of the array into a string using the specified separator.",
+			Params: []ParamDoc{
+				{"separator", "The string to use as a separator between elements."},
+			},
+			Returns: "A new string with the joined elements.",
+		},
 	}
 	BuiltinMethods["array"] = map[string]*NativeFuncObj{
 		"len":     mustCreate("len", methodArrayLen, BuiltinMethodDocs["array"]["len"]),
@@ -375,6 +392,7 @@ func init() {
 		"filter":  mustCreate("filter", methodArrayFilter, nil),
 		"map":     mustCreate("map", methodArrayMap, nil),
 		"toTuple": mustCreate("toTuple", methodArrayToTuple, nil),
+		"join":    mustCreate("join", methodArrayJoin, BuiltinMethodDocs["array"]["join"]),
 	}
 
 	// --- Map Docs & Methods ---

@@ -226,7 +226,9 @@ func (c *Compiler) visitBlock(node *Block) error {
 		}
 
 		if _, ok := stmt.(Expr); ok {
-			c.emitSingleInstruct(OpPop)
+			if _, isVarDecl := stmt.(*VarDeclareStmt); !isVarDecl {
+				c.emitSingleInstruct(OpPop)
+			}
 		}
 	}
 

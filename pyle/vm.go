@@ -602,7 +602,6 @@ func (vm *VM) run(targetFrameDepth int) Result[Object] {
 					continue
 				}
 			}
-
 			return ResErr[Object](NewRuntimeError(fmt.Sprintf("type '%s' has no attribute '%s'", obj.Type(), name), currentTok))
 		case OpSetAttr:
 			nameIdx := *operand.(*int)
@@ -625,7 +624,6 @@ func (vm *VM) run(targetFrameDepth int) Result[Object] {
 				if err := pyleMap.Set(attrNameObj, value); err != nil {
 					return ResErr[Object](NewRuntimeError(err.Error(), currentTok))
 				}
-				vm.push(value)
 			} else {
 				return ResErr[Object](NewRuntimeError(fmt.Sprintf("Cannot set property on non-object type '%s'", obj.Type()), currentTok))
 			}
@@ -923,12 +921,10 @@ func (vm *VM) run(targetFrameDepth int) Result[Object] {
 					return ResErr[Object](NewRuntimeError(fmt.Sprintf("Array index out of bounds: %d", index), currentTok))
 				}
 				coll.Elements[index] = value
-				vm.push(value)
 			case *MapObj:
 				if err := coll.Set(idx, value); err != nil {
 					return ResErr[Object](NewRuntimeError(err.Error(), currentTok))
 				}
-				vm.push(value)
 			default:
 				return ResErr[Object](NewRuntimeError(fmt.Sprintf("Object of type '%s' does not support index assignment", collection.Type()), currentTok))
 			}

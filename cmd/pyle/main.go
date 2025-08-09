@@ -6,14 +6,6 @@ import (
 )
 
 func main() {
-	// disassmbled := pyle.DisassembleBytecode(bytecodeChunk)
-	// fmt.Println(disassmbled)
-	// // save
-	// err = os.WriteFile("test.pyled", []byte(disassmbled), 0644)
-	// if err != nil {
-	// 	panic(err)
-	// }
-
 	vm := pyle.NewVM()
 	e := vm.LoadBuiltins()
 	if e != nil {
@@ -23,8 +15,8 @@ func main() {
 	if len(os.Args) > 1 {
 		srcName = os.Args[1]
 	}
-	err := pyle.RunScript(vm, srcName)
-	if err != nil {
-		panic(err)
+	vmerr := pyle.RunScript(vm, srcName)
+	if vmerr != nil {
+		panic(vmerr)
 	}
 }

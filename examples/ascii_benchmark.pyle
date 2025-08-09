@@ -1,0 +1,50 @@
+fn getAsciiCodes(str: string) {
+    return str.split(" ").map(fn(x) {
+        const wordCodes = array(x).map(fn (y) {
+            return asciiCode(y)
+        })
+        return wordCodes
+    })
+}
+
+fn getAsciiCodesRaw(str: string) {
+    const words = str.split(" ")
+    const result = []
+    for word in words {
+        const wordCodes = []
+        for char in array(word) {
+            wordCodes.append(asciiCode(char))
+        }
+        result.append(wordCodes)
+    }
+    return result
+}
+
+
+fn benchmark() {
+    const testString = "The quick brown fox jumps over the lazy dog"
+    const iterations = 10000
+
+    const start1 = time.perfCounter()
+    for i in 0:iterations {
+        getAsciiCodes(testString)
+    } 
+    const end1 = time.perfCounter()
+    const time1 = end1 - start1
+
+    const start2 = time.perfCounter()
+    for i in 0:iterations {
+        getAsciiCodesRaw(testString)
+    }
+    const end2 = time.perfCounter()
+    const time2 = end2 - start2
+
+    const diff_s = time1 - time2
+    const perc_diff = (time1 / time2 - 1) * 100
+
+    echo("Functional version time: {:.3f}s".format(time1))
+    echo("Imperative version time: {:.3f}s".format(time2))
+    echo("Difference: {:.3f}s ({:.2f}%)".format(diff_s, perc_diff))
+}
+
+benchmark()
