@@ -196,24 +196,28 @@ func textDocumentCompletion(context *glsp.Context, params *protocol.CompletionPa
 				return
 			}
 			if isPositionInNode(params.Position, currentScope) {
-				if !seen[decl.Names[0].Value] {
-					log.Printf("  -> Accepted: In scope '%s'", decl.Names[0].Value)
-					kindVar := CIKVariable
-					// detailVar := "variable"
-					specifier := "let"
-					if decl.IsConst {
-						specifier = "const"
+				for i, name := range decl.Names {
+					if !seen[name.Value] {
+						log.Printf("  -> Accepted: In scope '%s'", name.Value)
+						kindVar := CIKVariable
+						specifier := "let"
+						if decl.IsConst {
+							specifier = "const"
+						}
+						typeStr := ""
+						if i < len(decl.Initializers) && decl.Initializers[i] != nil {
+							typeStr = decl.Initializers[i].TypeString()
+						}
+						items = append(items, protocol.CompletionItem{
+							Label:  name.Value,
+							Kind:   &kindVar,
+							Documentation: protocol.MarkupContent{
+								Kind: protocol.MarkupKindMarkdown,
+								Value: fmt.Sprintf("```pyle\n%s %s: %s\n```", specifier, name.Value, typeStr),
+							},
+						})
+						seen[name.Value] = true
 					}
-					items = append(items, protocol.CompletionItem{
-						Label:  decl.Names[0].Value,
-						Kind:   &kindVar,
-						// Detail: &detailVar,
-						Documentation: protocol.MarkupContent{
-							Kind: protocol.MarkupKindMarkdown,
-							Value: fmt.Sprintf("```pyle\n%s %s: %s\n```",  specifier, decl.Names[0].Value, decl.Initializer.TypeString()),
-						},
-					})
-					seen[decl.Names[0].Value] = true
 				}
 			}
 		}))

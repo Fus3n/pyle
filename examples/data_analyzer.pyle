@@ -40,10 +40,8 @@ fn readCSV(filename) {
             
             let j = 0
             while j < headers.len() and j < values.len() {
-                // Try to convert to number if possible
                 let value = values[j]
                 if value.contains(".") {
-                    // Try float conversion
                     record[headers[j]] = float(value)
                 } else {
                     record[headers[j]] = value
