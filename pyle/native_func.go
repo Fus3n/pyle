@@ -45,6 +45,39 @@ func createDirectCall(fn any) (any, int, bool) {
 			return res, nil
 		}), 0, true
 
+	case func() (int64, error):
+		return NativeFunc0(func(vm *VM) (Object, Error) {
+			res, err := f()
+			if err != nil {
+				return nil, NewRuntimeError(err.Error(), nil)
+			}
+			return CreateInt(res), nil
+		}), 0, true
+	case func() (int64):
+		return NativeFunc0(func(vm *VM) (Object, Error) {
+			res := f()
+			return CreateInt(res), nil
+		}), 0, true
+		
+	case func() (float64, error):
+		return NativeFunc0(func(vm *VM) (Object, Error) {
+			res, err := f()
+			if err != nil {
+				return nil, NewRuntimeError(err.Error(), nil)
+			}
+			return NumberObj{Value: res, IsInt: false}, nil
+		}), 0, true
+
+	case func(float64):
+		return NativeFunc1(func(vm *VM, arg Object) (Object, Error) {
+			num, ok := arg.(NumberObj)
+			if !ok {
+				return nil, NewRuntimeError(fmt.Sprintf("expected a number argument, got %s", arg.Type()), nil)
+			}
+			f(num.Value)
+			return NullObj{}, nil
+		}), 1, true
+
 	case func(Object) (int, error):
 		return NativeFunc1(func(vm *VM, arg Object) (Object, Error) {
 			res, err := f(arg)
@@ -302,7 +335,7 @@ func convertVMObjectToGoValue(obj Object, targetType reflect.Type) (reflect.Valu
         }
         return reflect.Value{}, fmt.Errorf("expected string, got %s", obj.Type())
         
-    case reflect.Int, reflect.Int64, reflect.Int32, reflect.Int16, reflect.Int8:
+    case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
         if numObj, ok := obj.(NumberObj); ok && numObj.IsInt {
             return reflect.ValueOf(int(numObj.Value)).Convert(targetType), nil
         }
