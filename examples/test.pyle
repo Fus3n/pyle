@@ -11,28 +11,22 @@ fn testOs() {
     const testFile = "testfile.txt"
     const testDir = "testdir"
     
-    // Test write/read
     os.writeFile(testFile, "hello")
     const content = os.readFile(testFile)
     echo("Read content:", content)
     
-    // Test append
     os.appendFile(testFile, " world")
     echo("Appended content:", os.readFile(testFile))
     
-    // Test exists
     echo("Exists:", os.exists(testFile))
     
-    // Test mkdir
     os.mkdir(testDir)
     echo("Dir exists:", os.exists(testDir))
     
-    // Test listdir
     os.writeFile(testDir + "/file1.txt", "1")
     os.writeFile(testDir + "/file2.txt", "2")
     echo("Listdir:", os.listdir(testDir))
     
-    // Test stat
     const info = os.stat(testDir + "/file1.txt")
     echo("Stat:", info)
     echo("Size:", info.size)
@@ -45,28 +39,4 @@ fn testOs() {
     os.remove(testDir)
 }
 
-fn iter(items) {
-    const m = {}
-    for item in items {
-        echo(item)
-    }
-}
-// testOs()
-const sa = [1, 2, 4, 5]
-iter(sa)
-
-for i in [1, 2, 3, 4] { echo(i) } // works
-const vals = [1, 2, 4, 5]
-for i in vals {
-    echo(i) // works
-}
-
-fn test(m) {
-    const a = {}
-    for i in m.items() {
-        echo(i[0], i[1])
-    }
-}
-
-const im = {name: "Asif", age: 25}
-test(im)
+testOs()

@@ -8,7 +8,7 @@ import (
 
 type Lexer struct {
 	source   string
-	srcName  string
+	fileName  string
 	currIdx  int
 	currChar rune
 	line     int
@@ -19,7 +19,7 @@ type Lexer struct {
 func NewLexer(srcName, source string) *Lexer {
 	l := &Lexer{
 		source:  source,
-		srcName: srcName,
+		fileName: srcName,
 		currIdx: 0,
 		line:    1,
 		col:     1,
@@ -64,7 +64,7 @@ func (l *Lexer) getLoc(colStart *int) Loc {
 		actualColStart = *colStart
 	}
 
-	loc := Loc{Line: l.line, ColStart: actualColStart}
+	loc := NewLoc(l.fileName, l.line, actualColStart, nil)
 	if colStart != nil {
 		colEnd := l.col - 1
 		loc.ColEnd = &colEnd
@@ -77,7 +77,6 @@ func (l *Lexer) getToken(kind TokenType, value string, loc Loc) Token {
 		Kind: kind,
 		Value: value,
 		Loc: loc,
-		SourceName: l.srcName,
 	}
 }
 
@@ -86,7 +85,6 @@ func (l *Lexer) addToken(kind TokenType, value string, loc Loc) {
 		Kind:       kind,
 		Value:      value,
 		Loc:        loc,
-		SourceName: l.srcName,
 	}
 	l.tokens = append(l.tokens, token)
 }
@@ -96,9 +94,13 @@ func (l *Lexer) createError(msg string, loc Loc) Result[Token] {
 		Kind:       TokenError,
 		Value:      msg,
 		Loc:        loc,
-		SourceName: l.srcName,
 	}
 	return ResErr[Token](NewLexerError(msg, &errTok))
+}
+
+func (l *Lexer) createErrorDetailed(msg string, line, startCol int, colEnd *int) Result[Token] {
+	loc := NewLoc(l.fileName, line, startCol, colEnd)
+	return l.createError(msg, loc)
 }
 
 func (l *Lexer) skipComment() (skipped bool, err Result[Token]) {
@@ -127,8 +129,7 @@ func (l *Lexer) skipComment() (skipped bool, err Result[Token]) {
 		}
 
 		if !foundCommentEnd {
-			errLoc := Loc{Line: commentStartLine, ColStart: commentStartCol}
-			return true, l.createError("Unterminated comment", errLoc)
+			return true, l.createErrorDetailed("Unterminated comment", commentStartLine, commentStartCol, nil)
 		}
 		return true, Result[Token]{}
 	}
@@ -276,9 +277,9 @@ func (l *Lexer) Tokenize() ([]Token, Result[Token]) {
 				l.tokens = append(l.tokens, res.Value)
 			} else {
 				// Should be error
-				return nil, l.createError(
-					fmt.Sprintf("Unexpected character '%c' at line %d, column %d", l.currChar, l.line, l.col),
-					l.getLoc(nil),
+				return nil, l.createErrorDetailed(
+					fmt.Sprintf("Unexpected character '%c'", l.currChar),
+					l.line, l.col, nil,
 				)
 			}
 
@@ -290,8 +291,7 @@ func (l *Lexer) Tokenize() ([]Token, Result[Token]) {
 	eofToken := Token{
 		Kind:       TokenEOF,
 		Value:      "",
-		Loc:        Loc{Line: l.line, ColStart: l.col},
-		SourceName: l.srcName,
+		Loc:        NewLoc(l.fileName, l.line, l.col, nil),
 	}
 	l.tokens = append(l.tokens, eofToken)
 
@@ -309,10 +309,11 @@ func (l *Lexer) parseNumber() Result[Token] {
 
 		if isUnderline {
 			if len(nums) == 0 || !unicode.IsDigit(nums[len(nums)-1]) {
-				return ResErr[Token](NewLexerError(
+				colEnd := l.col
+				return l.createErrorDetailed(
 					fmt.Sprintf("Invalid number format: '_' must be between digits at line %d, column %d", l.line, l.col),
-					&Token{Loc: Loc{Line: l.line, ColStart: l.col, ColEnd: &l.col}},
-				))
+					l.line, startCol, &colEnd,
+				)
 			}
 			l.advance()
 			continue
@@ -320,9 +321,10 @@ func (l *Lexer) parseNumber() Result[Token] {
 
 		if isDot {
 			if dotCount > 0 {
-				return l.createError(
+				colEnd := l.col
+				return l.createErrorDetailed(
 					fmt.Sprintf("Invalid number: multiple decimal points at line %d, columns %d-%d", l.line, startCol, l.col),
-					NewLoc(l.line, startCol, &l.col),
+					l.line, startCol, &colEnd,
 				)
 			}
 			dotCount++
@@ -336,17 +338,29 @@ func (l *Lexer) parseNumber() Result[Token] {
 	if len(nums) == 0 {
 		colEnd = startCol
 	}
-	loc := Loc{Line: l.line, ColStart: startCol, ColEnd: &colEnd}
+	loc := NewLoc(l.fileName, l.line, startCol, &colEnd)
 	numStr := string(nums)
 
 	if len(numStr) == 0 {
-		return ResErr[Token](NewLexerError("Expected a number", &Token{Loc: loc}))
+		colEnd := l.col
+		return l.createErrorDetailed(
+			fmt.Sprintf("Expected a number at line %d, column %d", l.line, startCol),
+			l.line, startCol, &colEnd,
+		)
 	}
 	if numStr == "." {
-		return ResErr[Token](NewLexerError("Invalid number: isolated decimal point", &Token{Loc: loc}))
+		colEnd := l.col
+		return l.createErrorDetailed(
+			fmt.Sprintf("Invalid number: isolated decimal point at line %d, column %d", l.line, startCol),
+			l.line, startCol, &colEnd,
+		)
 	}
 	if strings.HasSuffix(numStr, "_") {
-		return ResErr[Token](NewLexerError("Invalid number: cannot end with '_'", &Token{Loc: loc}))
+		colEnd := l.col
+		return l.createErrorDetailed(
+			fmt.Sprintf("Invalid number: cannot end with '_' at line %d, column %d", l.line, l.col),
+			l.line, startCol, &colEnd,
+		)
 	}
 
 	tok_type := TokenInt
@@ -376,7 +390,7 @@ func (l *Lexer) parseString() Result[Token] {
     for l.hasChar() {
         if l.currChar == quote {
             l.advance() // consume closing quote
-            loc := NewLoc(startLine, startCol, &l.col)
+            loc := NewLoc(l.fileName, startLine, startCol, &l.col)
             return ResOk(l.getToken(TokenString, string(runes), loc))
         }
 
@@ -386,9 +400,9 @@ func (l *Lexer) parseString() Result[Token] {
             l.advance()
             if !l.hasChar() {
                 colEnd := escCol
-                return l.createError(
+                return l.createErrorDetailed(
                     fmt.Sprintf("Unterminated escape sequence at line %d, column %d", escLine, escCol),
-                    NewLoc(escLine, escCol, &colEnd),
+                    escLine, escCol, &colEnd,
                 )
             }
 
@@ -426,9 +440,9 @@ func (l *Lexer) parseString() Result[Token] {
             default:
                 bad := l.currChar
                 colEnd := l.col
-                return l.createError(
+                return l.createErrorDetailed(
                     fmt.Sprintf("Unknown escape sequence \\%c at line %d, column %d", bad, escLine, escCol),
-                    NewLoc(escLine, escCol, &colEnd),
+                    escLine, escCol, &colEnd,
                 )
             }
             continue
@@ -437,9 +451,9 @@ func (l *Lexer) parseString() Result[Token] {
         if l.currChar == '\n' {
             // Unescaped newline inside string is not allowed
             colEnd := l.col
-            return l.createError(
+            return l.createErrorDetailed(
                 fmt.Sprintf("Unterminated string literal at line %d, column %d", startLine, startCol),
-                NewLoc(startLine, startCol, &colEnd),
+                startLine, startCol, &colEnd,
             )
         }
 
@@ -449,9 +463,9 @@ func (l *Lexer) parseString() Result[Token] {
 
     // EOF reached without closing quote
     colEnd := l.col
-    return l.createError(
+    return l.createErrorDetailed(
         fmt.Sprintf("Unterminated string literal at line %d, column %d", startLine, startCol),
-        NewLoc(startLine, startCol, &colEnd),
+        startLine, startCol, &colEnd,
     )
 }
 
@@ -468,7 +482,7 @@ func (l *Lexer) parseIdent() Result[Token] {
 	}
 
 	identStr := string(identChars)
-	loc := NewLoc(l.line, startCol, &l.col)
+	loc := NewLoc(l.fileName, l.line, startCol, &l.col)
 
 	tok_kind := TokenIdent
 	if IsKeyword(identStr) {

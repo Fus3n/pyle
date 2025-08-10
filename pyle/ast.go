@@ -95,7 +95,6 @@ func Walk(node ASTNode, visitor Visitor) {
 		if n.Step != nil {
 			Walk(*n.Step, visitor)
 		}
-	// VariableExpr, NumberExpr, StringExpr, BooleanExpr, NullExpr have no children.
 	}
 }
 

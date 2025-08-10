@@ -17,7 +17,7 @@ func NewParser(tokens []Token) *Parser {
 		currIdx: 0,
 	}
 	if len(tokens) > 0 {
-		p.srcName = tokens[0].SourceName
+		p.srcName = tokens[0].Loc.FileName
 	}
 	return p
 }

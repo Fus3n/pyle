@@ -2,6 +2,7 @@ package pyle
 
 import (
 	"fmt"
+	"slices"
 )
 
 type TokenType int
@@ -12,12 +13,7 @@ var KeywordConsts = []string{
 }
 
 func IsKeyword(s string) bool {
-	for _, keyword := range KeywordConsts {
-		if keyword == s {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(KeywordConsts, s)
 }
 
 func GetAllKeywords() []string {
@@ -109,13 +105,15 @@ func (t TokenType) String() string {
 }
 
 type Loc struct {
+	FileName string `json:"fileName"`	
 	Line     int  `json:"line"`
 	ColStart int  `json:"colStart"`
 	ColEnd   *int `json:"colEnd,omitempty"`
 }
 
-func NewLoc(line, colStart int, colEnd *int) Loc {
+func NewLoc(fileName string, line, colStart int, colEnd *int) Loc {
 	return Loc{
+		FileName: fileName,
 		Line: line,
 		ColStart: colStart,
 		ColEnd: colEnd,
@@ -133,7 +131,6 @@ type Token struct {
 	Kind       TokenType `json:"kind"`
 	Value      string 	 `json:"value"`
 	Loc        Loc		 `json:"loc"`
-	SourceName string	 `json:"sourceName"`
 }
 
 // new token
@@ -142,11 +139,10 @@ func NewToken(kind TokenType, value string, loc Loc, sourceName string) Token {
 		Kind: kind,
 		Value: value,
 		Loc: loc,
-		SourceName: sourceName,
 	}
 }
 func (t Token) GetFileLoc() string {
-	return fmt.Sprintf("%s:%s", t.SourceName, t.Loc.String())
+	return fmt.Sprintf("%s:%s", t.Loc.FileName, t.Loc.String())
 }
 
 func (t Token) IsKeyword(value string) bool {

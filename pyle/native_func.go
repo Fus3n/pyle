@@ -347,6 +347,17 @@ func convertGoValueToVMObject(value reflect.Value) (Object, error) {
 		}
 	}
 
+	if !value.IsValid() {
+		return NullObj{}, nil
+	}
+
+	switch value.Kind() {
+	case reflect.Ptr, reflect.Interface, reflect.Map:
+		if value.IsNil() {
+			return NullObj{}, nil
+		}
+	}
+
     switch value.Kind() {
     case reflect.String:
         return StringObj{Value: value.String()}, nil
