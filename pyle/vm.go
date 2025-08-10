@@ -261,6 +261,10 @@ func (vm *VM) handleCall(numArgs int, currentTok *Token) (bool, Error) {
 				if fn, ok := c.DirectCall.(NativeFunc1); ok {
 					result, err = fn(vm, args[0])
 				}
+			case 2:
+				if fn, ok := c.DirectCall.(NativeFunc2); ok {
+					result, err = fn(vm, args[0], args[1])
+				}
 			}
 
 			if err != nil {

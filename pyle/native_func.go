@@ -87,6 +87,36 @@ func createDirectCall(fn any) (any, int, bool) {
 			return CreateInt(int64(res)), nil
 		}), 1, true
 
+	case func(StringObj) (string, error):
+		return NativeFunc1(func(vm *VM, arg Object) (Object, Error) {
+			receiver, ok := arg.(StringObj)
+			if !ok {
+				return nil, NewRuntimeError(fmt.Sprintf("expected a string receiver, got %s", arg.Type()), nil)
+			}
+			res, err := f(receiver)
+			if err != nil {
+				return nil, NewRuntimeError(err.Error(), nil)
+			}
+			return StringObj{Value: res}, nil
+		}), 1, true
+
+	case func(StringObj, string) (string, error):
+		return NativeFunc2(func(vm *VM, arg1, arg2 Object) (Object, Error) {
+			receiver, ok := arg1.(StringObj)
+			if !ok {
+				return nil, NewRuntimeError(fmt.Sprintf("expected a string receiver, got %s", arg1.Type()), nil)
+			}
+			sep, ok := arg2.(StringObj)
+			if !ok {
+				return nil, NewRuntimeError(fmt.Sprintf("expected a string separator, got %s", arg2.Type()), nil)
+			}
+			res, err := f(receiver, sep.Value)
+			if err != nil {
+				return nil, NewRuntimeError(err.Error(), nil)
+			}
+			return StringObj{Value: res}, nil
+		}), 2, true
+
 	case func(StringObj, string) ([]string, error):
 		return NativeFunc2(func(vm *VM, arg1, arg2 Object) (Object, Error) {
 			receiver, ok := arg1.(StringObj)
@@ -108,6 +138,23 @@ func createDirectCall(fn any) (any, int, bool) {
 			return &ArrayObj{Elements: elements}, nil
 		}), 2, true
 
+	case func(StringObj, StringObj) (BooleanObj, error):
+		return NativeFunc2(func(vm *VM, arg1, arg2 Object) (Object, Error) {
+			receiver, ok := arg1.(StringObj)
+			if !ok {
+				return nil, NewRuntimeError(fmt.Sprintf("expected a string receiver, got %s", arg1.Type()), nil)
+			}
+			sep, ok := arg2.(StringObj)
+			if !ok {
+				return nil, NewRuntimeError(fmt.Sprintf("expected a string argument, got %s", arg2.Type()), nil)
+			}
+			res, err := f(receiver, sep)
+			if err != nil {
+				return nil, NewRuntimeError(err.Error(), nil)
+			}
+			return res, nil
+		}), 2, true
+
 	case func(*ArrayObj, Object) (Object, error):
 		return NativeFunc2(func(vm *VM, arg1, arg2 Object) (Object, Error) {
 			receiver, ok := arg1.(*ArrayObj)
@@ -120,6 +167,96 @@ func createDirectCall(fn any) (any, int, bool) {
 			}
 			return res, nil
 		}), 2, true
+
+	case func(StringObj) (int, error):
+		return NativeFunc1(func(vm *VM, arg Object) (Object, Error) {
+			receiver, ok := arg.(StringObj)
+			if !ok {
+				return nil, NewRuntimeError(fmt.Sprintf("expected a string receiver, got %s", arg.Type()), nil)
+			}
+			res, err := f(receiver)
+			if err != nil {
+				return nil, NewRuntimeError(err.Error(), nil)
+			}
+			return CreateInt(int64(res)), nil
+		}), 1, true
+
+	case func(StringObj, StringObj) (StringObj, error):
+		return NativeFunc2(func(vm *VM, arg1, arg2 Object) (Object, Error) {
+			receiver, ok := arg1.(StringObj)
+			if !ok {
+				return nil, NewRuntimeError(fmt.Sprintf("expected a string receiver, got %s", arg1.Type()), nil)
+			}
+			arg, ok := arg2.(StringObj)
+			if !ok {
+				return nil, NewRuntimeError(fmt.Sprintf("expected a string argument, got %s", arg2.Type()), nil)
+			}
+			res, err := f(receiver, arg)
+			if err != nil {
+				return nil, NewRuntimeError(err.Error(), nil)
+			}
+			return res, nil
+		}), 2, true
+
+	case func(StringObj, NumberObj) (StringObj, error):
+		return NativeFunc2(func(vm *VM, arg1, arg2 Object) (Object, Error) {
+			receiver, ok := arg1.(StringObj)
+			if !ok {
+				return nil, NewRuntimeError(fmt.Sprintf("expected a string receiver, got %s", arg1.Type()), nil)
+			}
+			arg, ok := arg2.(NumberObj)
+			if !ok {
+				return nil, NewRuntimeError(fmt.Sprintf("expected a number argument, got %s", arg2.Type()), nil)
+			}
+			res, err := f(receiver, arg)
+			if err != nil {
+				return nil, NewRuntimeError(err.Error(), nil)
+			}
+			return res, nil
+		}), 2, true
+
+	case func(StringObj, NumberObj) (NumberObj, error):
+		return NativeFunc2(func(vm *VM, arg1, arg2 Object) (Object, Error) {
+			receiver, ok := arg1.(StringObj)
+			if !ok {
+				return nil, NewRuntimeError(fmt.Sprintf("expected a string receiver, got %s", arg1.Type()), nil)
+			}
+			arg, ok := arg2.(NumberObj)
+			if !ok {
+				return nil, NewRuntimeError(fmt.Sprintf("expected a number argument, got %s", arg2.Type()), nil)
+			}
+			res, err := f(receiver, arg)
+			if err != nil {
+				return nil, NewRuntimeError(err.Error(), nil)
+			}
+			return res, nil
+		}), 2, true
+
+	case func(*ArrayObj) (Object, error):
+		return NativeFunc1(func(vm *VM, arg Object) (Object, Error) {
+			receiver, ok := arg.(*ArrayObj)
+			if !ok {
+				return nil, NewRuntimeError(fmt.Sprintf("expected an array receiver, got %s", arg.Type()), nil)
+			}
+			res, err := f(receiver)
+			if err != nil {
+				return nil, NewRuntimeError(err.Error(), nil)
+			}
+			return res, nil
+		}), 1, true
+
+	case func(*MapObj) (int, error):
+		return NativeFunc1(func(vm *VM, arg Object) (Object, Error) {
+			receiver, ok := arg.(*MapObj)
+			if !ok {
+				return nil, NewRuntimeError(fmt.Sprintf("expected a map receiver, got %s", arg.Type()), nil)
+			}
+			res, err := f(receiver)
+			if err != nil {
+				return nil, NewRuntimeError(err.Error(), nil)
+			}
+			return CreateInt(int64(res)), nil
+		}), 1, true
 
 	default:
 		return nil, 0, false
@@ -248,6 +385,7 @@ func createTypeConverter(targetType reflect.Type) func(Object) (reflect.Value, e
 		}
 	}
 
+	// Fast paths for common types
 	switch targetType.Kind() {
 	case reflect.String:
 		return func(obj Object) (reflect.Value, error) {
@@ -260,6 +398,13 @@ func createTypeConverter(targetType reflect.Type) func(Object) (reflect.Value, e
 		return func(obj Object) (reflect.Value, error) {
 			if numObj, ok := obj.(NumberObj); ok && numObj.IsInt {
 				return reflect.ValueOf(int(numObj.Value)), nil
+			}
+			return reflect.Value{}, fmt.Errorf("expected integer, got %s", obj.Type())
+		}
+	case reflect.Int64:
+		return func(obj Object) (reflect.Value, error) {
+			if numObj, ok := obj.(NumberObj); ok && numObj.IsInt {
+				return reflect.ValueOf(int64(numObj.Value)), nil
 			}
 			return reflect.Value{}, fmt.Errorf("expected integer, got %s", obj.Type())
 		}
@@ -277,11 +422,66 @@ func createTypeConverter(targetType reflect.Type) func(Object) (reflect.Value, e
 			}
 			return reflect.Value{}, fmt.Errorf("expected boolean, got %s", obj.Type())
 		}
+	case reflect.Ptr:
+		// Fast paths for common pointer types
+		switch targetType {
+		case reflect.TypeOf((*ArrayObj)(nil)):
+			return func(obj Object) (reflect.Value, error) {
+				if val, ok := obj.(*ArrayObj); ok {
+					return reflect.ValueOf(val), nil
+				}
+				return reflect.Value{}, fmt.Errorf("expected array, got %s", obj.Type())
+			}
+		case reflect.TypeOf((*MapObj)(nil)):
+			return func(obj Object) (reflect.Value, error) {
+				if val, ok := obj.(*MapObj); ok {
+					return reflect.ValueOf(val), nil
+				}
+				return reflect.Value{}, fmt.Errorf("expected map, got %s", obj.Type())
+			}
+		case reflect.TypeOf((*StringObj)(nil)):
+			return func(obj Object) (reflect.Value, error) {
+				if val, ok := obj.(StringObj); ok {
+					return reflect.ValueOf(&val), nil
+				}
+				return reflect.Value{}, fmt.Errorf("expected string, got %s", obj.Type())
+			}
+		}
+	case reflect.Struct:
+		// Fast paths for common struct types
+		switch targetType {
+		case reflect.TypeOf(StringObj{}):
+			return func(obj Object) (reflect.Value, error) {
+				if val, ok := obj.(StringObj); ok {
+					return reflect.ValueOf(val), nil
+				}
+				return reflect.Value{}, fmt.Errorf("expected string, got %s", obj.Type())
+			}
+		case reflect.TypeOf(NumberObj{}):
+			return func(obj Object) (reflect.Value, error) {
+				if val, ok := obj.(NumberObj); ok {
+					return reflect.ValueOf(val), nil
+				}
+				return reflect.Value{}, fmt.Errorf("expected number, got %s", obj.Type())
+			}
+		case reflect.TypeOf(BooleanObj{}):
+			return func(obj Object) (reflect.Value, error) {
+				if val, ok := obj.(BooleanObj); ok {
+					return reflect.ValueOf(val), nil
+				}
+				return reflect.Value{}, fmt.Errorf("expected boolean, got %s", obj.Type())
+			}
+		}
 	default:
 		// Fallback for less common types
 		return func(obj Object) (reflect.Value, error) {
 			return convertVMObjectToGoValue(obj, targetType)
 		}
+	}
+	
+	// Fallback for less common types
+	return func(obj Object) (reflect.Value, error) {
+		return convertVMObjectToGoValue(obj, targetType)
 	}
 }
 
@@ -299,6 +499,10 @@ func convertVMObjectToGoValue(obj Object, targetType reflect.Type) (reflect.Valu
         case reflect.TypeOf((*MapObj)(nil)):
             if val, ok := obj.(*MapObj); ok {
                 return reflect.ValueOf(val), nil
+            }
+        case reflect.TypeOf((*StringObj)(nil)):
+            if val, ok := obj.(StringObj); ok {
+                return reflect.ValueOf(&val), nil
             }
         default:
             // Generic fallback for other pointer types
@@ -320,6 +524,10 @@ func convertVMObjectToGoValue(obj Object, targetType reflect.Type) (reflect.Valu
             if val, ok := obj.(NumberObj); ok {
                 return reflect.ValueOf(val), nil
             }
+        case reflect.TypeOf(BooleanObj{}):
+            if val, ok := obj.(BooleanObj); ok {
+                return reflect.ValueOf(val), nil
+            }
         default:
             // Generic fallback for other struct types
             val := reflect.ValueOf(obj)
@@ -337,9 +545,15 @@ func convertVMObjectToGoValue(obj Object, targetType reflect.Type) (reflect.Valu
         
     case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
         if numObj, ok := obj.(NumberObj); ok && numObj.IsInt {
-            return reflect.ValueOf(int(numObj.Value)).Convert(targetType), nil
+            return reflect.ValueOf(int64(numObj.Value)).Convert(targetType), nil
         }
         return reflect.Value{}, fmt.Errorf("expected int, got %s", obj.Type())
+        
+    case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+        if numObj, ok := obj.(NumberObj); ok && numObj.IsInt {
+            return reflect.ValueOf(uint64(numObj.Value)).Convert(targetType), nil
+        }
+        return reflect.Value{}, fmt.Errorf("expected uint, got %s", obj.Type())
         
     case reflect.Float64, reflect.Float32:
         if numObj, ok := obj.(NumberObj); ok {
@@ -395,7 +609,7 @@ func convertGoValueToVMObject(value reflect.Value) (Object, error) {
     case reflect.String:
         return StringObj{Value: value.String()}, nil
     case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-        return CreateInt(int64(value.Int())), nil
+        return CreateInt(value.Int()), nil
     case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
         return CreateInt(int64(value.Uint())), nil
     case reflect.Float32, reflect.Float64:
@@ -403,11 +617,31 @@ func convertGoValueToVMObject(value reflect.Value) (Object, error) {
     case reflect.Bool:
         return BooleanObj{Value: value.Bool()}, nil
     case reflect.Slice:
+        // Fast path for string slices
+        if value.Type().Elem().Kind() == reflect.String {
+            elements := make([]Object, value.Len())
+            for i := 0; i < value.Len(); i++ {
+                elements[i] = StringObj{Value: value.Index(i).String()}
+            }
+            return &ArrayObj{Elements: elements}, nil
+        }
+        
+        // General slice handling
         elements := make([]Object, value.Len())
         for i := 0; i < value.Len(); i++ {
 			res, err := convertGoValueToVMObject(value.Index(i))
 			if err != nil {
-				panic(err)
+				return nil, fmt.Errorf("error converting slice element %d: %v", i, err)
+			}
+            elements[i] = res
+        }
+        return &ArrayObj{Elements: elements}, nil
+    case reflect.Array:
+        elements := make([]Object, value.Len())
+        for i := 0; i < value.Len(); i++ {
+			res, err := convertGoValueToVMObject(value.Index(i))
+			if err != nil {
+				return nil, fmt.Errorf("error converting array element %d: %v", i, err)
 			}
             elements[i] = res
         }
