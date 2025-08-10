@@ -8,7 +8,7 @@ type Error interface {
 }
 
 type InterpreterError struct {
-	Type  string // Add this field
+	Type  string 
 	Msg   string
 	Token *Token
 }

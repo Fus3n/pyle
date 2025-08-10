@@ -22,6 +22,7 @@ type VM struct {
 	ip            int
 	stack         []Object
 	sp            int // Stack pointer
+	currToken     *Token
 	globals       map[string]*Variable
 	environments  []map[string]*Variable
 	frames        []*CallFrame
@@ -41,7 +42,7 @@ func NewVM() *VM {
 
 func (vm *VM) AddGlobal(name string, value Object) Error {
 	if _, ok := vm.globals[name]; ok {
-		return vm.runtimeError("Global variable '%s' already defined", name)
+		return vm.runtimeError("Global variable '%s' already defined %s", name, vm.currToken.GetFileLoc())
 	}
 	vm.globals[name] = &Variable{Name: name, Value: value, IsConst: false}
 	return nil
@@ -58,10 +59,10 @@ func (vm *VM) RegisterModule(name string, funcs map[string]any, doc *DocstringOb
 		}
 		nativeFunc, err := CreateNativeFunction(funcName, fn, fnDoc)
 		if err != nil {
-			return vm.runtimeError("error creating native function '%s' for module '%s': %v", funcName, name, err)
+			return vm.runtimeError("Error creating native function '%s' for module '%s': %v %s", funcName, name, err, vm.currToken.GetFileLoc())
 		}
 		if err := module.Methods.Set(StringObj{Value: funcName}, nativeFunc); err != nil {
-			return vm.runtimeError("error adding function '%s' to module '%s': %v", funcName, name, err)
+			return vm.runtimeError("Error adding function '%s' to module '%s': %v %s", funcName, name, err, vm.currToken.GetFileLoc())
 		}
 	}
 	return vm.AddGlobal(name, module)
@@ -175,7 +176,7 @@ func (vm *VM) callPyleFuncFromNative(callable Object, args []Object) (Object, Er
 func (vm *VM) handleCall(numArgs int, currentTok *Token) (bool, Error) {
 	calleeIdx := vm.sp - 1 - numArgs
 	if calleeIdx < 0 {
-		return false, vm.runtimeError("Stack underflow during call setup")
+		return false, vm.runtimeError("Stack underflow during call setup at %s", currentTok.GetFileLoc())
 	}
 
 	callee := vm.stack[calleeIdx]
@@ -189,7 +190,7 @@ func (vm *VM) handleCall(numArgs int, currentTok *Token) (bool, Error) {
 			copy(newArgs[1:], args)
 
 			if len(newArgs) != nativeMethod.Arity {
-				return false, vm.runtimeError("Method '%s' expected %d arguments, but got %d", nativeMethod.Name, nativeMethod.Arity, len(newArgs))
+				return false, vm.runtimeError("Method '%s' expected %d arguments, but got %d %s", nativeMethod.Name, nativeMethod.Arity, len(newArgs), currentTok.GetFileLoc())
 			}
 
 			var result Object
@@ -219,7 +220,7 @@ func (vm *VM) handleCall(numArgs int, currentTok *Token) (bool, Error) {
 		return vm.handleCall(numArgs+1, currentTok)
     case *ClosureObj:
         if numArgs != c.Function.Arity {
-            return false, vm.runtimeError("Function '%s' expected %d arguments, but got %d", c.Function.Name, c.Function.Arity, numArgs)
+            return false, vm.runtimeError("Function '%s' expected %d arguments, but got %d %s", c.Function.Name, c.Function.Arity, numArgs, currentTok.GetFileLoc())
         }
         frame := &CallFrame{
             ReturnIP:  vm.ip,
@@ -232,7 +233,7 @@ func (vm *VM) handleCall(numArgs int, currentTok *Token) (bool, Error) {
         return true, nil
     case *FunctionObj:
         if numArgs != c.Arity {
-			return false, vm.runtimeError("Function '%s' expected %d arguments, but got %d", c.Name, c.Arity, numArgs)
+			return false, vm.runtimeError("Function '%s' expected %d arguments, but got %d %s", c.Name, c.Arity, numArgs, currentTok.GetFileLoc())
 		}
 
 		frame := &CallFrame{
@@ -246,7 +247,7 @@ func (vm *VM) handleCall(numArgs int, currentTok *Token) (bool, Error) {
 	case *NativeFuncObj:
 		if c.DirectCall != nil {
 			if numArgs != c.Arity {
-				return false, vm.runtimeError("Function '%s' expected %d arguments, but got %d", c.Name, c.Arity, numArgs)
+				return false, vm.runtimeError("Function '%s' expected %d arguments, but got %d %s", c.Name, c.Arity, numArgs, currentTok.GetFileLoc())
 			}
 			
 			var result Object
@@ -288,7 +289,7 @@ func (vm *VM) handleCall(numArgs int, currentTok *Token) (bool, Error) {
 			return false, nil
 		}
 
-		return false, vm.runtimeError("Cannot call uncallable native function '%s'", c.Name)
+		return false, vm.runtimeError("Cannot call uncallable native function '%s' at %s", c.Name, currentTok.GetFileLoc())
 
 	default:
 		return false, vm.runtimeError("Cannot call non-function type '%s' at %s", callee.Type(), currentTok.GetFileLoc())
@@ -350,7 +351,8 @@ func (vm *VM) run(targetFrameDepth int) Result[Object] {
 		vm.ip++
 		op := currInstr.Op
 		operand := currInstr.Operand
-		currentTok := currInstr.Token
+		vm.currToken = currInstr.Token
+		currentTok := vm.currToken
 
 		switch op {
 		case OpPop:
@@ -389,6 +391,9 @@ func (vm *VM) run(targetFrameDepth int) Result[Object] {
 		case OpDefGlobal:
 			nameIdx := *operand.(*int)
 			name := vm.constants[nameIdx].(StringObj).Value
+			if _, ok := vm.globals[name]; ok {
+				return vm.runtimeErrorRes("Global variable '%s' already defined at %s", name, currentTok.GetFileLoc())
+			}
 			val, err := vm.pop()
 			if err != nil {
 				return ResErr[Object](err)
@@ -407,17 +412,17 @@ func (vm *VM) run(targetFrameDepth int) Result[Object] {
 			name := vm.constants[nameIdx].(StringObj).Value
 			variable, ok := vm.globals[name]
 			if !ok {
-				return ResErr[Object](vm.runtimeError("Undefined variable '%s'", name))
+				return vm.runtimeErrorRes("Undefined variable '%s' at %s", name, currentTok.GetFileLoc())
 			}
 			vm.push(variable.Value)
 		case OpSetGlobal:
 			nameIdx := *operand.(*int)
 			name := vm.constants[nameIdx].(StringObj).Value
 			if _, ok := vm.globals[name]; !ok {
-				return ResErr[Object](vm.runtimeError("Undefined variable '%s'", name))
+				return vm.runtimeErrorRes("Undefined variable '%s' at %s", name, currentTok.GetFileLoc())
 			}
 			if vm.globals[name].IsConst {
-				return ResErr[Object](vm.runtimeError("Cannot assign to constant variable '%s'", name))
+				return vm.runtimeErrorRes("Cannot assign to constant variable '%s' at %s", name, currentTok.GetFileLoc())
 			}
 			value, err := vm.pop()
 			if err != nil {
@@ -430,15 +435,15 @@ func (vm *VM) run(targetFrameDepth int) Result[Object] {
 
 			// name := vm.constants[nameIdx].(StringObj).Value
 			if len(vm.environments) == 0 {
-				return ResErr[Object](vm.runtimeError("No active local scope active for OP_DEF_LOCAL"))
+				return vm.runtimeErrorRes("No active local scope active for OP_DEF_LOCAL")
 			}
 			if vm.sp == 0 {
-				return ResErr[Object](vm.runtimeError("Stack underflow for OP_DEF_LOCAL"))
+				return vm.runtimeErrorRes("Stack underflow for OP_DEF_LOCAL")
 			}
 
 			currentScope := vm.environments[len(vm.environments)-1]
 			if _, ok := currentScope[name]; ok {
-				return ResErr[Object](vm.runtimeError("Local variable '%s' already defined in this scope", name))
+				return vm.runtimeErrorRes("Local variable '%s' already defined in this scope at %s", name, currentTok.GetFileLoc())
 			}
 
 			val, err := vm.pop()
@@ -468,28 +473,28 @@ func (vm *VM) run(targetFrameDepth int) Result[Object] {
 			}
 
 			if scope == nil {
-				return ResErr[Object](vm.runtimeError("Undefined local variable '%s'", varScoped.Name))
+				return vm.runtimeErrorRes("Undefined local variable '%s' at %s", varScoped.Name, currentTok.GetFileLoc())
 			}
 
 			if variable, ok := scope[varScoped.Name]; ok {
 				vm.push(variable.Value)
 			} else {
-				return ResErr[Object](vm.runtimeError("Undefined local variable '%s'", varScoped.Name))
+				return vm.runtimeErrorRes("Undefined local variable '%s' at %s", varScoped.Name, currentTok.GetFileLoc())
 			}
 		case OpDefConstLocal:
 			nameIdx := *operand.(*int)
 			name := vm.constants[nameIdx].(StringObj).Value
 
 			if len(vm.environments) == 0 {
-				return ResErr[Object](vm.runtimeError("No active local scope active for OP_DEF_CONST_LOCAL"))
+				return vm.runtimeErrorRes("No active local scope active for OP_DEF_CONST_LOCAL")
 			}
 			if vm.sp == 0 {
-				return ResErr[Object](vm.runtimeError("Stack underflow for OP_DEF_CONST_LOCAL"))
+				return vm.runtimeErrorRes("Stack underflow for OP_DEF_CONST_LOCAL")
 			}
 
 			currentScope := vm.environments[len(vm.environments)-1]
 			if _, ok := currentScope[name]; ok {
-				return ResErr[Object](vm.runtimeError("Local variable '%s' already defined in this scope", name))
+				return vm.runtimeErrorRes("Local variable '%s' already defined in this scope at %s", name, currentTok.GetFileLoc())
 			}
 
 			val, err := vm.pop()
@@ -523,16 +528,16 @@ func (vm *VM) run(targetFrameDepth int) Result[Object] {
 			}
 
 			if scope == nil {
-				return ResErr[Object](vm.runtimeError("Undefined local variable '%s'", varScoped.Name))
+				return vm.runtimeErrorRes("Undefined local variable '%s' at %s", varScoped.Name, currentTok.GetFileLoc())
 			}
 
 			if variable, ok := scope[varScoped.Name]; ok {
 				if variable.IsConst {
-					return ResErr[Object](vm.runtimeError("Cannot assign to const local variable '%s'", varScoped.Name))
+					return vm.runtimeErrorRes("Cannot assign to const local variable '%s' at %s", varScoped.Name, currentTok.GetFileLoc())
 				}
 				variable.Value = valToAssign
 			} else {
-				return ResErr[Object](vm.runtimeError("Cannot assign to undefined local variable '%s'", varScoped.Name))
+				return vm.runtimeErrorRes("Cannot assign to undefined local variable '%s' at %s", varScoped.Name, currentTok.GetFileLoc())
 			}
 
 		case OpAdd, OpSubtract, OpMultiply, OpDivide, OpModulo:
@@ -550,7 +555,7 @@ func (vm *VM) run(targetFrameDepth int) Result[Object] {
 
 		case OpReturn:
 			if vm.sp == 0 {
-				return ResErr[Object](vm.runtimeError("Stack underflow for OP_RETURN (no return value)."))
+				return vm.runtimeErrorRes("Stack underflow for OP_RETURN (no return value).")
 			}
 			returnVal, err := vm.pop()
 			if err != nil {
@@ -580,7 +585,7 @@ func (vm *VM) run(targetFrameDepth int) Result[Object] {
 		case OpBuildKwargs:
 			numKwargs := *operand.(*int)
 			if vm.sp < numKwargs+1 {
-				return ResErr[Object](vm.runtimeError("Stack underflow for OP_BUILD_KWARGS"))
+				return vm.runtimeErrorRes("Stack underflow for OP_BUILD_KWARGS")
 			}
 		case OpCall:
 			numArgs := *operand.(*int)
@@ -606,12 +611,12 @@ func (vm *VM) run(targetFrameDepth int) Result[Object] {
 					continue
 				}
 			}
-			return ResErr[Object](NewRuntimeError(fmt.Sprintf("type '%s' has no attribute '%s'", obj.Type(), name), currentTok))
+			return vm.runtimeErrorRes("type '%s' has no attribute '%s' at %s", obj.Type(), name, currentTok.GetFileLoc())
 		case OpSetAttr:
 			nameIdx := *operand.(*int)
 			attrNameObj, ok := vm.constants[nameIdx].(StringObj)
 			if !ok {
-				return ResErr[Object](NewRuntimeError("Object attribute must be a string", currentTok))
+				return vm.runtimeErrorRes("Object attribute must be a string at %s", currentTok.GetFileLoc())
 			}
 
 			value, err := vm.pop()
@@ -626,10 +631,10 @@ func (vm *VM) run(targetFrameDepth int) Result[Object] {
 
 			if pyleMap, ok := obj.(*MapObj); ok {
 				if err := pyleMap.Set(attrNameObj, value); err != nil {
-					return ResErr[Object](NewRuntimeError(err.Error(), currentTok))
+					return vm.runtimeErrorRes("%s at %s", err.Error(), currentTok.GetFileLoc())
 				}
 			} else {
-				return ResErr[Object](NewRuntimeError(fmt.Sprintf("Cannot set property on non-object type '%s'", obj.Type()), currentTok))
+				return vm.runtimeErrorRes("Cannot set property on non-object type '%s' at %s", obj.Type(), currentTok.GetFileLoc())
 			}
 		case OpTrue:
 			vm.push(BooleanObj{Value: true})
@@ -639,7 +644,7 @@ func (vm *VM) run(targetFrameDepth int) Result[Object] {
 			vm.push(NullObj{})
 		case OpAnd:
 			if vm.sp < 2 {
-				return ResErr[Object](NewRuntimeError("Stack underflow for OP_AND", currentTok))
+				return vm.runtimeErrorRes("Stack underflow for OP_AND at %s", currentTok.GetFileLoc())
 			}
 			right, err := vm.pop()
 			if err != nil {
@@ -654,7 +659,7 @@ func (vm *VM) run(targetFrameDepth int) Result[Object] {
 
 		case OpOr:
 			if vm.sp < 2 {
-				return ResErr[Object](NewRuntimeError("Stack underflow for OP_OR", currentTok))
+				return vm.runtimeErrorRes("Stack underflow for OP_OR at %s", currentTok.GetFileLoc())
 			}
 			right, err := vm.pop()
 			if err != nil {
@@ -669,7 +674,7 @@ func (vm *VM) run(targetFrameDepth int) Result[Object] {
 
 		case OpNegate:
 			if vm.sp == 0 {
-				return ResErr[Object](NewRuntimeError("Stack underflow for OP_NEGATE", currentTok))
+				return vm.runtimeErrorRes("Stack underflow for OP_NEGATE at %s", currentTok.GetFileLoc())
 			}
 
 			value, err := vm.pop()
@@ -681,11 +686,11 @@ func (vm *VM) run(targetFrameDepth int) Result[Object] {
 				num.Value = -num.Value
 				vm.push(num)
 			} else {
-				return ResErr[Object](NewRuntimeError("Operand of unary OP_NEGATE must be a number", currentTok))
+				return vm.runtimeErrorRes("Operand of unary OP_NEGATE must be a number at %s", currentTok.GetFileLoc())
 			}
 		case OpNot:
 			if vm.sp == 0 {
-				return ResErr[Object](NewRuntimeError("Stack underflow for OP_NOT", currentTok))
+				return vm.runtimeErrorRes("Stack underflow for OP_NOT at %s", currentTok.GetFileLoc())
 			}
 			value, err := vm.pop()
 			if err != nil {
@@ -696,7 +701,7 @@ func (vm *VM) run(targetFrameDepth int) Result[Object] {
 
 		case OpBuildRange:
 			if vm.sp < 3 {
-				return ResErr[Object](NewRuntimeError("Stack underflow for OP_BUILD_RANGE", currentTok))
+				return vm.runtimeErrorRes("Stack underflow for OP_BUILD_RANGE at %s", currentTok.GetFileLoc())
 			}
 
 			step, err := vm.pop()
@@ -714,15 +719,15 @@ func (vm *VM) run(targetFrameDepth int) Result[Object] {
 
 			startObj, ok := start.(NumberObj)
 			if !ok {
-				return ResErr[Object](NewRuntimeError("Range start must be a number", currentTok))
+				return vm.runtimeErrorRes("Range start must be a number at %s", currentTok.GetFileLoc())
 			}
 			endObj, ok := end.(NumberObj)
 			if !ok {
-				return ResErr[Object](NewRuntimeError("Range end must be a number", currentTok))
+				return vm.runtimeErrorRes("Range end must be a number at %s", currentTok.GetFileLoc())
 			}
 			stepObj, ok := step.(NumberObj)
 			if !ok {
-				return ResErr[Object](NewRuntimeError("Range step must be a number", currentTok))
+				return vm.runtimeErrorRes("Range step must be a number at %s", currentTok.GetFileLoc())
 			}
 
 			vm.push(
@@ -735,7 +740,7 @@ func (vm *VM) run(targetFrameDepth int) Result[Object] {
 
 		case OpIterNew:
 			if vm.sp == 0 {
-				return ResErr[Object](NewRuntimeError("Stack underflow for OP_ITER_NEW", currentTok))
+				return vm.runtimeErrorRes("Stack underflow for OP_ITER_NEW at %s", currentTok.GetFileLoc())
 			}
 			iterable, err := vm.pop()
 			if err != nil {
@@ -752,12 +757,12 @@ func (vm *VM) run(targetFrameDepth int) Result[Object] {
 			offset := *operand.(*int)
 
 			if vm.sp == 0 {
-				return ResErr[Object](NewRuntimeError("Stack underflow for OP_ITER_NEXT_OR_JUMP", currentTok))
+				return vm.runtimeErrorRes("Stack underflow for OP_ITER_NEXT_OR_JUMP at %s", currentTok.GetFileLoc())
 			}
 
 			iterator, ok := vm.stack[vm.sp-1].(Iterator)
 			if !ok {
-				return ResErr[Object](NewRuntimeError("Object on stack is not an iterator", currentTok))
+				return vm.runtimeErrorRes("Object on stack is not an iterator at %s", currentTok.GetFileLoc())
 			}
 
 			nextVal, hasNext := iterator.Next()
@@ -783,7 +788,7 @@ func (vm *VM) run(targetFrameDepth int) Result[Object] {
 		case OpBuildList:
 			numElms := *operand.(*int)
 			if vm.sp < numElms {
-				return ResErr[Object](NewRuntimeError("Stack underflow for OP_BUILD_LIST", currentTok))
+				return vm.runtimeErrorRes("Stack underflow for OP_BUILD_LIST at %s", currentTok.GetFileLoc())
 			}
 
 			elements := make([]Object, numElms)
@@ -798,7 +803,7 @@ func (vm *VM) run(targetFrameDepth int) Result[Object] {
 		case OpBuildMap:
 			numProps := *operand.(*int)
 			if vm.sp < numProps*2 {
-				return ResErr[Object](NewRuntimeError("Stack underflow for OP_BUILD_MAP", currentTok))
+				return vm.runtimeErrorRes("Stack underflow for OP_BUILD_MAP at %s", currentTok.GetFileLoc())
 			}
 
 			obj := NewMap()
@@ -814,34 +819,34 @@ func (vm *VM) run(targetFrameDepth int) Result[Object] {
 				}
 
 				if err := obj.Set(key, val); err != nil {
-					return ResErr[Object](NewRuntimeError(err.Error(), currentTok))
+					return vm.runtimeErrorRes("%s at %s", err.Error(), currentTok.GetFileLoc())
 				}
 			}
 			vm.push(obj)
 		case OpUnpack:
 			expected := *operand.(*int)
 			if vm.sp == 0 {
-				return ResErr[Object](NewRuntimeError("Stack underflow for OP_UNPACK", currentTok))
+				return vm.runtimeErrorRes("Stack underflow for OP_UNPACK at %s", currentTok.GetFileLoc())
 			}
 			value, err := vm.pop()
 			if err != nil { return ResErr[Object](err) }
 			switch v := value.(type) {
 			case *TupleObj:
 				if len(v.Elements) != expected {
-					return ResErr[Object](NewRuntimeError(fmt.Sprintf("unpack mismatch: expected %d values, got %d", expected, len(v.Elements)), currentTok))
+					return vm.runtimeErrorRes("unpack mismatch: expected %d values, got %d at %s", expected, len(v.Elements), currentTok.GetFileLoc())
 				}
 				for i := len(v.Elements) - 1; i >= 0; i-- { vm.push(v.Elements[i]) }
 			case *ArrayObj:
 				if len(v.Elements) != expected {
-					return ResErr[Object](NewRuntimeError(fmt.Sprintf("unpack mismatch: expected %d values, got %d", expected, len(v.Elements)), currentTok))
+					return vm.runtimeErrorRes("unpack mismatch: expected %d values, got %d at %s", expected, len(v.Elements), currentTok.GetFileLoc())
 				}
 				for i := len(v.Elements) - 1; i >= 0; i-- { vm.push(v.Elements[i]) }
 			default:
-				return ResErr[Object](NewRuntimeError(fmt.Sprintf("object of type '%s' is not unpackable", value.Type()), currentTok))
+				return vm.runtimeErrorRes("object of type '%s' is not unpackable at %s", value.Type(), currentTok.GetFileLoc())
 			}
 		case OpIndexGet:
 			if vm.sp < 2 {
-				return ResErr[Object](NewRuntimeError("Stack underflow for OP_INDEX_GET", currentTok))
+				return vm.runtimeErrorRes("Stack underflow for OP_INDEX_GET at %s", currentTok.GetFileLoc())
 			}
 
 			idx, err := vm.pop()
@@ -860,23 +865,23 @@ func (vm *VM) run(targetFrameDepth int) Result[Object] {
 					return ResErr[Object](err)
 				}
 				if !ok {
-					return ResErr[Object](NewRuntimeError(fmt.Sprintf("Unsupported index type '%s' for sequence", idx.Type()), currentTok))
+					return vm.runtimeErrorRes("Unsupported index type '%s' for sequence at %s", idx.Type(), currentTok.GetFileLoc())
 				}
 
 				switch seq := collection.(type) {
 				case *ArrayObj:
 					if index < 0 || index >= len(seq.Elements) {
-						return ResErr[Object](NewRuntimeError(fmt.Sprintf("Array index out of bounds: %d", index), currentTok))
+						return vm.runtimeErrorRes("Array index out of bounds: %d at %s", index, currentTok.GetFileLoc())
 					}
 					vm.push(seq.Elements[index])
 				case *TupleObj:
 					if index < 0 || index >= len(seq.Elements) {
-						return ResErr[Object](NewRuntimeError(fmt.Sprintf("Tuple index out of bounds: %d", index), currentTok))
+						return vm.runtimeErrorRes("Tuple index out of bounds: %d at %s", index, currentTok.GetFileLoc())
 					}
 					vm.push(seq.Elements[index])
 				case StringObj:
 					if index < 0 || index >= len(seq.Value) {
-						return ResErr[Object](NewRuntimeError(fmt.Sprintf("String index out of bounds: %d", index), currentTok))
+						return vm.runtimeErrorRes("String index out of bounds: %d at %s", index, currentTok.GetFileLoc())
 					}
 					vm.push(StringObj{Value: string(seq.Value[index])})
 				}
@@ -884,7 +889,7 @@ func (vm *VM) run(targetFrameDepth int) Result[Object] {
 			case *MapObj:
 				val, found, err := coll.Get(idx)
 				if err != nil {
-					return ResErr[Object](NewRuntimeError(err.Error(), currentTok))
+					return vm.runtimeErrorRes("%s at %s", err.Error(), currentTok.GetFileLoc())
 				}
 				if !found {
 					vm.push(NullObj{})
@@ -892,11 +897,11 @@ func (vm *VM) run(targetFrameDepth int) Result[Object] {
 					vm.push(val)
 				}
 			default:
-				return ResErr[Object](NewRuntimeError(fmt.Sprintf("Object of type '%s' does not support indexing", collection.Type()), currentTok))
+				return vm.runtimeErrorRes("Object of type '%s' does not support indexing at %s", collection.Type(), currentTok.GetFileLoc())
 			}
 		case OpIndexSet:
 			if vm.sp < 3 {
-				return ResErr[Object](NewRuntimeError("Stack underflow for OP_INDEX_SET", currentTok))
+				return vm.runtimeErrorRes("Stack underflow for OP_INDEX_SET at %s", currentTok.GetFileLoc())
 			}
 			value, err := vm.pop()
 			if err != nil {
@@ -918,22 +923,22 @@ func (vm *VM) run(targetFrameDepth int) Result[Object] {
 					return ResErr[Object](err)
 				}
 				if !ok {
-					return ResErr[Object](NewRuntimeError(fmt.Sprintf("Unsupported index type '%s' for array", idx.Type()), currentTok))
+					return vm.runtimeErrorRes("Unsupported index type '%s' for array at %s", idx.Type(), currentTok.GetFileLoc())
 				}
 
 				if index < 0 || index >= len(coll.Elements) {
-					return ResErr[Object](NewRuntimeError(fmt.Sprintf("Array index out of bounds: %d", index), currentTok))
+					return vm.runtimeErrorRes("Array index out of bounds: %d at %s", index, currentTok.GetFileLoc())
 				}
 				coll.Elements[index] = value
 			case *MapObj:
 				if err := coll.Set(idx, value); err != nil {
-					return ResErr[Object](NewRuntimeError(err.Error(), currentTok))
+					return vm.runtimeErrorRes("%s at %s", err.Error(), currentTok.GetFileLoc())
 				}
 			default:
-				return ResErr[Object](NewRuntimeError(fmt.Sprintf("Object of type '%s' does not support index assignment", collection.Type()), currentTok))
+				return vm.runtimeErrorRes("Object of type '%s' does not support index assignment at %s", collection.Type(), currentTok.GetFileLoc())
 			}
 		default:
-			return ResErr[Object](NewRuntimeError(fmt.Sprintf("Unknown opcode %s", op), currentTok))
+			return vm.runtimeErrorRes("Unknown opcode %s at %s", op, currentTok.GetFileLoc())
 		}
 	}
 
@@ -948,7 +953,7 @@ func (vm *VM) coerceIndexToInt(idxObj Object) (int, bool, Error) {
 	switch idx := idxObj.(type) {
 	case NumberObj:
 		if !idx.IsInt {
-			return 0, false, NewRuntimeError("Sequence index must be an integer", nil)
+			return 0, false, vm.runtimeError("Sequence index must be an integer")
 		}
 		return int(idx.Value), true, nil
 	case BooleanObj:
@@ -966,7 +971,7 @@ func (vm *VM) doBinaryOp(op OpCode, left, right Object, currentTok *Token) (Obje
 	case NumberObj:
 		r, ok := right.(NumberObj)
 		if !ok {
-			return nil, NewRuntimeError(fmt.Sprintf("unsupported operand type(s) for %s: 'number' and '%s'", op, right.Type()), currentTok)
+			return nil, vm.runtimeError("unsupported operand type(s) for %s: 'number' and '%s' at %s", op, right.Type(), currentTok.GetFileLoc())
 		}
 
 		var result float64
@@ -984,13 +989,13 @@ func (vm *VM) doBinaryOp(op OpCode, left, right Object, currentTok *Token) (Obje
 			isInt = l.IsInt && r.IsInt
 		case OpDivide:
 			if r.Value == 0 {
-				return nil, NewRuntimeError("Division by zero", currentTok)
+				return nil, vm.runtimeError("Division by zero at %s", currentTok.GetFileLoc())
 			}
 			result = l.Value / r.Value
 			isInt = false
 		case OpModulo:
 			if r.Value == 0 {
-				return nil, NewRuntimeError("Modulo by zero", currentTok)
+				return nil, vm.runtimeError("Modulo by zero at %s", currentTok.GetFileLoc())
 			}
 			if l.IsInt && r.IsInt {
 				result = float64(int64(l.Value) % int64(r.Value))
@@ -1007,20 +1012,20 @@ func (vm *VM) doBinaryOp(op OpCode, left, right Object, currentTok *Token) (Obje
 			if r, ok := right.(StringObj); ok {
 				return StringObj{Value: l.Value + r.Value}, nil
 			} else {
-				return nil, NewRuntimeError(fmt.Sprintf("unsupported operand type(s) for +: 'string' and '%s'", right.Type()), currentTok)
+				return nil, vm.runtimeError("unsupported operand type(s) for +: 'string' and '%s' at %s", right.Type(), currentTok.GetFileLoc())
 			}
 		} else {
-			return nil, NewRuntimeError(fmt.Sprintf("unsupported operand type(s) for %s: 'string'", op), currentTok)
+			return nil, vm.runtimeError("unsupported operand type(s) for %s: 'string' at %s", op, currentTok.GetFileLoc())
 		}
 
 	default:
-		return nil, NewRuntimeError(fmt.Sprintf("unsupported operand type(s) for %s: '%s' and '%s'", op, left.Type(), right.Type()), currentTok)
+		return nil, vm.runtimeError("unsupported operand type(s) for %s: '%s' and '%s' at %s", op, left.Type(), right.Type(), currentTok.GetFileLoc())
 	}
 }
 
 func (vm *VM) binaryOp(op OpCode, currentTok *Token) Error {
 	if vm.sp < 2 {
-		return NewRuntimeError(fmt.Sprintf("Stack underflow for %s", op), currentTok)
+		return vm.runtimeError("Stack underflow for %s at %s", op, currentTok.GetFileLoc())
 	}
 	right, err := vm.pop()
 	if err != nil {
@@ -1043,7 +1048,7 @@ func (vm *VM) binaryOp(op OpCode, currentTok *Token) Error {
 
 func (vm *VM) binaryOpCompare(op OpCode, currentTok *Token) Error {
 	if vm.sp < 2 {
-		return NewRuntimeError(fmt.Sprintf("Stack underflow for %s", op), currentTok)
+		return vm.runtimeError("Stack underflow for %s at %s", op, currentTok.GetFileLoc())
 	}
 	right, err := vm.pop()
 	if err != nil {
@@ -1063,7 +1068,7 @@ func (vm *VM) binaryOpCompare(op OpCode, currentTok *Token) Error {
 		case OpNotEqual:
 			result = left != right
 		default:
-			return NewRuntimeError(fmt.Sprintf("type '%s' does not support ordering comparisons", left.Type()), currentTok)
+			return vm.runtimeError("type '%s' does not support ordering comparisons", left.Type())
 		}
 		vm.push(BooleanObj{Value: result})
 		return nil
@@ -1071,7 +1076,7 @@ func (vm *VM) binaryOpCompare(op OpCode, currentTok *Token) Error {
 
 	cmpResult, cmpErr := comparable.Compare(right)
 	if cmpErr != nil {
-		return NewRuntimeError(cmpErr.Error(), currentTok)
+		return vm.runtimeError("%s at %s", cmpErr.Error(), currentTok.GetFileLoc())
 	}
 
 	var result bool
@@ -1173,6 +1178,10 @@ func (vm *VM) inplaceOp(op OpCode, operand any, currentTok *Token) Error {
 	return nil
 }
 
-func (vm *VM) runtimeError(format string, args ...interface{}) Error {
-	return NewRuntimeError(fmt.Sprintf(format, args...), nil)
+func (vm *VM) runtimeError(format string, args ...any) Error {
+	return NewRuntimeError(fmt.Sprintf(format, args...), vm.currToken)
+}
+
+func (vm *VM) runtimeErrorRes(format string, args ...any) Result[Object] {
+	return	ResErr[Object](vm.runtimeError(format, args...))
 }

@@ -39,4 +39,4 @@ fn testOs() {
     os.remove(testDir)
 }
 
-testOs()
+// testOs()

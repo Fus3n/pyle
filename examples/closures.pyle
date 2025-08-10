@@ -21,8 +21,8 @@ fn slowFib(n: int) {
 
 const fib = memoize(slowFib)
 
-echo("fib(35) =", fib(35))
 let start = time.perfCounter()
+echo("fib(35) =", fib(35))
 let end = time.perfCounter()
 echo("First call duration: {:.4f}s".format(end - start))
 

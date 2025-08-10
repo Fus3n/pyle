@@ -904,7 +904,7 @@ func (c *Compiler) visitContinueStmt(node *ContinueStmt) error {
 
 	// Pop any scopes created inside the loop body before jumping.
 	numScopesToPop := c.scopeDepth - c.loopScopes[c.loopLevel-1].depth
-	for i := 0; i < numScopesToPop; i++ {
+	for range numScopesToPop {
 		c.emitSingleInstruct(OpExitScope)
 	}
 
