@@ -70,7 +70,7 @@ func Walk(node ASTNode, visitor Visitor) {
 	case *LogicalOp:
 		Walk(n.Left, visitor)
 		Walk(n.Right, visitor)
-	case *ComparionOp:
+	case *ComparisonOp:
 		Walk(n.Left, visitor)
 		Walk(n.Right, visitor)
 	case *UnaryOp:
@@ -450,27 +450,27 @@ func (e *LogicalOp) MarshalJSON() ([]byte, error) {
 	})
 }
 
-type ComparionOp struct {
+type ComparisonOp struct {
 	Token *Token
 	Left  Expr
 	Op    *Token
 	Right Expr
 }
 
-func (a *ComparionOp) TypeString() string { return "" }
-func (e *ComparionOp) GetToken() *Token { return e.Token }
-func (e *ComparionOp) String() string {
+func (a *ComparisonOp) TypeString() string { return "" }
+func (e *ComparisonOp) GetToken() *Token { return e.Token }
+func (e *ComparisonOp) String() string {
 	return fmt.Sprintf("ComparisonOp (\n  Left: %v\n  Op: %s\n  Right: %v\n)", 
 		e.Left, e.Op.Value, e.Right)
 }
-func (e *ComparionOp) exprNode()        {}
-func (e *ComparionOp) MarshalJSON() ([]byte, error) {
-	type Alias ComparionOp
+func (e *ComparisonOp) exprNode()        {}
+func (e *ComparisonOp) MarshalJSON() ([]byte, error) {
+	type Alias ComparisonOp
 	return json.Marshal(&struct {
 		Type string `json:"type"`
 		*Alias
 	}{
-		Type:  "ComparionOp",
+		Type:  "ComparisonOp",
 		Alias: (*Alias)(e),
 	})
 }

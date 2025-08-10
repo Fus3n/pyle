@@ -170,8 +170,8 @@ func (c *Compiler) compileNode(node ASTNode) error {
 		return c.visitCallExpr(n)
 	case *LogicalOp:
 		return c.visitLogicalOp(n)
-	case *ComparionOp:
-		return c.visitComparionOp(n)
+	case *ComparisonOp:
+		return c.visitComparisonOp(n)
 	case *UnaryOp:
 		return c.visitUnaryOp(n)
 	case *RangeSpecifier:
@@ -434,9 +434,6 @@ func (c *Compiler) visitLogicalOp(node *LogicalOp) error {
 	return nil
 }
 
-// func (c *Compiler) visitComparionOp(node *ComparionOp) error {
-// }
-
 func (c *Compiler) visitUnaryOp(node *UnaryOp) error {
 	if err := c.compileNode(node.Operand); err != nil {
 		return err
@@ -668,7 +665,7 @@ func (c *Compiler) visitCompoundAssignStmt(node *CompoundAssignStmt) error {
 	return nil
 }
 
-func (c *Compiler) visitComparionOp(node *ComparionOp) error {
+func (c *Compiler) visitComparisonOp(node *ComparisonOp) error {
 	if err := c.compileNode(node.Left); err != nil {
 		return err
 	}

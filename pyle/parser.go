@@ -468,7 +468,7 @@ func (p *Parser) equality() Result[Expr] {
 		if rightRes.IsErr() {
 			return rightRes
 		}
-		expr = &ComparionOp{
+		expr = &ComparisonOp{
 			Token: op,
 			Left:  expr,
 			Op:    op,
@@ -493,7 +493,7 @@ func (p *Parser) comparison() Result[Expr] {
 		if rightRes.IsErr() {
 			return rightRes
 		}
-		expr = &ComparionOp{
+		expr = &ComparisonOp{
 			Token: op,
 			Left:  expr,
 			Op:    op,
