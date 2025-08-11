@@ -16,15 +16,15 @@ import (
 )
 
 const (
-	lsName = "pyle-ls"
+	lsName      = "pyle-ls"
 	CIKFunction = protocol.CompletionItemKindFunction
 	CIKVariable = protocol.CompletionItemKindVariable
 	CIKKeyword  = protocol.CompletionItemKindKeyword
 )
 
 var (
-	version   string = "0.0.1"
-	handler   protocol.Handler
+	version string = "0.0.1"
+	handler protocol.Handler
 
 	documentsMutex sync.RWMutex
 	documents      = make(map[string]string)
@@ -209,10 +209,10 @@ func textDocumentCompletion(context *glsp.Context, params *protocol.CompletionPa
 							typeStr = decl.Initializers[i].TypeString()
 						}
 						items = append(items, protocol.CompletionItem{
-							Label:  name.Value,
-							Kind:   &kindVar,
+							Label: name.Value,
+							Kind:  &kindVar,
 							Documentation: protocol.MarkupContent{
-								Kind: protocol.MarkupKindMarkdown,
+								Kind:  protocol.MarkupKindMarkdown,
 								Value: fmt.Sprintf("```pyle\n%s %s: %s\n```", specifier, name.Value, typeStr),
 							},
 						})

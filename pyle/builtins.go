@@ -41,7 +41,6 @@ func nativeTuple(objs ...Object) (*TupleObj, error) {
 	return &TupleObj{Elements: elems}, nil
 }
 
-
 func nativeInt(obj Object) (NumberObj, error) {
 	switch v := obj.(type) {
 	case NumberObj:
@@ -93,7 +92,6 @@ func nativeBool(obj Object) (BooleanObj, error) {
 	return BooleanObj{Value: obj.IsTruthy()}, nil
 }
 
-
 func nativeArray(obj Object) (*ArrayObj, error) {
 	switch v := obj.(type) {
 	case *ArrayObj:
@@ -140,7 +138,7 @@ func nativeExpect(condition Object, message Object) (Object, error) {
 func nativeHash(obj Object) (uint32, error) {
 	if hashable, ok := obj.(Hashable); ok {
 		return hashable.Hash(), nil
-	} 
+	}
 	return 0, fmt.Errorf("object of type '%s' is not hashable", obj.Type())
 }
 
@@ -165,19 +163,19 @@ func nativeAsciiCode(obj Object) (int, error) {
 }
 
 var Builtins = map[string]any{
-	"echo":        builtinEcho,
-	"scan":        nativeScan,
-	"tuple":       nativeTuple,
-	"type":        nativeType,
-	"int":         nativeInt,
-	"float":       nativeFloat,
-	"string":      nativeString,
-	"bool":        nativeBool,
-	"array":       nativeArray,
-	"expect":      nativeExpect,
-	"hash":        nativeHash,
-	"exit":        nativeExit,
-	"asciiCode":   nativeAsciiCode,
+	"echo":      builtinEcho,
+	"scan":      nativeScan,
+	"tuple":     nativeTuple,
+	"type":      nativeType,
+	"int":       nativeInt,
+	"float":     nativeFloat,
+	"string":    nativeString,
+	"bool":      nativeBool,
+	"array":     nativeArray,
+	"expect":    nativeExpect,
+	"hash":      nativeHash,
+	"exit":      nativeExit,
+	"asciiCode": nativeAsciiCode,
 }
 
 var BuiltinDocs = map[string]*DocstringObj{

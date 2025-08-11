@@ -105,18 +105,18 @@ func (t TokenType) String() string {
 }
 
 type Loc struct {
-	FileName string `json:"fileName"`	
-	Line     int  `json:"line"`
-	ColStart int  `json:"colStart"`
-	ColEnd   *int `json:"colEnd,omitempty"`
+	FileName string `json:"fileName"`
+	Line     int    `json:"line"`
+	ColStart int    `json:"colStart"`
+	ColEnd   *int   `json:"colEnd,omitempty"`
 }
 
 func NewLoc(fileName string, line, colStart int, colEnd *int) Loc {
 	return Loc{
 		FileName: fileName,
-		Line: line,
+		Line:     line,
 		ColStart: colStart,
-		ColEnd: colEnd,
+		ColEnd:   colEnd,
 	}
 }
 
@@ -128,17 +128,17 @@ func (l Loc) String() string {
 }
 
 type Token struct {
-	Kind       TokenType `json:"kind"`
-	Value      string 	 `json:"value"`
-	Loc        Loc		 `json:"loc"`
+	Kind  TokenType `json:"kind"`
+	Value string    `json:"value"`
+	Loc   Loc       `json:"loc"`
 }
 
 // new token
 func NewToken(kind TokenType, value string, loc Loc, sourceName string) Token {
 	return Token{
-		Kind: kind,
+		Kind:  kind,
 		Value: value,
-		Loc: loc,
+		Loc:   loc,
 	}
 }
 func (t Token) GetFileLoc() string {

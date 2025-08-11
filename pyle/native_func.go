@@ -53,12 +53,12 @@ func createDirectCall(fn any) (any, int, bool) {
 			}
 			return CreateInt(res), nil
 		}), 0, true
-	case func() (int64):
+	case func() int64:
 		return NativeFunc0(func(vm *VM) (Object, Error) {
 			res := f()
 			return CreateInt(res), nil
 		}), 0, true
-		
+
 	case func() (float64, error):
 		return NativeFunc0(func(vm *VM) (Object, Error) {
 			res, err := f()
@@ -478,7 +478,7 @@ func createTypeConverter(targetType reflect.Type) func(Object) (reflect.Value, e
 			return convertVMObjectToGoValue(obj, targetType)
 		}
 	}
-	
+
 	// Fallback for less common types
 	return func(obj Object) (reflect.Value, error) {
 		return convertVMObjectToGoValue(obj, targetType)
@@ -487,102 +487,102 @@ func createTypeConverter(targetType reflect.Type) func(Object) (reflect.Value, e
 
 // Convert VM Object to Go value using reflection
 func convertVMObjectToGoValue(obj Object, targetType reflect.Type) (reflect.Value, error) {
-    // Hybrid approach: Fast path for common types, slower reflection for the rest.
-    switch targetType.Kind() {
-    case reflect.Ptr:
-        // Fast path for common pointer types
-        switch targetType {
-        case reflect.TypeOf((*ArrayObj)(nil)):
-            if val, ok := obj.(*ArrayObj); ok {
-                return reflect.ValueOf(val), nil
-            }
-        case reflect.TypeOf((*MapObj)(nil)):
-            if val, ok := obj.(*MapObj); ok {
-                return reflect.ValueOf(val), nil
-            }
-        case reflect.TypeOf((*StringObj)(nil)):
-            if val, ok := obj.(StringObj); ok {
-                return reflect.ValueOf(&val), nil
-            }
-        default:
-            // Generic fallback for other pointer types
-            val := reflect.ValueOf(obj)
-            if val.Type().AssignableTo(targetType) {
-                return val, nil
-            }
-        }
-        return reflect.Value{}, fmt.Errorf("cannot convert %s to pointer type %s", obj.Type(), targetType)
+	// Hybrid approach: Fast path for common types, slower reflection for the rest.
+	switch targetType.Kind() {
+	case reflect.Ptr:
+		// Fast path for common pointer types
+		switch targetType {
+		case reflect.TypeOf((*ArrayObj)(nil)):
+			if val, ok := obj.(*ArrayObj); ok {
+				return reflect.ValueOf(val), nil
+			}
+		case reflect.TypeOf((*MapObj)(nil)):
+			if val, ok := obj.(*MapObj); ok {
+				return reflect.ValueOf(val), nil
+			}
+		case reflect.TypeOf((*StringObj)(nil)):
+			if val, ok := obj.(StringObj); ok {
+				return reflect.ValueOf(&val), nil
+			}
+		default:
+			// Generic fallback for other pointer types
+			val := reflect.ValueOf(obj)
+			if val.Type().AssignableTo(targetType) {
+				return val, nil
+			}
+		}
+		return reflect.Value{}, fmt.Errorf("cannot convert %s to pointer type %s", obj.Type(), targetType)
 
-    case reflect.Struct:
-        // Fast path for common struct types
-        switch targetType {
-        case reflect.TypeOf(StringObj{}):
-            if val, ok := obj.(StringObj); ok {
-                return reflect.ValueOf(val), nil
-            }
-        case reflect.TypeOf(NumberObj{}):
-            if val, ok := obj.(NumberObj); ok {
-                return reflect.ValueOf(val), nil
-            }
-        case reflect.TypeOf(BooleanObj{}):
-            if val, ok := obj.(BooleanObj); ok {
-                return reflect.ValueOf(val), nil
-            }
-        default:
-            // Generic fallback for other struct types
-            val := reflect.ValueOf(obj)
-            if val.Type().AssignableTo(targetType) {
-                return val, nil
-            }
-        }
-        return reflect.Value{}, fmt.Errorf("cannot convert %s to struct type %s", obj.Type(), targetType)
+	case reflect.Struct:
+		// Fast path for common struct types
+		switch targetType {
+		case reflect.TypeOf(StringObj{}):
+			if val, ok := obj.(StringObj); ok {
+				return reflect.ValueOf(val), nil
+			}
+		case reflect.TypeOf(NumberObj{}):
+			if val, ok := obj.(NumberObj); ok {
+				return reflect.ValueOf(val), nil
+			}
+		case reflect.TypeOf(BooleanObj{}):
+			if val, ok := obj.(BooleanObj); ok {
+				return reflect.ValueOf(val), nil
+			}
+		default:
+			// Generic fallback for other struct types
+			val := reflect.ValueOf(obj)
+			if val.Type().AssignableTo(targetType) {
+				return val, nil
+			}
+		}
+		return reflect.Value{}, fmt.Errorf("cannot convert %s to struct type %s", obj.Type(), targetType)
 
-    case reflect.String:
-        if strObj, ok := obj.(StringObj); ok {
-            return reflect.ValueOf(strObj.Value), nil
-        }
-        return reflect.Value{}, fmt.Errorf("expected string, got %s", obj.Type())
-        
-    case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-        if numObj, ok := obj.(NumberObj); ok && numObj.IsInt {
-            return reflect.ValueOf(int64(numObj.Value)).Convert(targetType), nil
-        }
-        return reflect.Value{}, fmt.Errorf("expected int, got %s", obj.Type())
-        
-    case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
-        if numObj, ok := obj.(NumberObj); ok && numObj.IsInt {
-            return reflect.ValueOf(uint64(numObj.Value)).Convert(targetType), nil
-        }
-        return reflect.Value{}, fmt.Errorf("expected uint, got %s", obj.Type())
-        
-    case reflect.Float64, reflect.Float32:
-        if numObj, ok := obj.(NumberObj); ok {
-            return reflect.ValueOf(numObj.Value).Convert(targetType), nil
-        }
-        return reflect.Value{}, fmt.Errorf("expected float, got %s", obj.Type())
-        
-    case reflect.Bool:
-        if boolObj, ok := obj.(BooleanObj); ok {
-            return reflect.ValueOf(boolObj.Value), nil
-        }
-        return reflect.Value{}, fmt.Errorf("expected boolean, got %s", obj.Type())
-    case reflect.Slice:
-        if arrayObj, ok := obj.(*ArrayObj); ok {
-            sliceType := targetType.Elem()
-            goSlice := reflect.MakeSlice(targetType, len(arrayObj.Elements), len(arrayObj.Elements))
-            for i, elem := range arrayObj.Elements {
-                val, err := convertVMObjectToGoValue(elem, sliceType)
-                if err != nil {
-                    return reflect.Value{}, fmt.Errorf("error converting slice element %d: %v", i, err)
-                }
-                goSlice.Index(i).Set(val)
-            }
-            return goSlice, nil
-        }
-        return reflect.Value{}, fmt.Errorf("expected array, got %s", obj.Type())
-    default:
-        return reflect.Value{}, fmt.Errorf("unsupported Go type: %v", targetType.Kind())
-    }
+	case reflect.String:
+		if strObj, ok := obj.(StringObj); ok {
+			return reflect.ValueOf(strObj.Value), nil
+		}
+		return reflect.Value{}, fmt.Errorf("expected string, got %s", obj.Type())
+
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		if numObj, ok := obj.(NumberObj); ok && numObj.IsInt {
+			return reflect.ValueOf(int64(numObj.Value)).Convert(targetType), nil
+		}
+		return reflect.Value{}, fmt.Errorf("expected int, got %s", obj.Type())
+
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		if numObj, ok := obj.(NumberObj); ok && numObj.IsInt {
+			return reflect.ValueOf(uint64(numObj.Value)).Convert(targetType), nil
+		}
+		return reflect.Value{}, fmt.Errorf("expected uint, got %s", obj.Type())
+
+	case reflect.Float64, reflect.Float32:
+		if numObj, ok := obj.(NumberObj); ok {
+			return reflect.ValueOf(numObj.Value).Convert(targetType), nil
+		}
+		return reflect.Value{}, fmt.Errorf("expected float, got %s", obj.Type())
+
+	case reflect.Bool:
+		if boolObj, ok := obj.(BooleanObj); ok {
+			return reflect.ValueOf(boolObj.Value), nil
+		}
+		return reflect.Value{}, fmt.Errorf("expected boolean, got %s", obj.Type())
+	case reflect.Slice:
+		if arrayObj, ok := obj.(*ArrayObj); ok {
+			sliceType := targetType.Elem()
+			goSlice := reflect.MakeSlice(targetType, len(arrayObj.Elements), len(arrayObj.Elements))
+			for i, elem := range arrayObj.Elements {
+				val, err := convertVMObjectToGoValue(elem, sliceType)
+				if err != nil {
+					return reflect.Value{}, fmt.Errorf("error converting slice element %d: %v", i, err)
+				}
+				goSlice.Index(i).Set(val)
+			}
+			return goSlice, nil
+		}
+		return reflect.Value{}, fmt.Errorf("expected array, got %s", obj.Type())
+	default:
+		return reflect.Value{}, fmt.Errorf("unsupported Go type: %v", targetType.Kind())
+	}
 }
 
 // Convert Go value to VM Object
@@ -605,48 +605,48 @@ func convertGoValueToVMObject(value reflect.Value) (Object, error) {
 		}
 	}
 
-    switch value.Kind() {
-    case reflect.String:
-        return StringObj{Value: value.String()}, nil
-    case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-        return CreateInt(value.Int()), nil
-    case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
-        return CreateInt(int64(value.Uint())), nil
-    case reflect.Float32, reflect.Float64:
-        return NumberObj{Value: value.Float(), IsInt: false}, nil
-    case reflect.Bool:
-        return BooleanObj{Value: value.Bool()}, nil
-    case reflect.Slice:
-        // Fast path for string slices
-        if value.Type().Elem().Kind() == reflect.String {
-            elements := make([]Object, value.Len())
-            for i := 0; i < value.Len(); i++ {
-                elements[i] = StringObj{Value: value.Index(i).String()}
-            }
-            return &ArrayObj{Elements: elements}, nil
-        }
-        
-        // General slice handling
-        elements := make([]Object, value.Len())
-        for i := 0; i < value.Len(); i++ {
+	switch value.Kind() {
+	case reflect.String:
+		return StringObj{Value: value.String()}, nil
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		return CreateInt(value.Int()), nil
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		return CreateInt(int64(value.Uint())), nil
+	case reflect.Float32, reflect.Float64:
+		return NumberObj{Value: value.Float(), IsInt: false}, nil
+	case reflect.Bool:
+		return BooleanObj{Value: value.Bool()}, nil
+	case reflect.Slice:
+		// Fast path for string slices
+		if value.Type().Elem().Kind() == reflect.String {
+			elements := make([]Object, value.Len())
+			for i := 0; i < value.Len(); i++ {
+				elements[i] = StringObj{Value: value.Index(i).String()}
+			}
+			return &ArrayObj{Elements: elements}, nil
+		}
+
+		// General slice handling
+		elements := make([]Object, value.Len())
+		for i := 0; i < value.Len(); i++ {
 			res, err := convertGoValueToVMObject(value.Index(i))
 			if err != nil {
 				return nil, fmt.Errorf("error converting slice element %d: %v", i, err)
 			}
-            elements[i] = res
-        }
-        return &ArrayObj{Elements: elements}, nil
-    case reflect.Array:
-        elements := make([]Object, value.Len())
-        for i := 0; i < value.Len(); i++ {
+			elements[i] = res
+		}
+		return &ArrayObj{Elements: elements}, nil
+	case reflect.Array:
+		elements := make([]Object, value.Len())
+		for i := 0; i < value.Len(); i++ {
 			res, err := convertGoValueToVMObject(value.Index(i))
 			if err != nil {
 				return nil, fmt.Errorf("error converting array element %d: %v", i, err)
 			}
-            elements[i] = res
-        }
-        return &ArrayObj{Elements: elements}, nil
-    default:
+			elements[i] = res
+		}
+		return &ArrayObj{Elements: elements}, nil
+	default:
 		return nil, fmt.Errorf("Unsupported Go type: %v", value.Kind())
-    }
+	}
 }

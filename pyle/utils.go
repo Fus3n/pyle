@@ -45,7 +45,6 @@ func RunScript(vm *VM, fileName string) error {
 	return nil
 }
 
-
 func CreateInt(val int64) NumberObj {
 	return NumberObj{Value: float64(val), IsInt: true}
 }
@@ -62,22 +61,21 @@ func CreateNull() NullObj {
 	return NullObj{}
 }
 
-
 func isAlnumChar(c rune) bool {
 	return unicode.IsLetter(c) || unicode.IsDigit(c)
 }
 
 func Index[T comparable](slice []T, val T) int {
-    for i, v := range slice {
-        if v == val {
-            return i
-        }
-    }
-    return -1
+	for i, v := range slice {
+		if v == val {
+			return i
+		}
+	}
+	return -1
 }
 
 func FormatHash(h uint32) string {
-    return fmt.Sprintf("0x%x", h)
+	return fmt.Sprintf("0x%x", h)
 }
 
 func DisassembleBytecode(chunk *BytecodeChunk) string {

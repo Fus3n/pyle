@@ -30,9 +30,9 @@ type Compiler struct {
 	scopeDepth    int
 	tokenMap      map[int]Token
 
-	loopLevel      int
-	loopScopes     []*LoopScope
-	locals         []map[string]*VariableScoped
+	loopLevel  int
+	loopScopes []*LoopScope
+	locals     []map[string]*VariableScoped
 }
 
 type BytecodeChunk struct {
@@ -41,16 +41,15 @@ type BytecodeChunk struct {
 	TokenMap  map[int]Token
 }
 
-
 func NewCompiler() *Compiler {
 	c := &Compiler{
-		bytecodeChunk:    []Instruction{},
-		constants:        []Object{},
-		scopeDepth:       0,
-		tokenMap:         map[int]Token{},
-		loopLevel:        0,
-		loopScopes:       []*LoopScope{},
-		locals:           []map[string]*VariableScoped{},
+		bytecodeChunk: []Instruction{},
+		constants:     []Object{},
+		scopeDepth:    0,
+		tokenMap:      map[int]Token{},
+		loopLevel:     0,
+		loopScopes:    []*LoopScope{},
+		locals:        []map[string]*VariableScoped{},
 	}
 	return c
 }
@@ -108,11 +107,10 @@ func (c *Compiler) exitScope() {
 	c.locals = c.locals[:len(c.locals)-1]
 }
 
-
 func (c *Compiler) addLocal(varName string, isConst bool) *VariableScoped {
 	absDepth := len(c.locals) - 1
-    // New locals live in the current scope, so their relative depth is 0
-    locVar := NewVarScoped(varName, isConst, 0)
+	// New locals live in the current scope, so their relative depth is 0
+	locVar := NewVarScoped(varName, isConst, 0)
 	c.locals[absDepth][varName] = locVar // Store in the map using absolute depth
 	return locVar
 }
@@ -177,7 +175,7 @@ func (c *Compiler) compileNode(node ASTNode) error {
 	case *RangeSpecifier:
 		return c.visitRangeSpecifier(n)
 	case *ForInStmt:
-    	return c.visitForInStmt(n)
+		return c.visitForInStmt(n)
 	case *ArrayExpr:
 		return c.visitArrayExpr(n)
 	case *MapExpr:
@@ -291,7 +289,6 @@ func (c *Compiler) findVariable(name string) (int, bool) {
 	return -1, false
 }
 
-
 func (c *Compiler) visitVariableExpr(node *VariableExpr) error {
 	varName := node.Name.Value
 	if c.scopeDepth > 0 {
@@ -328,65 +325,81 @@ func (c *Compiler) visitCallExpr(node *CallExpr) error {
 }
 
 func (c *Compiler) visitVarDeclareStmt(node *VarDeclareStmt) error {
-    numNames := len(node.Names)
-    numInits := len(node.Initializers)
+	numNames := len(node.Names)
+	numInits := len(node.Initializers)
 
-    // Validate counts when multiple explicit initializers provided
-    if numInits > 1 && numInits != numNames {
-        return fmt.Errorf("CompileError: number of values (%d) does not match number of variables (%d) at %s", numInits, numNames, node.GetToken().GetFileLoc())
-    }
+	// Validate counts when multiple explicit initializers provided
+	if numInits > 1 && numInits != numNames {
+		return fmt.Errorf("CompileError: number of values (%d) does not match number of variables (%d) at %s", numInits, numNames, node.GetToken().GetFileLoc())
+	}
 
-    // Case 1: multiple names, single initializer -> will unpack at runtime
-    if numNames > 1 && numInits == 1 {
-        if err := c.compileNode(node.Initializers[0]); err != nil {
-            return err
-        }
-        // Ask VM to unpack into 'numNames' values (pushes in reverse order)
-        c.emitInstruct(OpUnpack, &numNames, node.GetToken())
+	// Case 1: multiple names, single initializer -> will unpack at runtime
+	if numNames > 1 && numInits == 1 {
+		if err := c.compileNode(node.Initializers[0]); err != nil {
+			return err
+		}
+		// Ask VM to unpack into 'numNames' values (pushes in reverse order)
+		c.emitInstruct(OpUnpack, &numNames, node.GetToken())
 
-        // Define variables left-to-right; each OpDef* pops one value (top -> first name)
-        for _, nameTok := range node.Names {
-            var opCode OpCode
-            nameIdx := c.addConstant(StringObj{Value: nameTok.Value})
-            if c.scopeDepth > 0 {
-                if node.IsConst { opCode = OpDefConstLocal } else { opCode = OpDefLocal }
-                c.addLocal(nameTok.Value, node.IsConst)
-                c.emitInstruct(opCode, &nameIdx, nameTok)
-            } else {
-                if node.IsConst { opCode = OpDefConstGlobal } else { opCode = OpDefGlobal }
-                c.emitInstruct(opCode, &nameIdx, nameTok)
-            }
-        }
-        return nil
-    }
+		// Define variables left-to-right; each OpDef* pops one value (top -> first name)
+		for _, nameTok := range node.Names {
+			var opCode OpCode
+			nameIdx := c.addConstant(StringObj{Value: nameTok.Value})
+			if c.scopeDepth > 0 {
+				if node.IsConst {
+					opCode = OpDefConstLocal
+				} else {
+					opCode = OpDefLocal
+				}
+				c.addLocal(nameTok.Value, node.IsConst)
+				c.emitInstruct(opCode, &nameIdx, nameTok)
+			} else {
+				if node.IsConst {
+					opCode = OpDefConstGlobal
+				} else {
+					opCode = OpDefGlobal
+				}
+				c.emitInstruct(opCode, &nameIdx, nameTok)
+			}
+		}
+		return nil
+	}
 
-    // Case 2: one-to-one mapping: define each name with its own initializer (or null)
-    if numNames >= 1 && (numInits == 0 || numInits == numNames) {
-        for i, nameTok := range node.Names {
-            if numInits == 0 {
-                nullConst := c.addConstant(NullObj{})
-                c.emitInstruct(OpConst, &nullConst, nameTok)
-            } else {
-                if err := c.compileNode(node.Initializers[i]); err != nil {
-                    return err
-                }
-            }
-            var opCode OpCode
-            nameIdx := c.addConstant(StringObj{Value: nameTok.Value})
-            if c.scopeDepth > 0 {
-                if node.IsConst { opCode = OpDefConstLocal } else { opCode = OpDefLocal }
-                c.addLocal(nameTok.Value, node.IsConst)
-                c.emitInstruct(opCode, &nameIdx, nameTok)
-            } else {
-                if node.IsConst { opCode = OpDefConstGlobal } else { opCode = OpDefGlobal }
-                c.emitInstruct(opCode, &nameIdx, nameTok)
-            }
-        }
-        return nil
-    }
+	// Case 2: one-to-one mapping: define each name with its own initializer (or null)
+	if numNames >= 1 && (numInits == 0 || numInits == numNames) {
+		for i, nameTok := range node.Names {
+			if numInits == 0 {
+				nullConst := c.addConstant(NullObj{})
+				c.emitInstruct(OpConst, &nullConst, nameTok)
+			} else {
+				if err := c.compileNode(node.Initializers[i]); err != nil {
+					return err
+				}
+			}
+			var opCode OpCode
+			nameIdx := c.addConstant(StringObj{Value: nameTok.Value})
+			if c.scopeDepth > 0 {
+				if node.IsConst {
+					opCode = OpDefConstLocal
+				} else {
+					opCode = OpDefLocal
+				}
+				c.addLocal(nameTok.Value, node.IsConst)
+				c.emitInstruct(opCode, &nameIdx, nameTok)
+			} else {
+				if node.IsConst {
+					opCode = OpDefConstGlobal
+				} else {
+					opCode = OpDefGlobal
+				}
+				c.emitInstruct(opCode, &nameIdx, nameTok)
+			}
+		}
+		return nil
+	}
 
-    // Fallback (should not be reachable)
-    return fmt.Errorf("CompileError: invalid variable declaration at %s", node.GetToken().GetFileLoc())
+	// Fallback (should not be reachable)
+	return fmt.Errorf("CompileError: invalid variable declaration at %s", node.GetToken().GetFileLoc())
 }
 
 func (c *Compiler) visitAssignStmt(node *AssignStmt) error {
@@ -463,7 +476,7 @@ func (c *Compiler) visitRangeSpecifier(node *RangeSpecifier) error {
 	if err := c.compileNode(node.End); err != nil {
 		return err
 	}
-	
+
 	if node.Step != nil {
 		if err := c.compileNode(*node.Step); err != nil {
 			return err
@@ -476,7 +489,6 @@ func (c *Compiler) visitRangeSpecifier(node *RangeSpecifier) error {
 	c.emitInstruct(OpBuildRange, nil, node.GetToken())
 	return nil
 }
-
 
 func (c *Compiler) visitBoolean(node *BooleanExpr) error {
 	if node.Value {
@@ -503,9 +515,9 @@ func (c *Compiler) visitForInStmt(node *ForInStmt) error {
 	c.emitInstruct(OpConst, &nullConst, nil)
 	loopVarName := node.LoopVariable.Value
 	nameIdx := c.addConstant(StringObj{Value: loopVarName})
-	
+
 	locVar := c.addLocal(loopVarName, false)
-	c.emitInstruct(OpDefLocal, &nameIdx, node.LoopVariable) 
+	c.emitInstruct(OpDefLocal, &nameIdx, node.LoopVariable)
 
 	// Mark the top of the loop
 	loopStartIP := len(c.bytecodeChunk)
@@ -675,20 +687,20 @@ func (c *Compiler) visitComparisonOp(node *ComparisonOp) error {
 
 	opCode := OpEqual
 	switch node.Op.Kind {
-		case TokenEQ:
-			opCode = OpEqual
-		case TokenNEQ:
-			opCode = OpNotEqual
-		case TokenGT:
-			opCode = OpGreater
-		case TokenGTE:
-			opCode = OpGreaterEqual
-		case TokenLT:
-			opCode = OpLess
-		case TokenLTE:
-			opCode = OpLessEqual
-		default:
-			return fmt.Errorf("compiler error: unsupported comparison operator '%s'", node.Op.Value)
+	case TokenEQ:
+		opCode = OpEqual
+	case TokenNEQ:
+		opCode = OpNotEqual
+	case TokenGT:
+		opCode = OpGreater
+	case TokenGTE:
+		opCode = OpGreaterEqual
+	case TokenLT:
+		opCode = OpLess
+	case TokenLTE:
+		opCode = OpLessEqual
+	default:
+		return fmt.Errorf("compiler error: unsupported comparison operator '%s'", node.Op.Value)
 	}
 
 	c.emitInstruct(opCode, nil, node.GetToken())
@@ -710,7 +722,7 @@ func (c *Compiler) visitFunctionDefStmt(node *FunctionDefStmt) error {
 		param := node.Params[i]
 		paramName := param.Name.Value
 		nameIdx := c.addConstant(StringObj{Value: paramName})
-		
+
 		c.addLocal(paramName, false)
 		c.emitInstruct(OpDefLocal, &nameIdx, param.Name)
 	}
@@ -821,7 +833,7 @@ func (c *Compiler) visitFunctionExpr(node *FunctionExpr) error {
 
 	c.emitInstruct(OpExitScope, nil, node.GetToken())
 	c.locals = c.locals[:len(c.locals)-1] // This is just the second half of exitScope
-	
+
 	implNull := c.addConstant(NullObj{})
 	c.emitInstruct(OpConst, &implNull, nil)
 	c.emitInstruct(OpReturn, nil, node.GetToken())
@@ -857,7 +869,7 @@ func (c *Compiler) visitReturnStmt(node *ReturnStmt) error {
 		nullConst := c.addConstant(NullObj{})
 		c.emitInstruct(OpConst, &nullConst, node.GetToken())
 	}
-	
+
 	c.emitSingleInstruct(OpReturn)
 	return nil
 }
@@ -919,7 +931,7 @@ func (c *Compiler) visitIfStmt(node *IfStmt) error {
 
 	placeholder := -1
 	jmpIfFalseIdx := c.emitInstruct(OpJumpIfFalse, &placeholder, node.GetToken())
-	
+
 	if err := c.compileNode(node.ThenBranch); err != nil {
 		return err
 	}
@@ -929,7 +941,7 @@ func (c *Compiler) visitIfStmt(node *IfStmt) error {
 		jmpOverElse = c.emitInstruct(OpJump, &placeholder, node.GetToken())
 	}
 
-	// patch jump 
+	// patch jump
 	addressAfterThen := len(c.bytecodeChunk)
 	offsetToAfterThen := addressAfterThen - (jmpIfFalseIdx + 1)
 	c.bytecodeChunk[jmpIfFalseIdx].Operand = &offsetToAfterThen
@@ -941,7 +953,7 @@ func (c *Compiler) visitIfStmt(node *IfStmt) error {
 		if jmpOverElse == -1 {
 			return fmt.Errorf("Internal error: jump_over_else_idx not set for else branch.")
 		}
-		// patch jmpOverElse 
+		// patch jmpOverElse
 		addressAfterElse := len(c.bytecodeChunk)
 		offsetToAfterElse := addressAfterElse - (jmpOverElse + 1)
 		c.bytecodeChunk[jmpOverElse].Operand = &offsetToAfterElse

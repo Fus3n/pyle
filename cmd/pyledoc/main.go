@@ -713,7 +713,6 @@ func generateUserDocs(inputFile, outputFile string) {
 	}, outputFile)
 }
 
-
 func renderTemplate(data TemplateData, outputFile string) {
 	tmpl, err := template.New("docs").Parse(htmlTemplateStr)
 	if err != nil {

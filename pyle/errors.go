@@ -8,7 +8,7 @@ type Error interface {
 }
 
 type InterpreterError struct {
-	Type  string 
+	Type  string
 	Msg   string
 	Token *Token
 }
@@ -56,7 +56,7 @@ func NewRuntimeError(msg string, token *Token) *RuntimeError {
 
 type Result[T any] struct {
 	Value T
-	Err Error
+	Err   Error
 }
 
 func ResOk[T any](value T) Result[T] {

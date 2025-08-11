@@ -108,7 +108,6 @@ func (p *Parser) peekAt(offset int) *Token {
 	return &p.tokens[index]
 }
 
-
 // return previous token
 func (p *Parser) previous() *Token {
 	return &p.tokens[p.currIdx-1]
@@ -289,38 +288,38 @@ func (p *Parser) variableDeclaration() Result[Stmt] {
 		typeHint = typeRes.Value
 	}
 
-    var initializers []Expr
+	var initializers []Expr
 
-    if p.match(TokenAssign) {
-        // Parse one or more expressions separated by commas
-        exprRes := p.expression()
-        if exprRes.IsErr() {
-            return ResErr[Stmt](exprRes.Err)
-        }
-        initializers = append(initializers, exprRes.Value)
-        for p.match(TokenComma) {
-            // stop if we see a semicolon or newline-like end; otherwise expect another expression
-            if p.check(TokenSemiColon) || p.check(TokenRCurlyBrace) || p.check(TokenEOF) {
-                break
-            }
-            exprRes := p.expression()
-            if exprRes.IsErr() {
-                return ResErr[Stmt](exprRes.Err)
-            }
-            initializers = append(initializers, exprRes.Value)
-        }
-    }
+	if p.match(TokenAssign) {
+		// Parse one or more expressions separated by commas
+		exprRes := p.expression()
+		if exprRes.IsErr() {
+			return ResErr[Stmt](exprRes.Err)
+		}
+		initializers = append(initializers, exprRes.Value)
+		for p.match(TokenComma) {
+			// stop if we see a semicolon or newline-like end; otherwise expect another expression
+			if p.check(TokenSemiColon) || p.check(TokenRCurlyBrace) || p.check(TokenEOF) {
+				break
+			}
+			exprRes := p.expression()
+			if exprRes.IsErr() {
+				return ResErr[Stmt](exprRes.Err)
+			}
+			initializers = append(initializers, exprRes.Value)
+		}
+	}
 
 	// Optional semicolon.
 	p.match(TokenSemiColon)
 
-    return ResOk[Stmt](&VarDeclareStmt{
-        Token:        keywordTok,
-        Names:        varNames,
-        Initializers: initializers,
-        IsConst:      isConst,
-        Type:         typeHint,
-    })
+	return ResOk[Stmt](&VarDeclareStmt{
+		Token:        keywordTok,
+		Names:        varNames,
+		Initializers: initializers,
+		IsConst:      isConst,
+		Type:         typeHint,
+	})
 }
 
 func (p *Parser) variableAssignment() Result[Stmt] {
@@ -336,9 +335,9 @@ func (p *Parser) variableAssignment() Result[Stmt] {
 	p.match(TokenSemiColon)
 
 	return ResOk[Stmt](&AssignStmt{
-		Token:       varNameTok,
-		Name:        varNameTok,
-		Value:       exprRes.Value,
+		Token: varNameTok,
+		Name:  varNameTok,
+		Value: exprRes.Value,
 	})
 }
 
@@ -452,7 +451,6 @@ func (p *Parser) logical_and() Result[Expr] {
 
 	return ResOk(expr)
 }
-
 
 func (p *Parser) equality() Result[Expr] {
 	exprRes := p.comparison()
@@ -676,18 +674,22 @@ func (p *Parser) primary() Result[Expr] {
 	case TokenLParen:
 		p.advance()
 		exprRes := p.expression()
-		if exprRes.IsErr() { return exprRes }
+		if exprRes.IsErr() {
+			return exprRes
+		}
 		consErr := p.consume(TokenRParen, "Expected ')' after expression.")
-		if consErr.IsErr() { return ResErr[Expr](consErr.Err) }
+		if consErr.IsErr() {
+			return ResErr[Expr](consErr.Err)
+		}
 		return ResOk(exprRes.Value)
 	}
 
 	return ResErr[Expr](
 		NewParserError(
-			fmt.Sprintf("Expected expression, but got %s instead.", p.current().Value), 
+			fmt.Sprintf("Expected expression, but got %s instead.", p.current().Value),
 			p.current(),
 		),
-	) 
+	)
 }
 
 func (p *Parser) functionExpr() Result[Expr] {
@@ -785,7 +787,7 @@ func (p *Parser) whileStatement() Result[Stmt] {
 
 	condExprRes := p.expression()
 	if condExprRes.IsErr() {
-		return  ResErr[Stmt](condExprRes.Err) 
+		return ResErr[Stmt](condExprRes.Err)
 	}
 
 	if !p.match(TokenLCurlyBrace) {
@@ -843,10 +845,10 @@ func (p *Parser) forInStatement() Result[Stmt] {
 	bodyBlock := bodyBlockRes.Value
 
 	return ResOk[Stmt](&ForInStmt{
-		Token:      forTok,
+		Token:        forTok,
 		LoopVariable: loopVariable,
-		Iterable:   iterableRes.Value,
-		Body:       *bodyBlock,
+		Iterable:     iterableRes.Value,
+		Body:         *bodyBlock,
 	})
 }
 
@@ -968,9 +970,9 @@ func (p *Parser) ifStatement() Result[Stmt] {
 				return ResErr[Stmt](elseIfRes.Err)
 			}
 			elseBranchNode = &Block{
-				Token: elseTok,
+				Token:      elseTok,
 				Statements: []ASTNode{elseIfRes.Value},
-				EndToken: elseTok,
+				EndToken:   elseTok,
 			}
 		} else {
 			if !p.match(TokenLCurlyBrace) {
@@ -991,7 +993,6 @@ func (p *Parser) ifStatement() Result[Stmt] {
 		ElseBranch: elseBranchNode,
 	})
 }
-
 
 func (p *Parser) breakStatement() Result[Stmt] {
 	breakTok := p.previous()

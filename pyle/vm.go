@@ -11,7 +11,7 @@ type CallFrame struct {
 	ReturnIP  int
 	StackSlot int
 	EnvDepth  int
-    Closure   *ClosureObj
+	Closure   *ClosureObj
 }
 
 const InitialStackCapacity = 256
@@ -67,7 +67,6 @@ func (vm *VM) RegisterModule(name string, funcs map[string]any, doc *DocstringOb
 	}
 	return vm.AddGlobal(name, module)
 }
-
 
 func (vm *VM) LoadBuiltins() error {
 	for name, fn := range Builtins {
@@ -182,7 +181,7 @@ func (vm *VM) handleCall(numArgs int, currentTok *Token) (bool, Error) {
 	callee := vm.stack[calleeIdx]
 	args := vm.stack[calleeIdx+1 : vm.sp]
 
-    switch c := callee.(type) {
+	switch c := callee.(type) {
 	case *BoundMethodObj:
 		if nativeMethod, ok := c.Method.(*NativeFuncObj); ok && nativeMethod.DirectCall != nil {
 			newArgs := make([]Object, len(args)+1)
@@ -218,21 +217,21 @@ func (vm *VM) handleCall(numArgs int, currentTok *Token) (bool, Error) {
 		copy(vm.stack[calleeIdx+2:], vm.stack[calleeIdx+1:calleeIdx+1+numArgs])
 		vm.stack[calleeIdx+1] = c.Receiver
 		return vm.handleCall(numArgs+1, currentTok)
-    case *ClosureObj:
-        if numArgs != c.Function.Arity {
-            return false, vm.runtimeError("Function '%s' expected %d arguments, but got %d %s", c.Function.Name, c.Function.Arity, numArgs, currentTok.GetFileLoc())
-        }
-        frame := &CallFrame{
-            ReturnIP:  vm.ip,
-            StackSlot: calleeIdx,
-            EnvDepth:  len(vm.environments),
-            Closure:   c,
-        }
-        vm.frames = append(vm.frames, frame)
-        vm.ip = *c.Function.StartIP
-        return true, nil
-    case *FunctionObj:
-        if numArgs != c.Arity {
+	case *ClosureObj:
+		if numArgs != c.Function.Arity {
+			return false, vm.runtimeError("Function '%s' expected %d arguments, but got %d %s", c.Function.Name, c.Function.Arity, numArgs, currentTok.GetFileLoc())
+		}
+		frame := &CallFrame{
+			ReturnIP:  vm.ip,
+			StackSlot: calleeIdx,
+			EnvDepth:  len(vm.environments),
+			Closure:   c,
+		}
+		vm.frames = append(vm.frames, frame)
+		vm.ip = *c.Function.StartIP
+		return true, nil
+	case *FunctionObj:
+		if numArgs != c.Arity {
 			return false, vm.runtimeError("Function '%s' expected %d arguments, but got %d %s", c.Name, c.Arity, numArgs, currentTok.GetFileLoc())
 		}
 
@@ -243,13 +242,13 @@ func (vm *VM) handleCall(numArgs int, currentTok *Token) (bool, Error) {
 		}
 		vm.frames = append(vm.frames, frame)
 		vm.ip = *c.StartIP
-		return true, nil 
+		return true, nil
 	case *NativeFuncObj:
 		if c.DirectCall != nil {
 			if numArgs != c.Arity {
 				return false, vm.runtimeError("Function '%s' expected %d arguments, but got %d %s", c.Name, c.Arity, numArgs, currentTok.GetFileLoc())
 			}
-			
+
 			var result Object
 			var err Error
 
@@ -360,7 +359,7 @@ func (vm *VM) run(targetFrameDepth int) Result[Object] {
 			if err != nil {
 				return ResErr[Object](err)
 			}
-        case OpConst:
+		case OpConst:
 			val := vm.constants[*operand.(*int)]
 			if fn, ok := val.(*FunctionObj); ok {
 				if fn.CaptureDepth > 0 {
@@ -451,7 +450,7 @@ func (vm *VM) run(targetFrameDepth int) Result[Object] {
 				return ResErr[Object](err)
 			}
 			currentScope[name] = &Variable{Name: name, Value: val, IsConst: false}
-        case OpGetLocal:
+		case OpGetLocal:
 			varScoped := operand.(*VariableScoped)
 			var scope map[string]*Variable
 
@@ -502,7 +501,7 @@ func (vm *VM) run(targetFrameDepth int) Result[Object] {
 				return ResErr[Object](err)
 			}
 			currentScope[name] = &Variable{Name: name, Value: val, IsConst: true}
-        case OpSetLocal:
+		case OpSetLocal:
 			varScoped := operand.(*VariableScoped)
 			valToAssign, err := vm.pop()
 			if err != nil {
@@ -829,18 +828,24 @@ func (vm *VM) run(targetFrameDepth int) Result[Object] {
 				return vm.runtimeErrorRes("Stack underflow for OP_UNPACK at %s", currentTok.GetFileLoc())
 			}
 			value, err := vm.pop()
-			if err != nil { return ResErr[Object](err) }
+			if err != nil {
+				return ResErr[Object](err)
+			}
 			switch v := value.(type) {
 			case *TupleObj:
 				if len(v.Elements) != expected {
 					return vm.runtimeErrorRes("unpack mismatch: expected %d values, got %d at %s", expected, len(v.Elements), currentTok.GetFileLoc())
 				}
-				for i := len(v.Elements) - 1; i >= 0; i-- { vm.push(v.Elements[i]) }
+				for i := len(v.Elements) - 1; i >= 0; i-- {
+					vm.push(v.Elements[i])
+				}
 			case *ArrayObj:
 				if len(v.Elements) != expected {
 					return vm.runtimeErrorRes("unpack mismatch: expected %d values, got %d at %s", expected, len(v.Elements), currentTok.GetFileLoc())
 				}
-				for i := len(v.Elements) - 1; i >= 0; i-- { vm.push(v.Elements[i]) }
+				for i := len(v.Elements) - 1; i >= 0; i-- {
+					vm.push(v.Elements[i])
+				}
 			default:
 				return vm.runtimeErrorRes("object of type '%s' is not unpackable at %s", value.Type(), currentTok.GetFileLoc())
 			}
@@ -1183,5 +1188,5 @@ func (vm *VM) runtimeError(format string, args ...any) Error {
 }
 
 func (vm *VM) runtimeErrorRes(format string, args ...any) Result[Object] {
-	return	ResErr[Object](vm.runtimeError(format, args...))
+	return ResErr[Object](vm.runtimeError(format, args...))
 }

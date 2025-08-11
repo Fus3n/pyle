@@ -49,7 +49,7 @@ const (
 	OpSetAttr
 	OpCall
 	OpBuildKwargs
-		OpReturn
+	OpReturn
 	OpHalt
 	OpInplaceAdd
 	OpInplaceSubtract
@@ -57,7 +57,7 @@ const (
 	OpInplaceDivide
 	OpInplaceModulo
 	OpExit
-		OpUnpack
+	OpUnpack
 )
 
 func (o OpCode) String() string {
@@ -122,9 +122,9 @@ func (o OpCode) String() string {
 }
 
 type Instruction struct {
-	Op OpCode
+	Op      OpCode
 	Operand any
-	Token *Token
+	Token   *Token
 }
 
 func (i Instruction) String() string {
@@ -135,10 +135,10 @@ func (i Instruction) String() string {
 }
 
 type PyleFunction struct {
-	Name      string
-	Arity     int
-	StartIP   *int
-	NativeFn  func([]Object) (Object, error)
+	Name     string
+	Arity    int
+	StartIP  *int
+	NativeFn func([]Object) (Object, error)
 }
 
 func (f *PyleFunction) String() string {

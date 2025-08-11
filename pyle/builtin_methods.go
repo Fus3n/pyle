@@ -8,7 +8,7 @@ import (
 
 func isFunc(obj Object) bool {
 	switch obj.(type) {
-    case *FunctionObj, *ClosureObj, *NativeFuncObj, *BoundMethodObj:
+	case *FunctionObj, *ClosureObj, *NativeFuncObj, *BoundMethodObj:
 		return true
 	default:
 		return false
@@ -166,7 +166,6 @@ func methodStringAsciiAt(receiver StringObj, index NumberObj) (NumberObj, error)
 	return NumberObj{Value: float64(receiver.Value[idx]), IsInt: true}, nil
 }
 
-
 // --- Array Methods ---
 func methodArrayLen(receiver *ArrayObj) (int, error) {
 	return len(receiver.Elements), nil
@@ -195,53 +194,53 @@ func methodArrayFilter(vm *VM, receiver *ArrayObj, fn Object) (Object, error) {
 		return receiver, nil
 	}
 
-    if !isFunc(fn) {
+	if !isFunc(fn) {
 		return nil, fmt.Errorf("expected a function for filter, got %s", fn.Type())
 	}
 
-    if len(receiver.Elements) == 0 {
-        return &ArrayObj{Elements: []Object{}}, nil
-    }
+	if len(receiver.Elements) == 0 {
+		return &ArrayObj{Elements: []Object{}}, nil
+	}
 
-    // Fast-path metadata for natives
-    nativeFunc, isNativeFunc := fn.(*NativeFuncObj)
+	// Fast-path metadata for natives
+	nativeFunc, isNativeFunc := fn.(*NativeFuncObj)
 
-    filtered := make([]Object, 0, len(receiver.Elements))
-    for _, elem := range receiver.Elements {
-        var result Object
-        var err Error
+	filtered := make([]Object, 0, len(receiver.Elements))
+	for _, elem := range receiver.Elements {
+		var result Object
+		var err Error
 
-        if isNativeFunc && nativeFunc.DirectCall != nil {
-            // Native direct call fast path: arity must be 1
-            if nativeFunc.Arity != 1 {
-                return nil, fmt.Errorf("filter function must have arity of 1")
-            }
-            if directFn, ok := nativeFunc.DirectCall.(NativeFunc1); ok {
-                result, err = directFn(vm, elem)
-            } else {
-                result, err = vm.callPyleFuncFromNative(fn, []Object{elem})
-            }
-        } else if isNativeFunc && nativeFunc.ReflectCall != nil {
-            // Reflection native fast path
-            result, err = nativeFunc.ReflectCall(vm, []Object{elem})
-        } else {
-            // Closures, Pyle functions, bound methods
-            result, err = vm.callPyleFuncFromNative(fn, []Object{elem})
-        }
-        if err != nil {
-            return nil, err
-        }
+		if isNativeFunc && nativeFunc.DirectCall != nil {
+			// Native direct call fast path: arity must be 1
+			if nativeFunc.Arity != 1 {
+				return nil, fmt.Errorf("filter function must have arity of 1")
+			}
+			if directFn, ok := nativeFunc.DirectCall.(NativeFunc1); ok {
+				result, err = directFn(vm, elem)
+			} else {
+				result, err = vm.callPyleFuncFromNative(fn, []Object{elem})
+			}
+		} else if isNativeFunc && nativeFunc.ReflectCall != nil {
+			// Reflection native fast path
+			result, err = nativeFunc.ReflectCall(vm, []Object{elem})
+		} else {
+			// Closures, Pyle functions, bound methods
+			result, err = vm.callPyleFuncFromNative(fn, []Object{elem})
+		}
+		if err != nil {
+			return nil, err
+		}
 
-        // Boolean specialization
-        if b, ok := result.(BooleanObj); ok {
-            if b.Value {
-                filtered = append(filtered, elem)
-            }
-        } else if result.IsTruthy() {
-            filtered = append(filtered, elem)
-        }
-    }
-    return &ArrayObj{Elements: filtered}, nil
+		// Boolean specialization
+		if b, ok := result.(BooleanObj); ok {
+			if b.Value {
+				filtered = append(filtered, elem)
+			}
+		} else if result.IsTruthy() {
+			filtered = append(filtered, elem)
+		}
+	}
+	return &ArrayObj{Elements: filtered}, nil
 }
 
 func methodArrayMap(vm *VM, receiver *ArrayObj, fn Object) (Object, error) {
@@ -250,35 +249,35 @@ func methodArrayMap(vm *VM, receiver *ArrayObj, fn Object) (Object, error) {
 		return receiver, nil
 	}
 
-    // Ensure the passed object is a callable function/closure/native/bound method
-    nativeFunc, isNativeFunc := fn.(*NativeFuncObj)
-    if !isFunc(fn) {
-        return nil, fmt.Errorf("expected a function for map, got %s", fn.Type())
-    }
+	// Ensure the passed object is a callable function/closure/native/bound method
+	nativeFunc, isNativeFunc := fn.(*NativeFuncObj)
+	if !isFunc(fn) {
+		return nil, fmt.Errorf("expected a function for map, got %s", fn.Type())
+	}
 
 	mapped := make([]Object, len(receiver.Elements))
 	for i, elem := range receiver.Elements {
 		var result Object
 		var err Error
 
-        // FAST PATH for native functions
-        if isNativeFunc && nativeFunc.DirectCall != nil {
+		// FAST PATH for native functions
+		if isNativeFunc && nativeFunc.DirectCall != nil {
 			if nativeFunc.Arity != 1 {
 				return nil, fmt.Errorf("map function must have arity of 1")
 			}
 			if directFn, ok := nativeFunc.DirectCall.(NativeFunc1); ok {
 				result, err = directFn(vm, elem)
 			} else {
-                // Fallback to generic call if direct type mismatch
-                result, err = vm.callPyleFuncFromNative(fn, []Object{elem})
+				// Fallback to generic call if direct type mismatch
+				result, err = vm.callPyleFuncFromNative(fn, []Object{elem})
 			}
-        } else if isNativeFunc && nativeFunc.ReflectCall != nil {
-            // Reflection native fast path
-            result, err = nativeFunc.ReflectCall(vm, []Object{elem})
-        } else {
-            // SLOW PATH: closures, Pyle functions, bound methods
-            result, err = vm.callPyleFuncFromNative(fn, []Object{elem})
-        }
+		} else if isNativeFunc && nativeFunc.ReflectCall != nil {
+			// Reflection native fast path
+			result, err = nativeFunc.ReflectCall(vm, []Object{elem})
+		} else {
+			// SLOW PATH: closures, Pyle functions, bound methods
+			result, err = vm.callPyleFuncFromNative(fn, []Object{elem})
+		}
 
 		if err != nil {
 			return nil, err
@@ -355,19 +354,19 @@ func init() {
 		// .. more needed
 	}
 	BuiltinMethods["string"] = map[string]*NativeFuncObj{
-		"len":       mustCreate("len", methodStringLen, BuiltinMethodDocs["string"]["len"]),
-		"trimSpace": mustCreate("trimSpace", methodStringTrimSpace, nil),
-		"replace":   mustCreate("replace", methodStringReplace, BuiltinMethodDocs["string"]["replace"]),
-		"split":     mustCreate("split", methodStringSplit, nil),
-		"format":    mustCreate("format", methodStringFormat, nil),
-		"contains":  mustCreate("contains", methodStringContains, nil),
-		"startsWith":mustCreate("startsWith", methodStringHasPrefix, nil),
-		"endsWith":  mustCreate("endsWith", methodStringHasSuffix, nil),
-		"toLower":   mustCreate("toLower", methodStringToLower, nil),
-		"toUpper":   mustCreate("toUpper", methodStringToUpper, nil),
-		"indexOf":   mustCreate("indexOf", methodStringIndexOf, nil),
-		"repeat":    mustCreate("repeat", methodStringRepeat, nil),
-		"asciiAt":   mustCreate("asciiAt", methodStringAsciiAt, nil),
+		"len":        mustCreate("len", methodStringLen, BuiltinMethodDocs["string"]["len"]),
+		"trimSpace":  mustCreate("trimSpace", methodStringTrimSpace, nil),
+		"replace":    mustCreate("replace", methodStringReplace, BuiltinMethodDocs["string"]["replace"]),
+		"split":      mustCreate("split", methodStringSplit, nil),
+		"format":     mustCreate("format", methodStringFormat, nil),
+		"contains":   mustCreate("contains", methodStringContains, nil),
+		"startsWith": mustCreate("startsWith", methodStringHasPrefix, nil),
+		"endsWith":   mustCreate("endsWith", methodStringHasSuffix, nil),
+		"toLower":    mustCreate("toLower", methodStringToLower, nil),
+		"toUpper":    mustCreate("toUpper", methodStringToUpper, nil),
+		"indexOf":    mustCreate("indexOf", methodStringIndexOf, nil),
+		"repeat":     mustCreate("repeat", methodStringRepeat, nil),
+		"asciiAt":    mustCreate("asciiAt", methodStringAsciiAt, nil),
 		// suggest some more functions
 
 	}
@@ -376,7 +375,7 @@ func init() {
 	BuiltinMethodDocs["array"] = map[string]*DocstringObj{
 		"len":    {Description: "len() -> int\n\nReturns the number of elements in the array."},
 		"append": {Description: "append(value)\n\nAppends a value to the end of the array in-place."},
-		"join":   {
+		"join": {
 			Description: "join(separator) -> string\n\nJoins the elements of the array into a string using the specified separator.",
 			Params: []ParamDoc{
 				{"separator", "The string to use as a separator between elements."},

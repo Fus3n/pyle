@@ -57,7 +57,6 @@ func NewDocstring(description string, params []ParamDoc, returns string) *Docstr
 	return &DocstringObj{description, params, returns}
 }
 
-
 func (d *DocstringObj) GetAttribute(name string) (Object, bool, Error) {
 	switch name {
 	case "description":
@@ -89,8 +88,8 @@ func (d *DocstringObj) String() string {
 	}
 	return b.String()
 }
-func (d *DocstringObj) Type() string     { return "docstring" }
-func (d *DocstringObj) IsTruthy() bool   { return d.Description != "" }
+func (d *DocstringObj) Type() string   { return "docstring" }
+func (d *DocstringObj) IsTruthy() bool { return d.Description != "" }
 func (d *DocstringObj) Iter() (Iterator, Error) {
 	return nil, NewRuntimeError("docstring object is not iterable", nil)
 }
@@ -271,7 +270,7 @@ func (m *ModuleObj) GetAttribute(name string) (Object, bool, Error) {
 	if found {
 		return val, true, nil
 	}
-	if name == "doc" && m.Doc != nil  {
+	if name == "doc" && m.Doc != nil {
 		return m.Doc, true, nil
 	}
 	return NullObj{}, true, nil
@@ -458,8 +457,8 @@ func (it *MapIteratorObj) String() string {
 	}
 	return fmt.Sprintf("<map_%s_iterator>", modeStr)
 }
-func (it *MapIteratorObj) Type() string     { return it.String() }
-func (it *MapIteratorObj) IsTruthy() bool   { return true }
+func (it *MapIteratorObj) Type() string            { return it.String() }
+func (it *MapIteratorObj) IsTruthy() bool          { return true }
 func (it *MapIteratorObj) Iter() (Iterator, Error) { return it, nil }
 func (it *MapIteratorObj) Next() (Object, bool) {
 	for it.hashIndex < len(it.hashes) {
@@ -486,7 +485,6 @@ func (it *MapIteratorObj) Next() (Object, bool) {
 
 	return NullObj{}, false
 }
-
 
 // --- Other Types ---
 
@@ -533,9 +531,10 @@ type StringIteratorObj struct {
 	Value string
 	index int
 }
-func (s *StringIteratorObj) String() string   { return "<string_iterator>" }
-func (s *StringIteratorObj) Type() string     { return "string_iterator" }
-func (s *StringIteratorObj) IsTruthy() bool   { return true }
+
+func (s *StringIteratorObj) String() string { return "<string_iterator>" }
+func (s *StringIteratorObj) Type() string   { return "string_iterator" }
+func (s *StringIteratorObj) IsTruthy() bool { return true }
 func (s *StringIteratorObj) Next() (Object, bool) {
 	if s.index < len(s.Value) {
 		char := string(s.Value[s.index])
@@ -552,9 +551,10 @@ type ArrayIteratorObj struct {
 	Array *ArrayObj
 	index int
 }
-func (t *ArrayIteratorObj) String() string   { return "<array_iterator>" }
-func (t *ArrayIteratorObj) Type() string     { return "array_iterator" }
-func (t *ArrayIteratorObj) IsTruthy() bool   { return true }
+
+func (t *ArrayIteratorObj) String() string { return "<array_iterator>" }
+func (t *ArrayIteratorObj) Type() string   { return "array_iterator" }
+func (t *ArrayIteratorObj) IsTruthy() bool { return true }
 func (t *ArrayIteratorObj) Next() (Object, bool) {
 	if t.index < len(t.Array.Elements) {
 		element := t.Array.Elements[t.index]
@@ -570,6 +570,7 @@ func (o *ArrayIteratorObj) Iter() (Iterator, Error) {
 type TupleObj struct {
 	Elements []Object
 }
+
 func (t *TupleObj) String() string {
 	var elements []string
 	for _, e := range t.Elements {
@@ -600,9 +601,10 @@ type TupleIteratorObj struct {
 	Tuple *TupleObj
 	index int
 }
-func (t *TupleIteratorObj) String() string   { return "<tuple_iterator>" }
-func (t *TupleIteratorObj) Type() string     { return "tuple_iterator" }
-func (t *TupleIteratorObj) IsTruthy() bool   { return true }
+
+func (t *TupleIteratorObj) String() string { return "<tuple_iterator>" }
+func (t *TupleIteratorObj) Type() string   { return "tuple_iterator" }
+func (t *TupleIteratorObj) IsTruthy() bool { return true }
 func (t *TupleIteratorObj) Next() (Object, bool) {
 	if t.index < len(t.Tuple.Elements) {
 		element := t.Tuple.Elements[t.index]
@@ -634,9 +636,10 @@ type NativeFuncObj struct {
 	Name        string
 	Arity       int
 	Doc         *DocstringObj
-	DirectCall  any // Holds a direct, fast-path function pointer. e.g. NativeFunc1, NativeFunc2
+	DirectCall  any                                         // Holds a direct, fast-path function pointer. e.g. NativeFunc1, NativeFunc2
 	ReflectCall func(vm *VM, args []Object) (Object, Error) // Reflection-based fallback
 }
+
 func (f *NativeFuncObj) GetAttribute(name string) (Object, bool, Error) {
 	if name == "doc" {
 		if f.Doc != nil {
@@ -699,6 +702,7 @@ type FunctionObj struct {
 	StartIP      *int
 	CaptureDepth int
 }
+
 func (f *FunctionObj) GetAttribute(name string) (Object, bool, Error) {
 	if name == "doc" {
 		if f.Doc != nil {
@@ -730,19 +734,18 @@ func (f *FunctionObj) Compare(other Object) (int, error) {
 	return 1, nil
 }
 
-
 // ClosureObj represents a function along with captured lexical environments.
 // Captured holds references to environment maps from inner-most to outer-most.
 type ClosureObj struct {
-    Function *FunctionObj
-    Captured []map[string]*Variable
+	Function *FunctionObj
+	Captured []map[string]*Variable
 }
 
 func (c *ClosureObj) String() string { return fmt.Sprintf("<closure %s>", c.Function.Name) }
 func (c *ClosureObj) Type() string   { return "closure" }
 func (c *ClosureObj) IsTruthy() bool { return true }
 func (c *ClosureObj) Iter() (Iterator, Error) {
-    return nil, NewRuntimeError(fmt.Sprintf("object of type '%s' is not iterable", c.Type()), nil)
+	return nil, NewRuntimeError(fmt.Sprintf("object of type '%s' is not iterable", c.Type()), nil)
 }
 
 type BoundMethodObj struct {
@@ -769,6 +772,7 @@ func (b *BoundMethodObj) Iter() (Iterator, Error) {
 type KwargsObj struct {
 	Value map[string]Object
 }
+
 func (k *KwargsObj) String() string { return fmt.Sprintf("kwargs(%v)", k.Value) }
 func (k *KwargsObj) Type() string   { return "kwargs" }
 func (k *KwargsObj) IsTruthy() bool { return true }
