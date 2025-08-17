@@ -20,6 +20,7 @@ type Iterator interface {
 }
 
 type Object interface {
+	GetLocation() Loc
 	String() string
 	Type() string
 	IsTruthy() bool
@@ -34,9 +35,16 @@ type Comparable interface {
 	Compare(other Object) (int, error)
 }
 
-// AttributeGetter allows for more robust dot-access (.attr) on objects.
 type AttributeGetter interface {
 	GetAttribute(name string) (Object, bool, Error)
+}
+
+type DebugInfo struct {
+	loc Loc
+}
+
+func (o DebugInfo) GetLocation() Loc {
+	return o.loc
 }
 
 // --- Documentation Types ---
@@ -47,6 +55,7 @@ type ParamDoc struct {
 }
 
 type DocstringObj struct {
+	DebugInfo
 	Description string
 	Params      []ParamDoc
 	Returns     string
@@ -54,7 +63,12 @@ type DocstringObj struct {
 
 // new docstring obj easy ways to create it
 func NewDocstring(description string, params []ParamDoc, returns string) *DocstringObj {
-	return &DocstringObj{description, params, returns}
+	return &DocstringObj{
+		DebugInfo:  DebugInfo{},
+		Description: description,
+		Params:      params,
+		Returns:     returns,
+	}
 }
 
 func (d *DocstringObj) GetAttribute(name string) (Object, bool, Error) {
@@ -91,12 +105,13 @@ func (d *DocstringObj) String() string {
 func (d *DocstringObj) Type() string   { return "docstring" }
 func (d *DocstringObj) IsTruthy() bool { return d.Description != "" }
 func (d *DocstringObj) Iter() (Iterator, Error) {
-	return nil, NewRuntimeError("docstring object is not iterable", nil)
+	return nil, NewRuntimeError("docstring object is not iterable", d.GetLocation())
 }
 
 // --- Core Types ---
 
 type NumberObj struct {
+	DebugInfo
 	Value float64
 	IsInt bool
 }
@@ -115,7 +130,7 @@ func (n NumberObj) Type() string {
 }
 func (n NumberObj) IsTruthy() bool { return n.Value != 0 }
 func (n NumberObj) Iter() (Iterator, Error) {
-	return nil, NewRuntimeError(fmt.Sprintf("object of type '%s' is not iterable", n.Type()), nil)
+	return nil, NewRuntimeError(fmt.Sprintf("object of type '%s' is not iterable", n.Type()), n.GetLocation())
 }
 func (n NumberObj) Hash() uint32 {
 	h := fnv.New32a()
@@ -137,6 +152,7 @@ func (n NumberObj) Compare(other Object) (int, error) {
 }
 
 type StringObj struct {
+	DebugInfo
 	Value string
 }
 
@@ -170,6 +186,7 @@ func (s StringObj) Compare(other Object) (int, error) {
 }
 
 type BooleanObj struct {
+	DebugInfo
 	Value bool
 }
 
@@ -177,7 +194,7 @@ func (b BooleanObj) String() string { return strconv.FormatBool(b.Value) }
 func (b BooleanObj) Type() string   { return "bool" }
 func (b BooleanObj) IsTruthy() bool { return b.Value }
 func (b BooleanObj) Iter() (Iterator, Error) {
-	return nil, NewRuntimeError(fmt.Sprintf("object of type '%s' is not iterable", b.Type()), nil)
+	return nil, NewRuntimeError(fmt.Sprintf("object of type '%s' is not iterable", b.Type()), b.GetLocation())
 }
 func (b BooleanObj) Hash() uint32 {
 	h := fnv.New32a()
@@ -202,13 +219,13 @@ func (b BooleanObj) Compare(other Object) (int, error) {
 	return -1, nil
 }
 
-type NullObj struct{}
+type NullObj struct{ DebugInfo }
 
 func (n NullObj) String() string { return "null" }
 func (n NullObj) Type() string   { return "null" }
 func (n NullObj) IsTruthy() bool { return false }
 func (n NullObj) Iter() (Iterator, Error) {
-	return nil, NewRuntimeError(fmt.Sprintf("object of type '%s' is not iterable", n.Type()), nil)
+	return nil, NewRuntimeError(fmt.Sprintf("object of type '%s' is not iterable", n.Type()), n.GetLocation())
 }
 func (n NullObj) Hash() uint32 {
 	return 0
@@ -224,6 +241,7 @@ func (n NullObj) Compare(other Object) (int, error) {
 // --- Container Types ---
 
 type ArrayObj struct {
+	DebugInfo
 	Elements []Object
 }
 
@@ -250,6 +268,7 @@ func (a *ArrayObj) Iter() (Iterator, Error) {
 }
 
 type ModuleObj struct {
+	DebugInfo
 	Name    string
 	Methods *MapObj
 	Doc     *DocstringObj
@@ -265,7 +284,7 @@ func NewModule(name string) *ModuleObj {
 func (m *ModuleObj) GetAttribute(name string) (Object, bool, Error) {
 	val, found, err := m.Methods.GetStr(name)
 	if err != nil {
-		return nil, false, NewRuntimeError(err.Error(), nil)
+		return nil, false, NewRuntimeError(err.Error(), m.GetLocation())
 	}
 	if found {
 		return val, true, nil
@@ -281,7 +300,7 @@ func (m *ModuleObj) String() string {
 func (m *ModuleObj) Type() string   { return "module" }
 func (m *ModuleObj) IsTruthy() bool { return true }
 func (m *ModuleObj) Iter() (Iterator, Error) {
-	return nil, NewRuntimeError("module object is not iterable", nil)
+	return nil, NewRuntimeError("module object is not iterable", m.GetLocation())
 }
 
 // --- Hash Map Implementation ---
@@ -292,6 +311,7 @@ type MapPair struct {
 }
 
 type MapObj struct {
+	DebugInfo
 	Pairs map[uint32][]MapPair
 }
 
@@ -307,7 +327,7 @@ func (o *MapObj) GetAttribute(name string) (Object, bool, Error) {
 	// If not a method, treat as key access
 	val, found, err := o.Get(StringObj{Value: name})
 	if err != nil {
-		return nil, false, NewRuntimeError(err.Error(), nil)
+		return nil, false, NewRuntimeError(err.Error(), o.GetLocation())
 	}
 	if found {
 		return val, true, nil
@@ -422,6 +442,7 @@ const (
 )
 
 type MapIteratorObj struct {
+	DebugInfo
 	TargetMap *MapObj
 	hashes    []uint32
 	hashIndex int
@@ -489,6 +510,7 @@ func (it *MapIteratorObj) Next() (Object, bool) {
 // --- Other Types ---
 
 type RangeObj struct {
+	DebugInfo
 	Start   int
 	End     int
 	Step    int
@@ -528,6 +550,7 @@ func (o *RangeObj) Hash() uint32 {
 }
 
 type StringIteratorObj struct {
+	DebugInfo
 	Value string
 	index int
 }
@@ -548,6 +571,7 @@ func (s *StringIteratorObj) Iter() (Iterator, Error) {
 }
 
 type ArrayIteratorObj struct {
+	DebugInfo
 	Array *ArrayObj
 	index int
 }
@@ -568,6 +592,7 @@ func (o *ArrayIteratorObj) Iter() (Iterator, Error) {
 }
 
 type TupleObj struct {
+	DebugInfo
 	Elements []Object
 }
 
@@ -598,6 +623,7 @@ func (t *TupleObj) Hash() uint32 {
 }
 
 type TupleIteratorObj struct {
+	DebugInfo
 	Tuple *TupleObj
 	index int
 }
@@ -633,6 +659,7 @@ type FunctionMetadata struct {
 }
 
 type NativeFuncObj struct {
+	DebugInfo
 	Name        string
 	Arity       int
 	Doc         *DocstringObj
@@ -653,7 +680,7 @@ func (f *NativeFuncObj) String() string { return fmt.Sprintf("<native fn %s>", f
 func (f *NativeFuncObj) Type() string   { return "native_function" }
 func (f *NativeFuncObj) IsTruthy() bool { return true }
 func (f *NativeFuncObj) Iter() (Iterator, Error) {
-	return nil, NewRuntimeError(fmt.Sprintf("object of type '%s' is not iterable", f.Type()), nil)
+	return nil, NewRuntimeError(fmt.Sprintf("object of type '%s' is not iterable", f.Type()), f.GetLocation())
 }
 func (f *NativeFuncObj) Hash() uint32 {
 	var ptr uintptr
@@ -696,6 +723,7 @@ func (f *NativeFuncObj) Compare(other Object) (int, error) {
 }
 
 type FunctionObj struct {
+	DebugInfo
 	Name         string
 	Arity        int
 	Doc          *DocstringObj
@@ -716,7 +744,7 @@ func (f *FunctionObj) String() string { return fmt.Sprintf("<fn %s at %p>", f.Na
 func (f *FunctionObj) Type() string   { return "function" }
 func (f *FunctionObj) IsTruthy() bool { return true }
 func (f *FunctionObj) Iter() (Iterator, Error) {
-	return nil, NewRuntimeError(fmt.Sprintf("object of type '%s' is not iterable", f.Type()), nil)
+	return nil, NewRuntimeError(fmt.Sprintf("object of type '%s' is not iterable", f.Type()), f.GetLocation())
 }
 func (f *FunctionObj) Hash() uint32 {
 	h := fnv.New32a()
@@ -737,6 +765,7 @@ func (f *FunctionObj) Compare(other Object) (int, error) {
 // ClosureObj represents a function along with captured lexical environments.
 // Captured holds references to environment maps from inner-most to outer-most.
 type ClosureObj struct {
+	DebugInfo
 	Function *FunctionObj
 	Captured []map[string]*Variable
 }
@@ -745,10 +774,11 @@ func (c *ClosureObj) String() string { return fmt.Sprintf("<closure %s>", c.Func
 func (c *ClosureObj) Type() string   { return "closure" }
 func (c *ClosureObj) IsTruthy() bool { return true }
 func (c *ClosureObj) Iter() (Iterator, Error) {
-	return nil, NewRuntimeError(fmt.Sprintf("object of type '%s' is not iterable", c.Type()), nil)
+	return nil, NewRuntimeError(fmt.Sprintf("object of type '%s' is not iterable", c.Type()), c.GetLocation())
 }
 
 type BoundMethodObj struct {
+	DebugInfo
 	Receiver Object
 	Method   Object
 }
@@ -766,10 +796,11 @@ func (b *BoundMethodObj) String() string {
 func (b *BoundMethodObj) Type() string   { return "bound_method" }
 func (b *BoundMethodObj) IsTruthy() bool { return true }
 func (b *BoundMethodObj) Iter() (Iterator, Error) {
-	return nil, NewRuntimeError(fmt.Sprintf("object of type '%s' is not iterable", b.Type()), nil)
+	return nil, NewRuntimeError(fmt.Sprintf("object of type '%s' is not iterable", b.Type()), b.GetLocation())
 }
 
 type KwargsObj struct {
+	DebugInfo
 	Value map[string]Object
 }
 
@@ -777,5 +808,5 @@ func (k *KwargsObj) String() string { return fmt.Sprintf("kwargs(%v)", k.Value) 
 func (k *KwargsObj) Type() string   { return "kwargs" }
 func (k *KwargsObj) IsTruthy() bool { return true }
 func (k *KwargsObj) Iter() (Iterator, Error) {
-	return nil, NewRuntimeError(fmt.Sprintf("object of type '%s' is not iterable", k.Type()), nil)
+	return nil, NewRuntimeError(fmt.Sprintf("object of type '%s' is not iterable", k.Type()), k.GetLocation())
 }

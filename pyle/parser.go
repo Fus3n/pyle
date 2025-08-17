@@ -51,7 +51,7 @@ func (p *Parser) consume(kind TokenType, msg string) Result[*Token] {
 		return ResOk(tok)
 	}
 
-	return ResErr[*Token](NewParserError(msg, p.current()))
+	return ResErr[*Token](NewParserError(msg, p.current().Loc))
 }
 
 // Match and advance if matched otherwise return false without advancing
@@ -618,7 +618,7 @@ func (p *Parser) call() Result[Expr] {
 				return indexExprRes
 			}
 			if !p.match(TokenRSqBracket) {
-				return ResErr[Expr](NewParserError("Expected ']' after index expression.", p.current()))
+				return ResErr[Expr](NewParserError("Expected ']' after index expression.", p.current().Loc))
 			}
 			currentExpr = &IndexExpr{
 				Token:      bracTok,
@@ -687,7 +687,7 @@ func (p *Parser) primary() Result[Expr] {
 	return ResErr[Expr](
 		NewParserError(
 			fmt.Sprintf("Expected expression, but got %s instead.", p.current().Value),
-			p.current(),
+			p.current().Loc,
 		),
 	)
 }
@@ -696,7 +696,7 @@ func (p *Parser) functionExpr() Result[Expr] {
 	fnTok := p.advance() // token wasnt advance so using advance
 
 	if !p.match(TokenLParen) {
-		return ResErr[Expr](NewParserError("Expected '(' after 'fn' keyword.", p.current()))
+		return ResErr[Expr](NewParserError("Expected '(' after 'fn' keyword.", p.current().Loc))
 	}
 	params := []*Parameter{}
 	if !p.check(TokenRParen) {
@@ -728,7 +728,7 @@ func (p *Parser) functionExpr() Result[Expr] {
 	}
 
 	if !p.match(TokenRParen) {
-		return ResErr[Expr](NewParserError("Expected ')' after parameters.", p.current()))
+		return ResErr[Expr](NewParserError("Expected ')' after parameters.", p.current().Loc))
 	}
 
 	var returnType Expr = nil
@@ -741,7 +741,7 @@ func (p *Parser) functionExpr() Result[Expr] {
 	}
 
 	if !p.match(TokenLCurlyBrace) {
-		return ResErr[Expr](NewParserError("Expected '{' after function parameters.", p.current()))
+		return ResErr[Expr](NewParserError("Expected '{' after function parameters.", p.current().Loc))
 	}
 
 	bodyBlockRes := p.block()
@@ -776,7 +776,7 @@ func (p *Parser) array_literal() Result[Expr] {
 	}
 
 	if !p.match(TokenRSqBracket) {
-		return ResErr[Expr](NewParserError("Expected ']' after array elements.", p.current()))
+		return ResErr[Expr](NewParserError("Expected ']' after array elements.", p.current().Loc))
 	}
 
 	return ResOk[Expr](&ArrayExpr{Token: p.previous(), Elements: elements})
@@ -791,7 +791,7 @@ func (p *Parser) whileStatement() Result[Stmt] {
 	}
 
 	if !p.match(TokenLCurlyBrace) {
-		return ResErr[Stmt](NewParserError("Expected '{' after while condition.", p.current()))
+		return ResErr[Stmt](NewParserError("Expected '{' after while condition.", p.current().Loc))
 	}
 
 	bodyBlockRes := p.block()
@@ -813,13 +813,13 @@ func (p *Parser) forInStatement() Result[Stmt] {
 	hasParen := p.match(TokenLParen)
 
 	if !p.match(TokenIdent) {
-		return ResErr[Stmt](NewParserError("Expected loop variable name.", p.current()))
+		return ResErr[Stmt](NewParserError("Expected loop variable name.", p.current().Loc))
 	}
 
 	loopVariable := p.previous()
 
 	if !p.matchKeyword("in") {
-		return ResErr[Stmt](NewParserError("Expected 'in' keyword.", p.current()))
+		return ResErr[Stmt](NewParserError("Expected 'in' keyword.", p.current().Loc))
 	}
 
 	iterableRes := p.expression()
@@ -829,12 +829,12 @@ func (p *Parser) forInStatement() Result[Stmt] {
 
 	if hasParen {
 		if !p.match(TokenRParen) {
-			return ResErr[Stmt](NewParserError("Expected ')' after loop variable.", p.current()))
+			return ResErr[Stmt](NewParserError("Expected ')' after loop variable.", p.current().Loc))
 		}
 	}
 
 	if !p.match(TokenLCurlyBrace) {
-		return ResErr[Stmt](NewParserError("Expected '{' after while condition.", p.current()))
+		return ResErr[Stmt](NewParserError("Expected '{' after while condition.", p.current().Loc))
 	}
 
 	bodyBlockRes := p.block()
@@ -856,12 +856,12 @@ func (p *Parser) functionDefinition() Result[Stmt] {
 	fnTok := p.previous()
 
 	if !p.match(TokenIdent) {
-		return ResErr[Stmt](NewParserError("Expected function name.", p.current()))
+		return ResErr[Stmt](NewParserError("Expected function name.", p.current().Loc))
 	}
 	fnName := p.previous()
 
 	if !p.match(TokenLParen) {
-		return ResErr[Stmt](NewParserError("Expected '(' after function name.", p.current()))
+		return ResErr[Stmt](NewParserError("Expected '(' after function name.", p.current().Loc))
 	}
 
 	params := []*Parameter{}
@@ -894,7 +894,7 @@ func (p *Parser) functionDefinition() Result[Stmt] {
 	}
 
 	if !p.match(TokenRParen) {
-		return ResErr[Stmt](NewParserError("Expected ')' after parameters.", p.current()))
+		return ResErr[Stmt](NewParserError("Expected ')' after parameters.", p.current().Loc))
 	}
 
 	var returnType Expr = nil
@@ -907,7 +907,7 @@ func (p *Parser) functionDefinition() Result[Stmt] {
 	}
 
 	if !p.match(TokenLCurlyBrace) {
-		return ResErr[Stmt](NewParserError("Expected '{' after function parameters.", p.current()))
+		return ResErr[Stmt](NewParserError("Expected '{' after function parameters.", p.current().Loc))
 	}
 
 	bodyBlockRes := p.block()
@@ -952,7 +952,7 @@ func (p *Parser) ifStatement() Result[Stmt] {
 	}
 
 	if !p.match(TokenLCurlyBrace) {
-		return ResErr[Stmt](NewParserError("Expected '{' after if condition.", p.current()))
+		return ResErr[Stmt](NewParserError("Expected '{' after if condition.", p.current().Loc))
 	}
 	thenBranchRes := p.block()
 	if thenBranchRes.IsErr() {
@@ -976,7 +976,7 @@ func (p *Parser) ifStatement() Result[Stmt] {
 			}
 		} else {
 			if !p.match(TokenLCurlyBrace) {
-				return ResErr[Stmt](NewParserError("Expected '{' after if condition.", p.current()))
+				return ResErr[Stmt](NewParserError("Expected '{' after else.", p.current().Loc))
 			}
 			elseblockRes := p.block()
 			if elseblockRes.IsErr() {

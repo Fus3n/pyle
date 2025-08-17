@@ -8,5 +8,5 @@ fn fib(n) {
 const start = time.time() // time in seconds
 const r = fib(25)
 const end = time.time()
-echo("Time taken: {} s".format(end - start))
+echo("Time taken: {}s".format(end - start))
 echo("Result:", r)

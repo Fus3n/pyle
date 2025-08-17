@@ -2,18 +2,12 @@ package pyle
 
 import (
 	"fmt"
-	"os"
 	"strings"
 	"unicode"
 )
 
-func RunScript(vm *VM, fileName string) error {
-	code, ferr := os.ReadFile(fileName)
-	if ferr != nil {
-		return ferr
-	}
-
-	lexer := NewLexer(fileName, string(code))
+func RunScript(vm *VM, fileName string, code string) error {
+	lexer := NewLexer(fileName, code)
 	tokens, tokErr := lexer.Tokenize()
 	if tokErr.IsErr() {
 		return tokErr.Err

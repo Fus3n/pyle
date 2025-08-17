@@ -1,6 +1,8 @@
 package main
 
 import (
+	"fmt"
+	"io/ioutil"
 	"os"
 	"pylevm/pyle"
 )
@@ -15,8 +17,19 @@ func main() {
 	if len(os.Args) > 1 {
 		srcName = os.Args[1]
 	}
-	vmerr := pyle.RunScript(vm, srcName)
+	source, err := ioutil.ReadFile(srcName)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error reading file: %s\n", err)
+		os.Exit(1)
+	}
+
+	vmerr := pyle.RunScript(vm, srcName, string(source))
 	if vmerr != nil {
-		panic(vmerr)
+		if pyleErr, ok := vmerr.(*pyle.PyleError); ok {
+			fmt.Fprintln(os.Stderr, pyleErr.ShowSource(string(source)))
+		} else {
+			fmt.Fprintln(os.Stderr, vmerr.Error())
+		}
+		os.Exit(1)
 	}
 }

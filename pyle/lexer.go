@@ -90,12 +90,7 @@ func (l *Lexer) addToken(kind TokenType, value string, loc Loc) {
 }
 
 func (l *Lexer) createError(msg string, loc Loc) Result[Token] {
-	errTok := Token{
-		Kind:  TokenError,
-		Value: msg,
-		Loc:   loc,
-	}
-	return ResErr[Token](NewLexerError(msg, &errTok))
+	return ResErr[Token](NewLexerError(msg, loc))
 }
 
 func (l *Lexer) createErrorDetailed(msg string, line, startCol int, colEnd *int) Result[Token] {

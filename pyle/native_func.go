@@ -40,7 +40,7 @@ func createDirectCall(fn any) (any, int, bool) {
 		return NativeFunc0(func(vm *VM) (Object, Error) {
 			res, err := f()
 			if err != nil {
-				return nil, NewRuntimeError(err.Error(), nil)
+				return nil, NewRuntimeError(err.Error(), Loc{})
 			}
 			return res, nil
 		}), 0, true
@@ -49,7 +49,7 @@ func createDirectCall(fn any) (any, int, bool) {
 		return NativeFunc0(func(vm *VM) (Object, Error) {
 			res, err := f()
 			if err != nil {
-				return nil, NewRuntimeError(err.Error(), nil)
+				return nil, NewRuntimeError(err.Error(), Loc{})
 			}
 			return CreateInt(res), nil
 		}), 0, true
@@ -63,7 +63,7 @@ func createDirectCall(fn any) (any, int, bool) {
 		return NativeFunc0(func(vm *VM) (Object, Error) {
 			res, err := f()
 			if err != nil {
-				return nil, NewRuntimeError(err.Error(), nil)
+				return nil, NewRuntimeError(err.Error(), Loc{})
 			}
 			return NumberObj{Value: res, IsInt: false}, nil
 		}), 0, true
@@ -72,7 +72,7 @@ func createDirectCall(fn any) (any, int, bool) {
 		return NativeFunc1(func(vm *VM, arg Object) (Object, Error) {
 			num, ok := arg.(NumberObj)
 			if !ok {
-				return nil, NewRuntimeError(fmt.Sprintf("expected a number argument, got %s", arg.Type()), nil)
+				return nil, NewRuntimeError(fmt.Sprintf("expected a number argument, got %s", arg.Type()), arg.GetLocation())
 			}
 			f(num.Value)
 			return NullObj{}, nil
@@ -82,7 +82,7 @@ func createDirectCall(fn any) (any, int, bool) {
 		return NativeFunc1(func(vm *VM, arg Object) (Object, Error) {
 			res, err := f(arg)
 			if err != nil {
-				return nil, NewRuntimeError(err.Error(), nil)
+				return nil, NewRuntimeError(err.Error(), arg.GetLocation())
 			}
 			return CreateInt(int64(res)), nil
 		}), 1, true
@@ -91,11 +91,11 @@ func createDirectCall(fn any) (any, int, bool) {
 		return NativeFunc1(func(vm *VM, arg Object) (Object, Error) {
 			receiver, ok := arg.(StringObj)
 			if !ok {
-				return nil, NewRuntimeError(fmt.Sprintf("expected a string receiver, got %s", arg.Type()), nil)
+				return nil, NewRuntimeError(fmt.Sprintf("expected a string receiver, got %s", arg.Type()), arg.GetLocation())
 			}
 			res, err := f(receiver)
 			if err != nil {
-				return nil, NewRuntimeError(err.Error(), nil)
+				return nil, NewRuntimeError(err.Error(), arg.GetLocation())
 			}
 			return StringObj{Value: res}, nil
 		}), 1, true
@@ -104,15 +104,15 @@ func createDirectCall(fn any) (any, int, bool) {
 		return NativeFunc2(func(vm *VM, arg1, arg2 Object) (Object, Error) {
 			receiver, ok := arg1.(StringObj)
 			if !ok {
-				return nil, NewRuntimeError(fmt.Sprintf("expected a string receiver, got %s", arg1.Type()), nil)
+				return nil, NewRuntimeError(fmt.Sprintf("expected a string receiver, got %s", arg1.Type()), arg1.GetLocation())
 			}
 			sep, ok := arg2.(StringObj)
 			if !ok {
-				return nil, NewRuntimeError(fmt.Sprintf("expected a string separator, got %s", arg2.Type()), nil)
+				return nil, NewRuntimeError(fmt.Sprintf("expected a string separator, got %s", arg2.Type()), arg2.GetLocation())
 			}
 			res, err := f(receiver, sep.Value)
 			if err != nil {
-				return nil, NewRuntimeError(err.Error(), nil)
+				return nil, NewRuntimeError(err.Error(), arg1.GetLocation())
 			}
 			return StringObj{Value: res}, nil
 		}), 2, true
@@ -121,15 +121,15 @@ func createDirectCall(fn any) (any, int, bool) {
 		return NativeFunc2(func(vm *VM, arg1, arg2 Object) (Object, Error) {
 			receiver, ok := arg1.(StringObj)
 			if !ok {
-				return nil, NewRuntimeError(fmt.Sprintf("expected a string receiver, got %s", arg1.Type()), nil)
+				return nil, NewRuntimeError(fmt.Sprintf("expected a string receiver, got %s", arg1.Type()), arg1.GetLocation())
 			}
 			sep, ok := arg2.(StringObj)
 			if !ok {
-				return nil, NewRuntimeError(fmt.Sprintf("expected a string separator, got %s", arg2.Type()), nil)
+				return nil, NewRuntimeError(fmt.Sprintf("expected a string separator, got %s", arg2.Type()), arg2.GetLocation())
 			}
 			res, err := f(receiver, sep.Value)
 			if err != nil {
-				return nil, NewRuntimeError(err.Error(), nil)
+				return nil, NewRuntimeError(err.Error(), arg1.GetLocation())
 			}
 			elements := make([]Object, len(res))
 			for i, s := range res {
@@ -142,15 +142,15 @@ func createDirectCall(fn any) (any, int, bool) {
 		return NativeFunc2(func(vm *VM, arg1, arg2 Object) (Object, Error) {
 			receiver, ok := arg1.(StringObj)
 			if !ok {
-				return nil, NewRuntimeError(fmt.Sprintf("expected a string receiver, got %s", arg1.Type()), nil)
+				return nil, NewRuntimeError(fmt.Sprintf("expected a string receiver, got %s", arg1.Type()), arg1.GetLocation())
 			}
 			sep, ok := arg2.(StringObj)
 			if !ok {
-				return nil, NewRuntimeError(fmt.Sprintf("expected a string argument, got %s", arg2.Type()), nil)
+				return nil, NewRuntimeError(fmt.Sprintf("expected a string argument, got %s", arg2.Type()), arg2.GetLocation())
 			}
 			res, err := f(receiver, sep)
 			if err != nil {
-				return nil, NewRuntimeError(err.Error(), nil)
+				return nil, NewRuntimeError(err.Error(), arg1.GetLocation())
 			}
 			return res, nil
 		}), 2, true
@@ -159,11 +159,11 @@ func createDirectCall(fn any) (any, int, bool) {
 		return NativeFunc2(func(vm *VM, arg1, arg2 Object) (Object, Error) {
 			receiver, ok := arg1.(*ArrayObj)
 			if !ok {
-				return nil, NewRuntimeError(fmt.Sprintf("expected an array receiver, got %s", arg1.Type()), nil)
+				return nil, NewRuntimeError(fmt.Sprintf("expected an array receiver, got %s", arg1.Type()), arg1.GetLocation())
 			}
 			res, err := f(receiver, arg2)
 			if err != nil {
-				return nil, NewRuntimeError(err.Error(), nil)
+				return nil, NewRuntimeError(err.Error(), arg1.GetLocation())
 			}
 			return res, nil
 		}), 2, true
@@ -172,11 +172,11 @@ func createDirectCall(fn any) (any, int, bool) {
 		return NativeFunc1(func(vm *VM, arg Object) (Object, Error) {
 			receiver, ok := arg.(StringObj)
 			if !ok {
-				return nil, NewRuntimeError(fmt.Sprintf("expected a string receiver, got %s", arg.Type()), nil)
+				return nil, NewRuntimeError(fmt.Sprintf("expected a string receiver, got %s", arg.Type()), arg.GetLocation())
 			}
 			res, err := f(receiver)
 			if err != nil {
-				return nil, NewRuntimeError(err.Error(), nil)
+				return nil, NewRuntimeError(err.Error(), arg.GetLocation())
 			}
 			return CreateInt(int64(res)), nil
 		}), 1, true
@@ -185,15 +185,15 @@ func createDirectCall(fn any) (any, int, bool) {
 		return NativeFunc2(func(vm *VM, arg1, arg2 Object) (Object, Error) {
 			receiver, ok := arg1.(StringObj)
 			if !ok {
-				return nil, NewRuntimeError(fmt.Sprintf("expected a string receiver, got %s", arg1.Type()), nil)
+				return nil, NewRuntimeError(fmt.Sprintf("expected a string receiver, got %s", arg1.Type()), arg1.GetLocation())
 			}
 			arg, ok := arg2.(StringObj)
 			if !ok {
-				return nil, NewRuntimeError(fmt.Sprintf("expected a string argument, got %s", arg2.Type()), nil)
+				return nil, NewRuntimeError(fmt.Sprintf("expected a string argument, got %s", arg2.Type()), arg2.GetLocation())
 			}
 			res, err := f(receiver, arg)
 			if err != nil {
-				return nil, NewRuntimeError(err.Error(), nil)
+				return nil, NewRuntimeError(err.Error(), arg1.GetLocation())
 			}
 			return res, nil
 		}), 2, true
@@ -202,15 +202,15 @@ func createDirectCall(fn any) (any, int, bool) {
 		return NativeFunc2(func(vm *VM, arg1, arg2 Object) (Object, Error) {
 			receiver, ok := arg1.(StringObj)
 			if !ok {
-				return nil, NewRuntimeError(fmt.Sprintf("expected a string receiver, got %s", arg1.Type()), nil)
+				return nil, NewRuntimeError(fmt.Sprintf("expected a string receiver, got %s", arg1.Type()), arg1.GetLocation())
 			}
 			arg, ok := arg2.(NumberObj)
 			if !ok {
-				return nil, NewRuntimeError(fmt.Sprintf("expected a number argument, got %s", arg2.Type()), nil)
+				return nil, NewRuntimeError(fmt.Sprintf("expected a number argument, got %s", arg2.Type()), arg2.GetLocation())
 			}
 			res, err := f(receiver, arg)
 			if err != nil {
-				return nil, NewRuntimeError(err.Error(), nil)
+				return nil, NewRuntimeError(err.Error(), arg1.GetLocation())
 			}
 			return res, nil
 		}), 2, true
@@ -219,15 +219,15 @@ func createDirectCall(fn any) (any, int, bool) {
 		return NativeFunc2(func(vm *VM, arg1, arg2 Object) (Object, Error) {
 			receiver, ok := arg1.(StringObj)
 			if !ok {
-				return nil, NewRuntimeError(fmt.Sprintf("expected a string receiver, got %s", arg1.Type()), nil)
+				return nil, NewRuntimeError(fmt.Sprintf("expected a string receiver, got %s", arg1.Type()), arg1.GetLocation())
 			}
 			arg, ok := arg2.(NumberObj)
 			if !ok {
-				return nil, NewRuntimeError(fmt.Sprintf("expected a number argument, got %s", arg2.Type()), nil)
+				return nil, NewRuntimeError(fmt.Sprintf("expected a number argument, got %s", arg2.Type()), arg2.GetLocation())
 			}
 			res, err := f(receiver, arg)
 			if err != nil {
-				return nil, NewRuntimeError(err.Error(), nil)
+				return nil, NewRuntimeError(err.Error(), arg1.GetLocation())
 			}
 			return res, nil
 		}), 2, true
@@ -236,11 +236,11 @@ func createDirectCall(fn any) (any, int, bool) {
 		return NativeFunc1(func(vm *VM, arg Object) (Object, Error) {
 			receiver, ok := arg.(*ArrayObj)
 			if !ok {
-				return nil, NewRuntimeError(fmt.Sprintf("expected an array receiver, got %s", arg.Type()), nil)
+				return nil, NewRuntimeError(fmt.Sprintf("expected an array receiver, got %s", arg.Type()), arg.GetLocation())
 			}
 			res, err := f(receiver)
 			if err != nil {
-				return nil, NewRuntimeError(err.Error(), nil)
+				return nil, NewRuntimeError(err.Error(), arg.GetLocation())
 			}
 			return res, nil
 		}), 1, true
@@ -249,11 +249,11 @@ func createDirectCall(fn any) (any, int, bool) {
 		return NativeFunc1(func(vm *VM, arg Object) (Object, Error) {
 			receiver, ok := arg.(*MapObj)
 			if !ok {
-				return nil, NewRuntimeError(fmt.Sprintf("expected a map receiver, got %s", arg.Type()), nil)
+				return nil, NewRuntimeError(fmt.Sprintf("expected a map receiver, got %s", arg.Type()), arg.GetLocation())
 			}
 			res, err := f(receiver)
 			if err != nil {
-				return nil, NewRuntimeError(err.Error(), nil)
+				return nil, NewRuntimeError(err.Error(), arg.GetLocation())
 			}
 			return CreateInt(int64(res)), nil
 		}), 1, true
@@ -311,13 +311,13 @@ func createReflectCall(metadata *FunctionMetadata) func(*VM, []Object) (Object, 
 			if numArgs < expectedArity-1 {
 				return nil, NewRuntimeError(
 					fmt.Sprintf("function '%s' expected at least %d arguments, but got %d",
-						metadata.Name, expectedArity-1, numArgs), nil)
+						metadata.Name, expectedArity-1, numArgs), Loc{})
 			}
 		} else {
 			if numArgs != expectedArity {
 				return nil, NewRuntimeError(
 					fmt.Sprintf("function '%s' expected %d arguments, but got %d",
-						metadata.Name, expectedArity, numArgs), nil)
+						metadata.Name, expectedArity, numArgs), Loc{})
 			}
 		}
 
@@ -333,7 +333,7 @@ func createReflectCall(metadata *FunctionMetadata) func(*VM, []Object) (Object, 
 		for i := 0; i < numRegularArgs; i++ {
 			converted, err := argConverters[i](args[i])
 			if err != nil {
-				return nil, NewRuntimeError(fmt.Sprintf("argument %d: %v", i+1, err), nil)
+				return nil, NewRuntimeError(fmt.Sprintf("argument %d: %v", i+1, err), args[i].GetLocation())
 			}
 			in = append(in, converted)
 		}
@@ -343,7 +343,7 @@ func createReflectCall(metadata *FunctionMetadata) func(*VM, []Object) (Object, 
 			for i := numRegularArgs; i < len(args); i++ {
 				converted, err := createTypeConverter(variadicType)(args[i])
 				if err != nil {
-					return nil, NewRuntimeError(fmt.Sprintf("variadic argument %d: %v", i+1, err), nil)
+					return nil, NewRuntimeError(fmt.Sprintf("variadic argument %d: %v", i+1, err), args[i].GetLocation())
 				}
 				in = append(in, converted)
 			}
@@ -354,12 +354,12 @@ func createReflectCall(metadata *FunctionMetadata) func(*VM, []Object) (Object, 
 		if metadata.ReturnsError {
 			if len(results) > 1 && !results[1].IsNil() {
 				if err, ok := results[1].Interface().(error); ok {
-					return nil, NewRuntimeError(err.Error(), nil)
+					return nil, NewRuntimeError(err.Error(), Loc{})
 				}
 			}
 			res, err := convertGoValueToVMObject(results[0])
 			if err != nil {
-				return nil, NewRuntimeError(err.Error(), nil)
+				return nil, NewRuntimeError(err.Error(), Loc{})
 			}
 
 			return res, nil
@@ -368,7 +368,7 @@ func createReflectCall(metadata *FunctionMetadata) func(*VM, []Object) (Object, 
 		if len(results) > 0 {
 			res, err := convertGoValueToVMObject(results[0])
 			if err != nil {
-				return nil, NewRuntimeError(err.Error(), nil)
+				return nil, NewRuntimeError(err.Error(), Loc{})
 			}
 			return res, nil
 		}

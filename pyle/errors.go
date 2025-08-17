@@ -1,57 +1,74 @@
 package pyle
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 type Error interface {
 	error
-	GetToken() *Token
+	GetLocation() Loc
 }
 
-type InterpreterError struct {
-	Type  string
-	Msg   string
-	Token *Token
+type ErrorType int
+const (
+	ErrorRuntime ErrorType = iota
+	ErrorLexer
+	ErrorParser
+)
+
+func (t ErrorType) String() string {
+	return []string{
+		"RuntimeError",
+		"LexerError",
+		"ParserError",
+	}[t]
 }
 
-func (e *InterpreterError) Error() string {
-	if e.Token != nil {
-		return fmt.Sprintf("%T: %s at %s", e, e.Msg, e.Token.GetFileLoc())
+type PyleError struct {
+	Type ErrorType
+	Msg string
+	Loc Loc
+}
+
+func (e *PyleError) Error() string {
+	if e.Loc.FileName != "" {
+		return fmt.Sprintf("%s: %s at %s:%s", e.Type.String(), e.Msg, e.Loc.FileName, e.Loc.String())
 	}
-	return fmt.Sprintf("%T: %s", e, e.Msg)
+	return fmt.Sprintf("%s: %s", e.Type.String(), e.Msg)
 }
 
-func (e *InterpreterError) GetToken() *Token {
-	return e.Token
+func (e *PyleError) GetLocation() Loc {
+	return e.Loc
 }
 
-type LexerError struct {
-	*InterpreterError
-}
-
-func NewLexerError(msg string, token *Token) *LexerError {
-	return &LexerError{
-		InterpreterError: &InterpreterError{Msg: msg, Token: token},
+func (e *PyleError) ShowSource(source string) string {
+	lines := strings.Split(source, "\n")
+	if e.Loc.Line > 0 && e.Loc.Line <= len(lines) {
+		line := lines[e.Loc.Line-1]
+		colEnd := e.Loc.ColEnd
+		if colEnd == nil {
+			// Default to highlighting a single character if ColEnd is not set
+			end := e.Loc.ColStart + 1
+			colEnd = &end
+		}
+		underline := strings.Repeat(" ", e.Loc.ColStart) + strings.Repeat("^", *colEnd)
+		return fmt.Sprintf("%s\n%s\n%s", e.Error(), line, underline)
 	}
+	return e.Error()
 }
 
-type ParserError struct {
-	*InterpreterError
+
+func NewLexerError(msg string, loc Loc) *PyleError {
+	return &PyleError{Type: ErrorLexer, Msg: msg, Loc: loc}
 }
 
-func NewParserError(msg string, token *Token) *ParserError {
-	return &ParserError{
-		InterpreterError: &InterpreterError{Msg: msg, Token: token},
-	}
+func NewParserError(msg string, loc Loc) *PyleError {
+	return &PyleError{Type: ErrorParser, Msg: msg, Loc: loc}
 }
 
-type RuntimeError struct {
-	*InterpreterError
-}
-
-func NewRuntimeError(msg string, token *Token) *RuntimeError {
-	return &RuntimeError{
-		InterpreterError: &InterpreterError{Msg: msg, Token: token},
-	}
+func NewRuntimeError(msg string, loc Loc) *PyleError {
+	return &PyleError{Type: ErrorRuntime, Msg: msg, Loc: loc}
 }
 
 type Result[T any] struct {
@@ -73,12 +90,4 @@ func (r Result[T]) IsOk() bool {
 
 func (r Result[T]) IsErr() bool {
 	return r.Err != nil
-}
-
-func (r Result[T]) Unwrap() (T, error) {
-	if r.IsErr() {
-		var zero T
-		return zero, r.Err
-	}
-	return r.Value, nil
 }
