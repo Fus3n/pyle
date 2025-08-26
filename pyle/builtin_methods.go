@@ -23,14 +23,14 @@ var BuiltinMethodDocs map[string]map[string]*DocstringObj
 func methodStringLen(receiver StringObj) (int, error) {
 	return len(receiver.Value), nil
 }
-func methodStringTrimSpace(receiver StringObj) (string, error) {
-	return strings.TrimSpace(receiver.Value), nil
+func methodStringTrimSpace(receiver StringObj) string {
+	return strings.TrimSpace(receiver.Value)
 }
-func methodStringReplace(receiver StringObj, old string, new string) (string, error) {
-	return strings.ReplaceAll(receiver.Value, old, new), nil
+func methodStringReplace(receiver StringObj, old string, new string) string {
+	return strings.ReplaceAll(receiver.Value, old, new)
 }
-func methodStringSplit(receiver StringObj, sep string) ([]string, error) {
-	return strings.Split(receiver.Value, sep), nil
+func methodStringSplit(receiver StringObj, sep string) []string {
+	return strings.Split(receiver.Value, sep)
 }
 func formatArgument(arg Object, spec string) (string, error) {
 	if spec == "" || spec == "s" {
@@ -69,7 +69,7 @@ func formatArgument(arg Object, spec string) (string, error) {
 
 	return "", fmt.Errorf("unsupported format specifier: %s", spec)
 }
-func methodStringFormat(receiver StringObj, args ...Object) (string, error) {
+func methodStringFormat(receiver StringObj, args ...Object) Object {
 	var builder strings.Builder
 	var argIndex int
 	s := receiver.Value
@@ -94,12 +94,12 @@ func methodStringFormat(receiver StringObj, args ...Object) (string, error) {
 
 			end := strings.IndexByte(s[p+1:], '}')
 			if end == -1 {
-				return "", fmt.Errorf("unmatched '{' in format string")
+				return ReturnError("unmatched '{' in format string")
 			}
 			end += p + 1
 
 			if argIndex >= len(args) {
-				return "", fmt.Errorf("not enough arguments for format string")
+				return ReturnError("not enough arguments for format string")
 			}
 			arg := args[argIndex]
 			argIndex++
@@ -114,7 +114,7 @@ func methodStringFormat(receiver StringObj, args ...Object) (string, error) {
 
 			formatted, err := formatArgument(arg, spec)
 			if err != nil {
-				return "", err
+				return ReturnError(err.Error())
 			}
 			builder.WriteString(formatted)
 
@@ -125,69 +125,69 @@ func methodStringFormat(receiver StringObj, args ...Object) (string, error) {
 				lastIndex = p + 2
 				continue
 			}
-			return "", fmt.Errorf("single '}' encountered in format string")
+			return ReturnError("single '}' encountered in format string")
 		}
 	}
 
-	return builder.String(), nil
+	return ReturnValue(StringObj{Value: builder.String()})
 }
-func methodStringContains(receiver StringObj, substr StringObj) (BooleanObj, error) {
-	return BooleanObj{Value: strings.Contains(receiver.Value, substr.Value)}, nil
+func methodStringContains(receiver StringObj, substr StringObj) BooleanObj {
+	return BooleanObj{Value: strings.Contains(receiver.Value, substr.Value)}
 }
-func methodStringHasPrefix(receiver StringObj, prefix StringObj) (BooleanObj, error) {
-	return BooleanObj{Value: strings.HasPrefix(receiver.Value, prefix.Value)}, nil
+func methodStringHasPrefix(receiver StringObj, prefix StringObj) BooleanObj {
+	return BooleanObj{Value: strings.HasPrefix(receiver.Value, prefix.Value)}
 }
-func methodStringHasSuffix(receiver StringObj, suffix StringObj) (BooleanObj, error) {
-	return BooleanObj{Value: strings.HasSuffix(receiver.Value, suffix.Value)}, nil
+func methodStringHasSuffix(receiver StringObj, suffix StringObj) BooleanObj {
+	return BooleanObj{Value: strings.HasSuffix(receiver.Value, suffix.Value)}
 }
-func methodStringToLower(receiver StringObj) (StringObj, error) {
-	return StringObj{Value: strings.ToLower(receiver.Value)}, nil
+func methodStringToLower(receiver StringObj) StringObj {
+	return StringObj{Value: strings.ToLower(receiver.Value)}
 }
-func methodStringToUpper(receiver StringObj) (StringObj, error) {
-	return StringObj{Value: strings.ToUpper(receiver.Value)}, nil
+func methodStringToUpper(receiver StringObj) StringObj {
+	return StringObj{Value: strings.ToUpper(receiver.Value)}
 }
-func methodStringIndexOf(receiver StringObj, substr StringObj) (NumberObj, error) {
-	return NumberObj{Value: float64(strings.Index(receiver.Value, substr.Value)), IsInt: true}, nil
+func methodStringIndexOf(receiver StringObj, substr StringObj) NumberObj {
+	return NumberObj{Value: float64(strings.Index(receiver.Value, substr.Value)), IsInt: true}
 }
-func methodStringRepeat(receiver StringObj, count NumberObj) (StringObj, error) {
+func methodStringRepeat(receiver StringObj, count NumberObj) Object {
 	if !count.IsInt || count.Value < 0 {
-		return StringObj{}, fmt.Errorf("count must be a non-negative integer")
+		return ReturnError("count must be a non-negative integer")
 	}
-	return StringObj{Value: strings.Repeat(receiver.Value, int(count.Value))}, nil
+	return ReturnValue(StringObj{Value: strings.Repeat(receiver.Value, int(count.Value))})
 }
-func methodStringAsciiAt(receiver StringObj, index NumberObj) (NumberObj, error) {
+func methodStringAsciiAt(receiver StringObj, index NumberObj) Object {
 	if !index.IsInt {
-		return NumberObj{}, fmt.Errorf("index must be an integer")
+		return ReturnError("index must be an integer")
 	}
 	idx := int(index.Value)
 	if idx < 0 || idx >= len(receiver.Value) {
-		return NumberObj{}, fmt.Errorf("index out of bounds: %d", idx)
+		return ReturnErrorf("index out of bounds: %d", idx)
 	}
-	return NumberObj{Value: float64(receiver.Value[idx]), IsInt: true}, nil
+	return ReturnValue(NumberObj{Value: float64(receiver.Value[idx]), IsInt: true})
 }
 
 // --- Array Methods ---
-func methodArrayLen(receiver *ArrayObj) (int, error) {
-	return len(receiver.Elements), nil
+func methodArrayLen(receiver *ArrayObj) int {
+	return len(receiver.Elements)
 }
-func methodArrayAppend(receiver *ArrayObj, value Object) (Object, error) {
+func methodArrayAppend(receiver *ArrayObj, value Object) Object {
 	receiver.Elements = append(receiver.Elements, value)
-	return receiver, nil
+	return receiver
 }
-func methodArrayPop(receiver *ArrayObj) (Object, error) {
+func methodArrayPop(receiver *ArrayObj) Object {
 	if len(receiver.Elements) == 0 {
-		return NullObj{}, nil
+		return NullObj{}
 	}
 	last := receiver.Elements[len(receiver.Elements)-1]
 	receiver.Elements = receiver.Elements[:len(receiver.Elements)-1]
-	return last, nil
+	return last
 }
-func methodArrayReverse(receiver *ArrayObj) (Object, error) {
+func methodArrayReverse(receiver *ArrayObj) Object{
 	// in place
 	for i, j := 0, len(receiver.Elements)-1; i < j; i, j = i+1, j-1 {
 		receiver.Elements[i], receiver.Elements[j] = receiver.Elements[j], receiver.Elements[i]
 	}
-	return receiver, nil
+	return receiver
 }
 func methodArrayFilter(vm *VM, receiver *ArrayObj, fn Object) (Object, error) {
 	if _, ok := fn.(NullObj); ok {
@@ -195,11 +195,11 @@ func methodArrayFilter(vm *VM, receiver *ArrayObj, fn Object) (Object, error) {
 	}
 
 	if !isFunc(fn) {
-		return nil, fmt.Errorf("expected a function for filter, got %s", fn.Type())
+		return ReturnErrorf("expected a function for filter, got %s", fn.Type()), nil
 	}
 
 	if len(receiver.Elements) == 0 {
-		return &ArrayObj{Elements: []Object{}}, nil
+		return ReturnValue(&ArrayObj{Elements: []Object{}}), nil
 	}
 
 	// Fast-path metadata for natives
@@ -240,7 +240,7 @@ func methodArrayFilter(vm *VM, receiver *ArrayObj, fn Object) (Object, error) {
 			filtered = append(filtered, elem)
 		}
 	}
-	return &ArrayObj{Elements: filtered}, nil
+	return ReturnValue(&ArrayObj{Elements: filtered}), nil
 }
 
 func methodArrayMap(vm *VM, receiver *ArrayObj, fn Object) (Object, error) {
@@ -252,7 +252,7 @@ func methodArrayMap(vm *VM, receiver *ArrayObj, fn Object) (Object, error) {
 	// Ensure the passed object is a callable function/closure/native/bound method
 	nativeFunc, isNativeFunc := fn.(*NativeFuncObj)
 	if !isFunc(fn) {
-		return nil, fmt.Errorf("expected a function for map, got %s", fn.Type())
+		return ReturnErrorf("expected a function for map, got %s", fn.Type()), nil
 	}
 
 	mapped := make([]Object, len(receiver.Elements))
@@ -284,14 +284,14 @@ func methodArrayMap(vm *VM, receiver *ArrayObj, fn Object) (Object, error) {
 		}
 		mapped[i] = result
 	}
-	return &ArrayObj{Elements: mapped}, nil
+	return ReturnValue(&ArrayObj{Elements: mapped}), nil
 }
-func methodArrayToTuple(receiver *ArrayObj) (Object, error) {
+func methodArrayToTuple(receiver *ArrayObj) Object {
 	elements := make([]Object, len(receiver.Elements))
 	copy(elements, receiver.Elements)
-	return &TupleObj{Elements: elements}, nil
+	return &TupleObj{Elements: elements}
 }
-func methodArrayJoin(receiver *ArrayObj, sep string) (string, error) {
+func methodArrayJoin(receiver *ArrayObj, sep string) string {
 	var sb strings.Builder
 	for i, elem := range receiver.Elements {
 		if i > 0 {
@@ -299,7 +299,7 @@ func methodArrayJoin(receiver *ArrayObj, sep string) (string, error) {
 		}
 		sb.WriteString(elem.String())
 	}
-	return sb.String(), nil
+	return sb.String()
 }
 
 // --- Map Methods ---
@@ -325,6 +325,15 @@ func methodMapHas(receiver *MapObj, key Object) (bool, error) {
 		return false, err
 	}
 	return ok, nil
+}
+
+// --- Error Methods ---
+func methodErrorMessage(receiver ErrorObj) (string, error) {
+	return receiver.Message, nil
+}
+
+func methodErrorToString(receiver ErrorObj) (string, error) {
+	return receiver.String(), nil
 }
 
 func init() {
@@ -405,5 +414,15 @@ func init() {
 		"values": mustCreate("values", methodMapValues, nil),
 		"items":  mustCreate("items", methodMapItems, nil),
 		"has":    mustCreate("has", methodMapHas, nil),
+	}
+
+	// --- Error Docs & Methods ---
+	BuiltinMethodDocs["error"] = map[string]*DocstringObj{
+		"message": {Description: "message() -> string\n\nReturns the error message."},
+		"toString": {Description: "toString() -> string\n\nReturns the string representation of the error."},
+	}
+	BuiltinMethods["error"] = map[string]*NativeFuncObj{
+		"message":  mustCreate("message", methodErrorMessage, BuiltinMethodDocs["error"]["message"]),
+		"toString": mustCreate("toString", methodErrorToString, BuiltinMethodDocs["error"]["toString"]),
 	}
 }

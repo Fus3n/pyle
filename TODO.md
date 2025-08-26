@@ -6,6 +6,7 @@
 - [x] `Number` type (float64, int64)
 - [x] `Boolean` type  
 - [ ] `Struct` type
+- [ ] `Enum` type
 - [x] `Map` type
 - [x] `Null` type
 - [x]  Dynamic `Array` type

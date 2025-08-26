@@ -238,6 +238,40 @@ func (n NullObj) Compare(other Object) (int, error) {
 	return 0, nil
 }
 
+type ErrorObj struct {
+	DebugInfo
+	Message string
+}
+
+func (e ErrorObj) String() string { return fmt.Sprintf("error: %s", e.Message) }
+func (e ErrorObj) Type() string   { return "error" }
+func (e ErrorObj) IsTruthy() bool { return true }
+func (e ErrorObj) Iter() (Iterator, Error) {
+	return nil, NewRuntimeError(fmt.Sprintf("object of type '%s' is not iterable", e.Type()), e.GetLocation())
+}
+func (e ErrorObj) Hash() uint32 {
+	h := fnv.New32a()
+	h.Write([]byte(e.Message))
+	return h.Sum32()
+}
+func (e ErrorObj) Compare(other Object) (int, error) {
+	otherErr, ok := other.(ErrorObj)
+	if !ok {
+		return strings.Compare(e.Type(), other.Type()), nil
+	}
+	return strings.Compare(e.Message, otherErr.Message), nil
+}
+
+func (e ErrorObj) GetAttribute(name string) (Object, bool, Error) {
+	if methods, ok := BuiltinMethods[e.Type()]; ok {
+		if method, exists := methods[name]; exists {
+			boundMethod := &BoundMethodObj{Receiver: e, Method: method}
+			return boundMethod, true, nil
+		}
+	}
+	return nil, false, nil
+}
+
 // --- Container Types ---
 
 type ArrayObj struct {

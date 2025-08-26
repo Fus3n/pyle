@@ -31,79 +31,79 @@ func nativeScan(prompt string) (string, error) {
 	return input, nil
 }
 
-func nativeType(obj Object) (string, error) {
-	return obj.Type(), nil
+func nativeType(obj Object) string {
+	return obj.Type()
 }
 
-func nativeTuple(objs ...Object) (*TupleObj, error) {
+func nativeTuple(objs ...Object) *TupleObj {
 	elems := make([]Object, len(objs))
 	copy(elems, objs)
-	return &TupleObj{Elements: elems}, nil
+	return &TupleObj{Elements: elems}
 }
 
-func nativeInt(obj Object) (NumberObj, error) {
+func nativeInt(obj Object) Object {
 	switch v := obj.(type) {
 	case NumberObj:
 		if v.IsInt {
-			return v, nil
+			return ReturnValue(v)
 		}
-		return NumberObj{Value: float64(int(v.Value)), IsInt: true}, nil
+		return ReturnValue(NumberObj{Value: float64(int(v.Value)), IsInt: true})
 	case StringObj:
 		i, err := strconv.Atoi(v.Value)
 		if err != nil {
-			return NumberObj{}, fmt.Errorf("could not convert string '%s' to int", v.Value)
+			return ReturnErrorf("could not convert string '%s' to int", v.Value)
 		}
-		return NumberObj{Value: float64(i), IsInt: true}, nil
+		return ReturnValue(NumberObj{Value: float64(i), IsInt: true})
 	case BooleanObj:
 		if v.Value {
-			return NumberObj{Value: 1, IsInt: true}, nil
+			return ReturnValue(NumberObj{Value: 1, IsInt: true})
 		}
-		return NumberObj{Value: 0, IsInt: true}, nil
+		return ReturnValue(NumberObj{Value: 0, IsInt: true})
 	default:
-		return NumberObj{}, fmt.Errorf("cannot convert type '%s' to int", obj.Type())
+		return ReturnErrorf("cannot convert type '%s' to int", obj.Type())
 	}
 }
 
-func nativeFloat(obj Object) (NumberObj, error) {
+func nativeFloat(obj Object) Object {
 	switch v := obj.(type) {
 	case NumberObj:
-		return NumberObj{Value: v.Value, IsInt: false}, nil
+		return ReturnValue(NumberObj{Value: v.Value, IsInt: false})
 	case StringObj:
 		f, err := strconv.ParseFloat(v.Value, 64)
 		if err != nil {
-			return NumberObj{}, fmt.Errorf("could not convert string '%s' to float", v.Value)
+			return ReturnErrorf("could not convert string '%s' to float", v.Value)
 		}
-		return NumberObj{Value: f, IsInt: false}, nil
+		return ReturnValue(NumberObj{Value: f, IsInt: false})
 	case BooleanObj:
 		if v.Value {
-			return NumberObj{Value: 1.0, IsInt: false}, nil
+			return ReturnValue(NumberObj{Value: 1.0, IsInt: false})
 		}
-		return NumberObj{Value: 0.0, IsInt: false}, nil
+		return ReturnValue(NumberObj{Value: 0.0, IsInt: false})
 	default:
-		return NumberObj{}, fmt.Errorf("cannot convert type '%s' to float", obj.Type())
+		return ReturnErrorf("cannot convert type '%s' to float", obj.Type())
 	}
 }
 
-func nativeString(obj Object) (StringObj, error) {
-	return StringObj{Value: obj.String()}, nil
+func nativeString(obj Object) StringObj {
+	return StringObj{Value: obj.String()}
 }
 
-func nativeBool(obj Object) (BooleanObj, error) {
-	return BooleanObj{Value: obj.IsTruthy()}, nil
+func nativeBool(obj Object) BooleanObj {
+	return BooleanObj{Value: obj.IsTruthy()}
 }
 
-func nativeArray(obj Object) (*ArrayObj, error) {
+func nativeArray(obj Object) Object {
 	switch v := obj.(type) {
 	case *ArrayObj:
-		return v, nil
+		return ReturnValue(v)
 	case *TupleObj:
-		return &ArrayObj{Elements: v.Elements}, nil
+		return ReturnValue(&ArrayObj{Elements: v.Elements})
 	case StringObj:
 		elements := make([]Object, len(v.Value))
 		for i, char := range v.Value {
 			elements[i] = StringObj{Value: string(char)}
 		}
-		return &ArrayObj{Elements: elements}, nil
+		return ReturnValue(&ArrayObj{Elements: elements})
 	case *MapObj:
 		elements := make([]Object, 0, len(v.Pairs))
 		for _, bucket := range v.Pairs {
@@ -111,15 +111,15 @@ func nativeArray(obj Object) (*ArrayObj, error) {
 				elements = append(elements, pair.Value)
 			}
 		}
-		return &ArrayObj{Elements: elements}, nil
+		return ReturnValue(&ArrayObj{Elements: elements})
 	case *RangeObj:
 		elements := []Object{}
 		for i := v.Start; (v.Step > 0 && i < v.End) || (v.Step < 0 && i > v.End); i += v.Step {
 			elements = append(elements, NumberObj{Value: float64(i), IsInt: true})
 		}
-		return &ArrayObj{Elements: elements}, nil
+		return ReturnValue(&ArrayObj{Elements: elements})
 	default:
-		return nil, fmt.Errorf("cannot convert type '%s' to array", obj.Type())
+		return ReturnErrorf("cannot convert type '%s' to array", obj.Type())
 	}
 }
 
@@ -135,30 +135,45 @@ func nativeExpect(condition Object, message Object) (Object, error) {
 	return NullObj{}, nil
 }
 
-func nativeHash(obj Object) (uint32, error) {
+func nativeHash(obj Object) Object {
 	if hashable, ok := obj.(Hashable); ok {
-		return hashable.Hash(), nil
+		return ReturnValue(NumberObj{Value: float64(hashable.Hash()), IsInt: true})
 	}
-	return 0, fmt.Errorf("object of type '%s' is not hashable", obj.Type())
+	return ReturnErrorf("object of type '%s' is not hashable", obj.Type())
 }
 
-func nativeExit() (Object, error) {
+func nativeExit() Object{
 	os.Exit(0)
-	return CreateNull(), nil
+	return CreateNull()
 }
 
-func nativeAsciiCode(obj Object) (int, error) {
+func nativeAsciiCode(obj Object) Object {
 	switch v := obj.(type) {
 	case StringObj:
 		if len(v.Value) == 0 {
-			return 0, fmt.Errorf("string is empty")
+			return ReturnError("string is empty")
 		}
 		if len(v.Value) > 1 {
-			return 0, fmt.Errorf("string must be exactly one character")
+			return ReturnError("string must be exactly one character")
 		}
-		return int(v.Value[0]), nil
+		return ReturnValue(NumberObj{Value: float64(v.Value[0]), IsInt: true})
 	default:
-		return 0, fmt.Errorf("cannot convert type '%s' to ascii code", obj.Type())
+		return ReturnErrorf("cannot convert type '%s' to ascii code", obj.Type())
+	}
+}
+
+func nativeError(message Object) Object {
+	return CreateError(message.String())
+}
+
+func nativePanic(message Object) (Object, error) {
+	switch v := message.(type) {
+	case StringObj:
+		return nil, NewRuntimeError(v.Value, Loc{})
+	case ErrorObj:
+		return nil, NewRuntimeError(v.Message, Loc{})
+	default:
+		return nil, NewRuntimeError(message.String(), Loc{})
 	}
 }
 
@@ -176,6 +191,8 @@ var Builtins = map[string]any{
 	"hash":      nativeHash,
 	"exit":      nativeExit,
 	"asciiCode": nativeAsciiCode,
+	"error":     nativeError,
+	"panic":     nativePanic,
 }
 
 var BuiltinDocs = map[string]*DocstringObj{
@@ -194,24 +211,44 @@ var BuiltinDocs = map[string]*DocstringObj{
 		Params:      []ParamDoc{{"object", "The object to inspect."}},
 		Returns:     "The type name as a string.",
 	},
+	"int": {
+		Description: "int(object) -> (int, null)|(null, error)\n\nConverts an object to an integer. Returns (value, null) on success or (null, error) on failure.",
+		Params:      []ParamDoc{{"object", "The object to convert."}},
+		Returns:     "A tuple: (value, null) on success or (null, error) on failure.",
+	},
+	"float": {
+		Description: "float(object) -> (float, null)|(null, error)\n\nConverts an object to a float. Returns (value, null) on success or (null, error) on failure.",
+		Params:      []ParamDoc{{"object", "The object to convert."}},
+		Returns:     "A tuple: (value, null) on success or (null, error) on failure.",
+	},
 	"tuple": {
 		Description: "tuple(...elements) -> tuple\n\nCreates a new tuple containing the given elements.",
 		Params:      []ParamDoc{{"elements", "A variable number of objects to include in the tuple."}},
 		Returns:     "A new tuple object.",
 	},
 	"hash": {
-		Description: "hash(object) -> int\n\nReturns the hash value of a hashable object.",
+		Description: "hash(object) -> (int, null)|(null, error)\n\nReturns the hash value of a hashable object. Returns (value, null) on success or (null, error) on failure.",
 		Params:      []ParamDoc{{"object", "The object to hash."}},
-		Returns:     "An integer representing the hash value.",
+		Returns:     "A tuple: (value, null) on success or (null, error) on failure.",
 	},
 	"asciiCode": {
-		Description: "asciiCode(char_string) -> int\n\nReturns the ASCII code of a single-character string.",
+		Description: "asciiCode(char_string) -> (int, null)|(null, error)\n\nReturns the ASCII code of a single-character string. Returns (value, null) on success or (null, error) on failure.",
 		Params:      []ParamDoc{{"string", "A string containing exactly one character."}},
-		Returns:     "The ASCII integer value of the character.",
+		Returns:     "A tuple: (value, null) on success or (null, error) on failure.",
 	},
 	"array": {
-		Description: "array(object) -> array\n\nConverts an object to an array.",
+		Description: "array(object) -> (array, null)|(null, error)\n\nConverts an object to an array. Returns (value, null) on success or (null, error) on failure.",
 		Params:      []ParamDoc{{"object", "The object to convert."}},
-		Returns:     "An array object.",
+		Returns:     "A tuple: (value, null) on success or (null, error) on failure.",
+	},
+	"error": {
+		Description: "error(message) -> error\n\nCreates a new error object with the given message.",
+		Params:      []ParamDoc{{"message", "The error message string."}},
+		Returns:     "A new error object.",
+	},
+	"panic": {
+		Description: "panic(message) -> never returns\n\nStops execution and reports an error with the given message.",
+		Params:      []ParamDoc{{"message", "The error message string."}},
+		Returns:     "Never returns - execution stops.",
 	},
 }

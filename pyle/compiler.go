@@ -456,6 +456,8 @@ func (c *Compiler) visitUnaryOp(node *UnaryOp) error {
 	switch node.Op.Kind {
 	case TokenMinus:
 		c.emitInstruct(OpNegate, nil, node.GetToken())
+	case TokenBang:
+		c.emitInstruct(OpNot, nil, node.GetToken())
 	case TokenKeyword:
 		if opValue == "not" {
 			c.emitInstruct(OpNot, nil, node.GetToken())

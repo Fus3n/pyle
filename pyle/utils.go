@@ -123,3 +123,30 @@ func DisassembleBytecode(chunk *BytecodeChunk) string {
 
 	return strings.Join(parts, "")
 }
+
+// Helper functions for Go-style error handling
+
+// ReturnValue creates a tuple with (value, null) for successful operations
+func ReturnValue(value Object) *TupleObj {
+	return &TupleObj{Elements: []Object{value, NullObj{}}}
+}
+
+// ReturnError creates a tuple with (null, error) for failed operations
+func ReturnError(message string) *TupleObj {
+	return &TupleObj{Elements: []Object{NullObj{}, ErrorObj{Message: message}}}
+}
+
+// ReturnErrorf creates a tuple with (null, error) using formatted message
+func ReturnErrorf(format string, args ...interface{}) *TupleObj {
+	return &TupleObj{Elements: []Object{NullObj{}, ErrorObj{Message: fmt.Sprintf(format, args...)}}}
+}
+
+// CreateError creates just an error object (useful for panic or when you need just the error)
+func CreateError(message string) ErrorObj {
+	return ErrorObj{Message: message}
+}
+
+// CreateErrorf creates an error object with formatted message
+func CreateErrorf(format string, args ...interface{}) ErrorObj {
+	return ErrorObj{Message: fmt.Sprintf(format, args...)}
+}

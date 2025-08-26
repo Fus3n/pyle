@@ -553,7 +553,7 @@ func (p *Parser) factor() Result[Expr] {
 }
 
 func (p *Parser) unary() Result[Expr] {
-	if p.match(TokenMinus) || p.matchKeyword("not") {
+	if p.match(TokenMinus) || p.matchKeyword("not") || p.match(TokenBang) {
 		op := p.previous()
 		valueRes := p.unary()
 		if valueRes.IsErr() {
