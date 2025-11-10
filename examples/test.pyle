@@ -1,6 +1,10 @@
 fn getAsciiCodes(str: string) {
     return str.split(" ").map(fn(x) {
-        const wordCodes = array(x).map(fn (y) {
+        const arr, err = array(x)
+        if (err) {
+            return err
+        }
+        const wordCodes = arr.map(fn (y) {
             return asciiCode(y)
         })
         return wordCodes
