@@ -656,6 +656,70 @@ func (t *TupleObj) Hash() uint32 {
 	return h
 }
 
+
+type ResultObject struct {
+	DebugInfo
+	Value Object
+	Error Object
+}
+
+func (r *ResultObject) String() string {
+	if r.Error.Type() != "null" {
+		return fmt.Sprintf("Result(%s, %s)", r.Value.String(), r.Error.String())
+	}
+	return fmt.Sprintf("Result(%s)", r.Value.String())
+}
+
+func (r *ResultObject) Type() string   { return "result" }
+func (r *ResultObject) IsTruthy() bool { return r.Error.Type() != "null" }
+func (r *ResultObject) Iter() (Iterator, Error) {
+	return &ResultIteratorObj{Result: r, index: 0}, nil
+}
+
+
+func (r *ResultObject) GetAttribute(name string) (Object, bool, Error) {
+	// First, check for built-in map methods
+	if methods, ok := BuiltinMethods[r.Type()]; ok {
+		if method, exists := methods[name]; exists {
+			boundMethod := &BoundMethodObj{Receiver: r, Method: method}
+			return boundMethod, true, nil
+		}
+	}
+
+	// TODO: add these to docs or have a better way to add attribute values and their docs.
+	switch name {
+	case "val":
+		return r.Value, true, nil
+	case "err":
+		return r.Error, true, nil
+	case "ok":
+		return BooleanObj{Value: r.Error.Type() == "null"}, true, nil
+	case "isErr":
+		return BooleanObj{Value: r.Error.Type() != "null"}, true, nil
+	}
+
+	return NullObj{}, true, nil // Return null if key not found
+}
+
+
+// Weird quirk of result object
+type ResultIteratorObj struct {
+	DebugInfo
+	Result *ResultObject
+	index  int
+}
+
+func (t *ResultIteratorObj) String() string { return "<result_iterator>" }
+func (t *ResultIteratorObj) Type() string   { return "result_iterator" }
+func (t *ResultIteratorObj) IsTruthy() bool { return true }
+func (t *ResultIteratorObj) Next() (Object, bool) {
+	return NullObj{}, false
+}
+func (o *ResultIteratorObj) Iter() (Iterator, Error) {
+	return o, nil
+}
+
+
 type TupleIteratorObj struct {
 	DebugInfo
 	Tuple *TupleObj

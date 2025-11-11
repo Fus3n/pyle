@@ -2,10 +2,17 @@ package main
 
 import (
 	"fmt"
-	"io/ioutil"
 	"os"
 	"pylevm/pyle"
+
+	"github.com/alexflint/go-arg"
 )
+
+var args struct {
+	Input   string   `arg:"positional"`
+	Diss  bool     `arg:"-d,--disassemble"`
+}
+
 
 func main() {
 	vm := pyle.NewVM()
@@ -13,14 +20,22 @@ func main() {
 	if e != nil {
 		panic(e)
 	}
-	srcName := "examples/basic.pyle"
-	if len(os.Args) > 1 {
-		srcName = os.Args[1]
-	}
-	source, err := ioutil.ReadFile(srcName)
+	
+	arg.MustParse(&args)
+
+	srcName := args.Input
+	source, err := os.ReadFile(srcName)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error reading file: %s\n", err)
 		os.Exit(1)
+	}
+
+	if args.Diss {
+		err :=  pyle.DissassembleAndShow(vm, srcName, string(source))
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "error dissassembling: %s\n", err)
+			os.Exit(1)
+		}
 	}
 
 	vmerr := pyle.RunScript(vm, srcName, string(source))

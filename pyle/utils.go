@@ -39,6 +39,29 @@ func RunScript(vm *VM, fileName string, code string) error {
 	return nil
 }
 
+func DissassembleAndShow(vm *VM, fileName string, code string) error {
+	lexer := NewLexer(fileName, code)
+	tokens, tokErr := lexer.Tokenize()
+	if tokErr.IsErr() {
+		return tokErr.Err
+	}
+
+	parser := NewParser(tokens)
+	ast_block := parser.Parse()
+	if ast_block.IsErr() {
+		return ast_block.Err
+	}
+
+	compiler := NewCompiler()
+	bytecodeChunk, err := compiler.Compile(ast_block.Value)
+	if err != nil {
+		return err
+	}
+	
+	fmt.Println(DisassembleBytecode(bytecodeChunk))
+	return nil
+}
+ 
 func CreateInt(val int64) NumberObj {
 	return NumberObj{Value: float64(val), IsInt: true}
 }
@@ -124,29 +147,23 @@ func DisassembleBytecode(chunk *BytecodeChunk) string {
 	return strings.Join(parts, "")
 }
 
-// Helper functions for Go-style error handling
 
-// ReturnValue creates a tuple with (value, null) for successful operations
-func ReturnValue(value Object) *TupleObj {
-	return &TupleObj{Elements: []Object{value, NullObj{}}}
+func ReturnValue(value Object) *ResultObject {
+	return &ResultObject{Value: value, Error: NullObj{}}
 }
 
-// ReturnError creates a tuple with (null, error) for failed operations
-func ReturnError(message string) *TupleObj {
-	return &TupleObj{Elements: []Object{NullObj{}, ErrorObj{Message: message}}}
+func ReturnError(message string) *ResultObject {
+	return &ResultObject{Value: NullObj{}, Error: ErrorObj{Message: message}}
 }
 
-// ReturnErrorf creates a tuple with (null, error) using formatted message
-func ReturnErrorf(format string, args ...interface{}) *TupleObj {
-	return &TupleObj{Elements: []Object{NullObj{}, ErrorObj{Message: fmt.Sprintf(format, args...)}}}
+func ReturnErrorf(format string, args ...interface{}) *ResultObject {
+	return &ResultObject{Value: NullObj{}, Error: ErrorObj{Message: fmt.Sprintf(format, args...)}}
 }
 
-// CreateError creates just an error object (useful for panic or when you need just the error)
 func CreateError(message string) ErrorObj {
 	return ErrorObj{Message: message}
 }
 
-// CreateErrorf creates an error object with formatted message
 func CreateErrorf(format string, args ...interface{}) ErrorObj {
 	return ErrorObj{Message: fmt.Sprintf(format, args...)}
 }

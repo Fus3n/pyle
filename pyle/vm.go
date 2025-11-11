@@ -844,6 +844,12 @@ func (vm *VM) run(targetFrameDepth int) Result[Object] {
 				for i := len(v.Elements) - 1; i >= 0; i-- {
 					vm.push(v.Elements[i])
 				}
+			case *ResultObject:
+				if expected != 2 {
+					return vm.runtimeErrorRes(currentTok.Loc, "unpack mismatch: expected %d values, got %d", expected, 2)
+				}
+				vm.push(v.Error)
+				vm.push(v.Value)
 			default:
 				return vm.runtimeErrorRes(currentTok.Loc, "object of type '%s' is not unpackable", value.Type())
 			}
