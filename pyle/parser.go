@@ -633,6 +633,13 @@ func (p *Parser) call() Result[Expr] {
 				Obj:   currentExpr,
 				Attr:  *attrTok,
 			}
+		} else if p.match(TokenBang) {
+			op := p.previous()
+			currentExpr = &PostfixExpr{
+				Token:   op,
+				Op:      op,
+				Operand: currentExpr,
+			}
 		} else {
 			break
 		}

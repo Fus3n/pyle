@@ -172,6 +172,8 @@ func (c *Compiler) compileNode(node ASTNode) error {
 		return c.visitComparisonOp(n)
 	case *UnaryOp:
 		return c.visitUnaryOp(n)
+	case *PostfixExpr:
+		return c.visitPostfixExpr(n)
 	case *RangeSpecifier:
 		return c.visitRangeSpecifier(n)
 	case *ForInStmt:
@@ -466,6 +468,21 @@ func (c *Compiler) visitUnaryOp(node *UnaryOp) error {
 		}
 	default:
 		return fmt.Errorf("compiler error: Unsupported unary operator '%s' at %s", opValue, node.GetToken().GetFileLoc())
+	}
+
+	return nil
+}
+
+func (c *Compiler) visitPostfixExpr(node *PostfixExpr) error {
+	if err := c.compileNode(node.Operand); err != nil {
+		return err
+	}
+
+	switch node.Op.Kind {
+	case TokenBang:
+		c.emitInstruct(OpUnwrap, nil, node.GetToken())
+	default:
+		return fmt.Errorf("compiler error: unsupported postfix operator '%s'", node.Op.Value)
 	}
 
 	return nil

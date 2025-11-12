@@ -853,6 +853,25 @@ func (vm *VM) run(targetFrameDepth int) Result[Object] {
 			default:
 				return vm.runtimeErrorRes(currentTok.Loc, "object of type '%s' is not unpackable", value.Type())
 			}
+		case OpUnwrap:
+			if vm.sp == 0 {
+				return vm.runtimeErrorRes(currentTok.Loc, "Stack underflow for OP_UNWRAP")
+			}
+			obj, err := vm.pop()
+			if err != nil {
+				return ResErr[Object](err)
+			}
+
+			resultObj, ok := obj.(*ResultObject)
+			if !ok {
+				return vm.runtimeErrorRes(currentTok.Loc, "Cannot unwrap non-Result type '%s'", obj.Type())
+			}
+
+			if resultObj.Error.Type() != "null" {
+				// If there's an error, panic
+				return vm.runtimeErrorRes(currentTok.Loc, "Unwrap failed: %s", resultObj.Error.String())
+			}
+			vm.push(resultObj.Value)
 		case OpIndexGet:
 			if vm.sp < 2 {
 				return vm.runtimeErrorRes(currentTok.Loc, "Stack underflow for OP_INDEX_GET")

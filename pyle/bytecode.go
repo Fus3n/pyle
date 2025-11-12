@@ -58,6 +58,7 @@ const (
 	OpInplaceModulo
 	OpExit
 	OpUnpack
+	OpUnwrap
 )
 
 func (o OpCode) String() string {
@@ -114,6 +115,7 @@ func (o OpCode) String() string {
 		OpInplaceModulo:   "OP_INPLACE_MODULO",
 		OpExit:            "OP_EXIT",
 		OpUnpack:          "OP_UNPACK",
+		OpUnwrap:          "OP_UNWRAP",
 	}
 	if name, ok := names[o]; ok {
 		return name

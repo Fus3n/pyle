@@ -1,16 +1,14 @@
-fn getAsciiCodes(str: string) {
+fn getAsciiCodes(str: string)  {
     return str.split(" ").map(fn(x) {
-        const arr, err = array(x)
-        if (err) {
-            return err
-        }
-        const wordCodes = arr.map(fn (y) {
-            return asciiCode(y)
-        })
+        const wordCodes = array(x)!.map(fn (y) {
+            return asciiCode(y)!
+        })!
         return wordCodes
-    })
+    })!
 }
 
+
+// ignore this, this is old code that hasnt been updaed to the new error sytem
 fn testOs() {
     const testFile = "testfile.txt"
     const testDir = "testdir"
@@ -43,4 +41,10 @@ fn testOs() {
     os.remove(testDir)
 }
 
+const r = getAsciiCodes("hello world")
+echo(r)
+
+
 // testOs()
+
+

@@ -75,6 +75,8 @@ func Walk(node ASTNode, visitor Visitor) {
 		Walk(n.Right, visitor)
 	case *UnaryOp:
 		Walk(n.Operand, visitor)
+	case *PostfixExpr:
+		Walk(n.Operand, visitor)
 	case *CallExpr:
 		Walk(n.Callee, visitor)
 		for _, arg := range n.Arguments {
@@ -522,6 +524,30 @@ func (e *UnaryOp) MarshalJSON() ([]byte, error) {
 		*Alias
 	}{
 		Type:  "UnaryOp",
+		Alias: (*Alias)(e),
+	})
+}
+
+type PostfixExpr struct {
+	Token   *Token
+	Op      *Token
+	Operand Expr
+}
+
+func (a *PostfixExpr) TypeString() string { return "" }
+func (e *PostfixExpr) GetToken() *Token   { return e.Token }
+func (e *PostfixExpr) String() string {
+	return fmt.Sprintf("PostfixExpr (\n  Op: %s\n  Operand: %v\n)",
+		e.Op.Value, e.Operand)
+}
+func (e *PostfixExpr) exprNode() {}
+func (e *PostfixExpr) MarshalJSON() ([]byte, error) {
+	type Alias PostfixExpr
+	return json.Marshal(&struct {
+		Type string `json:"type"`
+		*Alias
+	}{
+		Type:  "PostfixExpr",
 		Alias: (*Alias)(e),
 	})
 }
