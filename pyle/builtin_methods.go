@@ -336,9 +336,67 @@ func methodErrorToString(receiver ErrorObj) (string, error) {
 	return receiver.String(), nil
 }
 
+// --- Result Methods ---
+func methodResultUnwrap(receiver *ResultObject) (Object, error) {
+	if receiver.Error.Type() != "null" {
+		return nil, fmt.Errorf("%s", receiver.Error.String())
+	}
+	return receiver.Value, nil
+}
+func methodResultUnwrapOr(receiver *ResultObject, defaultValue Object) (Object, error) {
+	if receiver.Error.Type() != "null" {
+		return defaultValue, nil
+	}
+	return receiver.Value, nil
+}
+
+func methodResultCatch(vm *VM, receiver *ResultObject, fn Object) (Object, error) {
+	if receiver.Error.Type() == "null" {
+		return receiver, nil
+	}
+	if _, ok := fn.(NullObj); ok {
+		return receiver, nil
+	}
+	if !isFunc(fn) {
+		return ReturnErrorf("expected a function for catch, got %s", fn.Type()), nil
+	}
+
+	nativeFunc, isNative := fn.(*NativeFuncObj)
+	errObj := receiver.Error
+
+	var (
+		result  Object
+		callErr Error
+	)
+
+	switch {
+	case isNative && nativeFunc.DirectCall != nil:
+		if nativeFunc.Arity != 1 {
+			return nil, fmt.Errorf("catch handler must have arity of 1")
+		}
+		if directFn, ok := nativeFunc.DirectCall.(NativeFunc1); ok {
+			result, callErr = directFn(vm, errObj)
+		} else {
+			result, callErr = vm.callPyleFuncFromNative(fn, []Object{errObj})
+		}
+	case isNative && nativeFunc.ReflectCall != nil:
+		result, callErr = nativeFunc.ReflectCall(vm, []Object{errObj})
+	default:
+		result, callErr = vm.callPyleFuncFromNative(fn, []Object{errObj})
+	}
+
+	if callErr != nil {
+		return nil, callErr
+	}
+	if result == nil {
+		return NullObj{}, nil
+	}
+	return result, nil
+}
+
 func init() {
 	BuiltinMethods = make(map[string]map[string]*NativeFuncObj)
-	BuiltinMethodDocs = make(map[string]map[string]*DocstringObj)
+	BuiltinMethodDocs = init_docs()
 
 	// Helper to create native functions and panic on error
 	mustCreate := func(name string, fn any, doc *DocstringObj) *NativeFuncObj {
@@ -349,19 +407,8 @@ func init() {
 		return nativeFn
 	}
 
-	// --- String Docs & Methods ---
-	BuiltinMethodDocs["string"] = map[string]*DocstringObj{
-		"len": {Description: "len() -> int\n\nReturns the number of characters in the string."},
-		"replace": {
-			Description: "replace(old, new) -> string\n\nReturns a new string with all occurrences of 'old' replaced by 'new'.",
-			Params: []ParamDoc{
-				{"old", "The substring to be replaced."},
-				{"new", "The substring to replace with."},
-			},
-			Returns: "A new string with replacements made.",
-		},
-		// .. more needed
-	}
+
+	// String
 	BuiltinMethods["string"] = map[string]*NativeFuncObj{
 		"len":        mustCreate("len", methodStringLen, BuiltinMethodDocs["string"]["len"]),
 		"trimSpace":  mustCreate("trimSpace", methodStringTrimSpace, nil),
@@ -376,22 +423,9 @@ func init() {
 		"indexOf":    mustCreate("indexOf", methodStringIndexOf, nil),
 		"repeat":     mustCreate("repeat", methodStringRepeat, nil),
 		"asciiAt":    mustCreate("asciiAt", methodStringAsciiAt, nil),
-		// suggest some more functions
-
 	}
 
-	// --- Array Docs & Methods ---
-	BuiltinMethodDocs["array"] = map[string]*DocstringObj{
-		"len":    {Description: "len() -> int\n\nReturns the number of elements in the array."},
-		"append": {Description: "append(value)\n\nAppends a value to the end of the array in-place."},
-		"join": {
-			Description: "join(separator) -> string\n\nJoins the elements of the array into a string using the specified separator.",
-			Params: []ParamDoc{
-				{"separator", "The string to use as a separator between elements."},
-			},
-			Returns: "A new string with the joined elements.",
-		},
-	}
+	// Array
 	BuiltinMethods["array"] = map[string]*NativeFuncObj{
 		"len":     mustCreate("len", methodArrayLen, BuiltinMethodDocs["array"]["len"]),
 		"append":  mustCreate("append", methodArrayAppend, BuiltinMethodDocs["array"]["append"]),
@@ -403,11 +437,7 @@ func init() {
 		"join":    mustCreate("join", methodArrayJoin, BuiltinMethodDocs["array"]["join"]),
 	}
 
-	// --- Map Docs & Methods ---
-	BuiltinMethodDocs["map"] = map[string]*DocstringObj{
-		"len":  {Description: "len() -> int\n\nReturns the number of key-value pairs in the map."},
-		"keys": {Description: "keys() -> iterator\n\nReturns an iterator over the map's keys."},
-	}
+	// Map 
 	BuiltinMethods["map"] = map[string]*NativeFuncObj{
 		"len":    mustCreate("len", methodMapLen, BuiltinMethodDocs["map"]["len"]),
 		"keys":   mustCreate("keys", methodMapKeys, BuiltinMethodDocs["map"]["keys"]),
@@ -416,13 +446,16 @@ func init() {
 		"has":    mustCreate("has", methodMapHas, nil),
 	}
 
-	// --- Error Docs & Methods ---
-	BuiltinMethodDocs["error"] = map[string]*DocstringObj{
-		"message": {Description: "message() -> string\n\nReturns the error message."},
-		"toString": {Description: "toString() -> string\n\nReturns the string representation of the error."},
-	}
+	// Error
 	BuiltinMethods["error"] = map[string]*NativeFuncObj{
 		"message":  mustCreate("message", methodErrorMessage, BuiltinMethodDocs["error"]["message"]),
 		"toString": mustCreate("toString", methodErrorToString, BuiltinMethodDocs["error"]["toString"]),
+	}
+
+	// Result 
+	BuiltinMethods["result"] = map[string]*NativeFuncObj{
+		"unwrap": mustCreate("unwrap", methodResultUnwrap, BuiltinMethodDocs["result"]["unwrap"]),
+		"unwrapOr": mustCreate("unwrapOr", methodResultUnwrapOr, BuiltinMethodDocs["result"]["unwrapOr"]),
+		"catch":  mustCreate("catch", methodResultCatch, BuiltinMethodDocs["result"]["catch"]),
 	}
 }

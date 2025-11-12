@@ -640,6 +640,13 @@ func (p *Parser) call() Result[Expr] {
 				Op:      op,
 				Operand: currentExpr,
 			}
+		} else if p.match(TokenQuestion) {
+			op := p.previous()
+			currentExpr = &PostfixExpr{
+				Token:   op,
+				Op:      op,
+				Operand: currentExpr,
+			}
 		} else {
 			break
 		}

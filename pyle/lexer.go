@@ -143,6 +143,7 @@ var singleSymbols = map[rune]TokenType{
 	'.': TokenDot,
 	',': TokenComma,
 	':': TokenColon,
+	'?': TokenQuestion,
 }
 
 func (l *Lexer) Tokenize() ([]Token, Result[Token]) {

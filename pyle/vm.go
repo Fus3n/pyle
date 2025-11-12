@@ -869,7 +869,40 @@ func (vm *VM) run(targetFrameDepth int) Result[Object] {
 
 			if resultObj.Error.Type() != "null" {
 				// If there's an error, panic
-				return vm.runtimeErrorRes(currentTok.Loc, "Unwrap failed: %s", resultObj.Error.String())
+				return vm.runtimeErrorRes(currentTok.Loc, "%s", resultObj.Error.String())
+			}
+			vm.push(resultObj.Value)
+		case OpUnwrapOrReturn:
+			if vm.sp == 0 {
+				return vm.runtimeErrorRes(currentTok.Loc, "Stack underflow for OP_UNWRAP_OR_RETURN")
+			}
+			obj, err := vm.pop()
+			if err != nil {
+				return ResErr[Object](err)
+			}
+			resultObj, ok := obj.(*ResultObject)
+			if !ok {
+				return vm.runtimeErrorRes(currentTok.Loc, "Cannot use '?' on non-Result type '%s'", obj.Type())
+			}
+			if resultObj.Error.Type() != "null" {
+				// Early return the ResultObject itself 
+				if len(vm.frames) == 0 {
+					// Top level - behave like unwrap panic for now
+					return vm.runtimeErrorRes(currentTok.Loc, "%s", resultObj.Error.String())
+				}
+				frame, perr := vm.popCallFrame()
+				if perr != nil {
+					return ResErr[Object](perr)
+				}
+				vm.ip = frame.ReturnIP
+				for len(vm.environments) > frame.EnvDepth {
+					if err := vm.popEnv(); err != nil {
+						return ResErr[Object](err)
+					}
+				}
+				vm.sp = frame.StackSlot
+				vm.push(resultObj)
+				continue
 			}
 			vm.push(resultObj.Value)
 		case OpIndexGet:

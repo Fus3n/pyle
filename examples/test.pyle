@@ -1,12 +1,3 @@
-fn getAsciiCodes(str: string)  {
-    return str.split(" ").map(fn(x) {
-        const wordCodes = array(x)!.map(fn (y) {
-            return asciiCode(y)!
-        })!
-        return wordCodes
-    })!
-}
-
 
 // ignore this, this is old code that hasnt been updaed to the new error sytem
 fn testOs() {
@@ -41,10 +32,19 @@ fn testOs() {
     os.remove(testDir)
 }
 
-const r = getAsciiCodes("hello world")
+fn getAsciiCodes(str: string)  {
+    // return ok(str.split(" ").map(fn(x) {
+    //     const wordCodes = array(x)!.map(fn (y) {
+    //         return asciiCode(y)!
+    //     })!
+    //     return wordCodes
+    // })?)
+    return err("wow")
+}
+
+const r = getAsciiCodes("hello world")?
 echo(r)
-
-
+// echo(r)
 // testOs()
 
 

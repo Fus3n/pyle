@@ -481,6 +481,8 @@ func (c *Compiler) visitPostfixExpr(node *PostfixExpr) error {
 	switch node.Op.Kind {
 	case TokenBang:
 		c.emitInstruct(OpUnwrap, nil, node.GetToken())
+	case TokenQuestion:
+		c.emitInstruct(OpUnwrapOrReturn, nil, node.GetToken())
 	default:
 		return fmt.Errorf("compiler error: unsupported postfix operator '%s'", node.Op.Value)
 	}

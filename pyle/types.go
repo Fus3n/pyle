@@ -59,6 +59,7 @@ const (
 	TokenDivEquals
 	TokenModEquals
 	TokenArrow
+	TokenQuestion
 )
 
 func (t TokenType) String() string {
@@ -101,6 +102,7 @@ func (t TokenType) String() string {
 		"TokenDivEquals",
 		"TokenModEquals",
 		"TokenArrow",
+		"TokenQuestion",
 	}[t]
 }
 

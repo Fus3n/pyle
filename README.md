@@ -58,3 +58,17 @@ To execute a Pyle script, you can run the command-line tool from the root of the
 ```sh
 go run ./cmd/pyle/ examples/basic.pyle
 ```
+
+
+## Deep Dive
+
+### Syntax
+
+### Type hinting
+
+### Built-in Methods
+
+### IO
+
+### Error Handling
+

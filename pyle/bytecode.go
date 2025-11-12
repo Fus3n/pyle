@@ -59,6 +59,7 @@ const (
 	OpExit
 	OpUnpack
 	OpUnwrap
+	OpUnwrapOrReturn
 )
 
 func (o OpCode) String() string {
@@ -116,6 +117,7 @@ func (o OpCode) String() string {
 		OpExit:            "OP_EXIT",
 		OpUnpack:          "OP_UNPACK",
 		OpUnwrap:          "OP_UNWRAP",
+		OpUnwrapOrReturn:  "OP_UNWRAP_OR_RETURN",
 	}
 	if name, ok := names[o]; ok {
 		return name

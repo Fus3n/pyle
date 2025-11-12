@@ -177,6 +177,21 @@ func nativePanic(message Object) (Object, error) {
 	}
 }
 
+func nativeOk(value Object) Object {
+	return ReturnValue(value)
+}
+
+func nativeErr(message Object) Object {
+	switch v := message.(type) {
+	case StringObj:
+		return ReturnError(v.Value)
+	case ErrorObj:
+		return ReturnError(v.Message)
+	default:
+		return ReturnError(message.String())
+	}
+}
+
 var Builtins = map[string]any{
 	"echo":      builtinEcho,
 	"scan":      nativeScan,
@@ -193,6 +208,8 @@ var Builtins = map[string]any{
 	"asciiCode": nativeAsciiCode,
 	"error":     nativeError,
 	"panic":     nativePanic,
+	"ok":        nativeOk,
+	"err":       nativeErr,
 }
 
 var BuiltinDocs = map[string]*DocstringObj{
@@ -250,5 +267,15 @@ var BuiltinDocs = map[string]*DocstringObj{
 		Description: "panic(message) -> never returns\n\nStops execution and reports an error with the given message.",
 		Params:      []ParamDoc{{"message", "The error message string."}},
 		Returns:     "Never returns - execution stops.",
+	},
+	"ok": {
+		Description: "ok(value) -> result\n\nWraps a value in a result object with no error.",
+		Params:      []ParamDoc{{"value", "The value to wrap."}},
+		Returns:     "A result object with the value set and no error.",
+	},
+	"err": {
+		Description: "err(message|error) -> result\n\nCreates a result object representing an error.",
+		Params:      []ParamDoc{{"message|error", "A string message or error object."}},
+		Returns:     "A result object with null value and the error set.",
 	},
 }
