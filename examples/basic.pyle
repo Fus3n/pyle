@@ -62,7 +62,7 @@ echo(m[5] * m[5.5])
 echo("Builtin function examples:")
 
 // scan() example
-let name = scan("Enter your name: ")
+let name = scan("Enter your name: ")!
 echo("Hello {}".format(name))
 
 // type() examples
@@ -82,4 +82,12 @@ expect(true, "This should pass")
 
 // hash() example
 echo("Hash of 'hello':", hash("hello"))
+
+// Explicit error handling (one of the methods)
+let age, err = int(scan("Enter your age: ")!)
+if err != null {
+    echo("Age must be a number")
+    exit()
+}
+echo("Age:", age)
 

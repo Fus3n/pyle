@@ -867,7 +867,7 @@ func (vm *VM) run(targetFrameDepth int) Result[Object] {
 				return vm.runtimeErrorRes(currentTok.Loc, "Cannot unwrap non-Result type '%s'", obj.Type())
 			}
 
-			if resultObj.Error.Type() != "null" {
+			if resultObj.Error != nil {
 				// If there's an error, panic
 				return vm.runtimeErrorRes(currentTok.Loc, "%s", resultObj.Error.String())
 			}
@@ -884,7 +884,7 @@ func (vm *VM) run(targetFrameDepth int) Result[Object] {
 			if !ok {
 				return vm.runtimeErrorRes(currentTok.Loc, "Cannot use '?' on non-Result type '%s'", obj.Type())
 			}
-			if resultObj.Error.Type() != "null" {
+			if resultObj.Error != nil{
 				// Early return the ResultObject itself 
 				if len(vm.frames) == 0 {
 					// Top level - behave like unwrap panic for now

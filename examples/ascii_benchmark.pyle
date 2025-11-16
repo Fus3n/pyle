@@ -1,7 +1,7 @@
 fn getAsciiCodes(str: string) {
     return str.split(" ").map(fn(x) {
-        const wordCodes = array(x).map(fn (y) {
-            return asciiCode(y)
+        const wordCodes = array(x)?.map(fn (y) {
+            return asciiCode(y)?
         })
         return wordCodes
     })
@@ -13,7 +13,7 @@ fn getAsciiCodesRaw(str: string) {
     for word in words {
         const wordCodes = []
         for char in array(word) {
-            wordCodes.append(asciiCode(char))
+            wordCodes.append(asciiCode(char)?)
         }
         result.append(wordCodes)
     }
@@ -42,9 +42,9 @@ fn benchmark() {
     const diff_s = time1 - time2
     const perc_diff = (time1 / time2 - 1) * 100
 
-    echo("Functional version time: {:.3f}s".format(time1))
-    echo("Imperative version time: {:.3f}s".format(time2))
-    echo("Difference: {:.3f}s ({:.2f}%)".format(diff_s, perc_diff))
+    echo("Functional version time: {:.3f}s".format(time1)?)
+    echo("Imperative version time: {:.3f}s".format(time2)?)
+    echo("Difference: {:.3f}s ({:.2f}%)".format(diff_s, perc_diff)?)
 }
 
 benchmark()

@@ -148,16 +148,36 @@ func DisassembleBytecode(chunk *BytecodeChunk) string {
 }
 
 
-func ReturnValue(value Object) *ResultObject {
-	return &ResultObject{Value: value, Error: NullObj{}}
+func ReturnOk(value Object) *ResultObject {
+	return &ResultObject{Value: value, Error: nil}
+}
+
+func ReturnOkString(value string) *ResultObject {
+	return &ResultObject{Value: StringObj{Value: value}, Error: nil}
+}
+
+func ReturnOkInt(value float64) *ResultObject {
+	return &ResultObject{Value: NumberObj{Value: float64(value), IsInt: true}}
+}
+
+func ReturnOkFloat(value float64) *ResultObject {
+	return &ResultObject{Value: NumberObj{Value: value, IsInt: false}}
+}
+
+func ReturnOkBool(value bool) *ResultObject {
+	return &ResultObject{Value: BooleanObj{Value: value}, Error: nil}
+}
+
+func ReturnOkNull() *ResultObject {
+	return &ResultObject{Value: NullObj{}, Error: nil}
 }
 
 func ReturnError(message string) *ResultObject {
-	return &ResultObject{Value: NullObj{}, Error: ErrorObj{Message: message}}
+	return &ResultObject{Value: NullObj{}, Error: &ErrorObj{Message: message}}
 }
 
 func ReturnErrorf(format string, args ...interface{}) *ResultObject {
-	return &ResultObject{Value: NullObj{}, Error: ErrorObj{Message: fmt.Sprintf(format, args...)}}
+	return &ResultObject{Value: NullObj{}, Error: &ErrorObj{Message: fmt.Sprintf(format, args...)}}
 }
 
 func CreateError(message string) ErrorObj {

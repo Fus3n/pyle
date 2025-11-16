@@ -660,18 +660,18 @@ func (t *TupleObj) Hash() uint32 {
 type ResultObject struct {
 	DebugInfo
 	Value Object
-	Error Object
+	Error *ErrorObj
 }
 
 func (r *ResultObject) String() string {
-	if r.Error.Type() != "null" {
+	if r.Error != nil {
 		return fmt.Sprintf("Result(%s, %s)", r.Value.String(), r.Error.String())
 	}
 	return fmt.Sprintf("Result(%s)", r.Value.String())
 }
 
 func (r *ResultObject) Type() string   { return "result" }
-func (r *ResultObject) IsTruthy() bool { return r.Error.Type() != "null" }
+func (r *ResultObject) IsTruthy() bool { return r.Error != nil}
 func (r *ResultObject) Iter() (Iterator, Error) {
 	return &ResultIteratorObj{Result: r, index: 0}, nil
 }
@@ -691,11 +691,14 @@ func (r *ResultObject) GetAttribute(name string) (Object, bool, Error) {
 	case "val":
 		return r.Value, true, nil
 	case "err":
+		if r.Error == nil {
+			return NullObj{}, true, nil
+		}
 		return r.Error, true, nil
 	case "ok":
-		return BooleanObj{Value: r.Error.Type() == "null"}, true, nil
+		return BooleanObj{Value: r.Error == nil}, true, nil
 	case "isErr":
-		return BooleanObj{Value: r.Error.Type() != "null"}, true, nil
+		return BooleanObj{Value: r.Error != nil}, true, nil
 	}
 
 	return NullObj{}, true, nil // Return null if key not found

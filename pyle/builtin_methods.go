@@ -129,7 +129,7 @@ func methodStringFormat(receiver StringObj, args ...Object) Object {
 		}
 	}
 
-	return ReturnValue(StringObj{Value: builder.String()})
+	return ReturnOk(StringObj{Value: builder.String()})
 }
 func methodStringContains(receiver StringObj, substr StringObj) BooleanObj {
 	return BooleanObj{Value: strings.Contains(receiver.Value, substr.Value)}
@@ -153,7 +153,7 @@ func methodStringRepeat(receiver StringObj, count NumberObj) Object {
 	if !count.IsInt || count.Value < 0 {
 		return ReturnError("count must be a non-negative integer")
 	}
-	return ReturnValue(StringObj{Value: strings.Repeat(receiver.Value, int(count.Value))})
+	return ReturnOk(StringObj{Value: strings.Repeat(receiver.Value, int(count.Value))})
 }
 func methodStringAsciiAt(receiver StringObj, index NumberObj) Object {
 	if !index.IsInt {
@@ -163,7 +163,7 @@ func methodStringAsciiAt(receiver StringObj, index NumberObj) Object {
 	if idx < 0 || idx >= len(receiver.Value) {
 		return ReturnErrorf("index out of bounds: %d", idx)
 	}
-	return ReturnValue(NumberObj{Value: float64(receiver.Value[idx]), IsInt: true})
+	return ReturnOk(NumberObj{Value: float64(receiver.Value[idx]), IsInt: true})
 }
 
 // --- Array Methods ---
@@ -199,7 +199,7 @@ func methodArrayFilter(vm *VM, receiver *ArrayObj, fn Object) (Object, error) {
 	}
 
 	if len(receiver.Elements) == 0 {
-		return ReturnValue(&ArrayObj{Elements: []Object{}}), nil
+		return ReturnOk(&ArrayObj{Elements: []Object{}}), nil
 	}
 
 	// Fast-path metadata for natives
@@ -240,7 +240,7 @@ func methodArrayFilter(vm *VM, receiver *ArrayObj, fn Object) (Object, error) {
 			filtered = append(filtered, elem)
 		}
 	}
-	return ReturnValue(&ArrayObj{Elements: filtered}), nil
+	return ReturnOk(&ArrayObj{Elements: filtered}), nil
 }
 
 func methodArrayMap(vm *VM, receiver *ArrayObj, fn Object) (Object, error) {
@@ -284,7 +284,7 @@ func methodArrayMap(vm *VM, receiver *ArrayObj, fn Object) (Object, error) {
 		}
 		mapped[i] = result
 	}
-	return ReturnValue(&ArrayObj{Elements: mapped}), nil
+	return ReturnOk(&ArrayObj{Elements: mapped}), nil
 }
 func methodArrayToTuple(receiver *ArrayObj) Object {
 	elements := make([]Object, len(receiver.Elements))
@@ -338,20 +338,20 @@ func methodErrorToString(receiver ErrorObj) (string, error) {
 
 // --- Result Methods ---
 func methodResultUnwrap(receiver *ResultObject) (Object, error) {
-	if receiver.Error.Type() != "null" {
+	if receiver.Error != nil {
 		return nil, fmt.Errorf("%s", receiver.Error.String())
 	}
 	return receiver.Value, nil
 }
 func methodResultUnwrapOr(receiver *ResultObject, defaultValue Object) (Object, error) {
-	if receiver.Error.Type() != "null" {
+	if receiver.Error != nil {
 		return defaultValue, nil
 	}
 	return receiver.Value, nil
 }
 
 func methodResultCatch(vm *VM, receiver *ResultObject, fn Object) (Object, error) {
-	if receiver.Error.Type() == "null" {
+	if receiver.Error == nil {
 		return receiver, nil
 	}
 	if _, ok := fn.(NullObj); ok {

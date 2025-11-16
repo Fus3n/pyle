@@ -33,18 +33,16 @@ fn testOs() {
 }
 
 fn getAsciiCodes(str: string)  {
-    // return ok(str.split(" ").map(fn(x) {
-    //     const wordCodes = array(x)!.map(fn (y) {
-    //         return asciiCode(y)!
-    //     })!
-    //     return wordCodes
-    // })?)
-    return err("wow")
+    return Ok(str.split(" ").map(fn(x) {
+        const wordCodes = array(x)!.map(fn (y) {
+            return asciiCode(y)!
+        })!
+        return wordCodes
+    })?)
 }
 
 const r = getAsciiCodes("hello world")?
 echo(r)
+
 // echo(r)
 // testOs()
-
-

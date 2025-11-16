@@ -21,14 +21,14 @@ func builtinEcho(vm *VM, args ...Object) (Object, error) {
 	return NullObj{}, nil
 }
 
-func nativeScan(prompt string) (string, error) {
+func nativeScan(prompt string) *ResultObject {
 	fmt.Print(prompt)
 	var input string
 	_, err := fmt.Scanln(&input)
 	if err != nil && err.Error() != "unexpected newline" {
-		return "", err
+		return ReturnError(err.Error())
 	}
-	return input, nil
+	return ReturnOkString(input)
 }
 
 func nativeType(obj Object) string {
@@ -41,44 +41,44 @@ func nativeTuple(objs ...Object) *TupleObj {
 	return &TupleObj{Elements: elems}
 }
 
-func nativeInt(obj Object) Object {
+func nativeInt(obj Object) *ResultObject {
 	switch v := obj.(type) {
 	case NumberObj:
 		if v.IsInt {
-			return ReturnValue(v)
+			return ReturnOk(v)
 		}
-		return ReturnValue(NumberObj{Value: float64(int(v.Value)), IsInt: true})
+		return ReturnOkInt(float64(int(v.Value)))
 	case StringObj:
 		i, err := strconv.Atoi(v.Value)
 		if err != nil {
 			return ReturnErrorf("could not convert string '%s' to int", v.Value)
 		}
-		return ReturnValue(NumberObj{Value: float64(i), IsInt: true})
+		return ReturnOkInt(float64(i))
 	case BooleanObj:
 		if v.Value {
-			return ReturnValue(NumberObj{Value: 1, IsInt: true})
+			return ReturnOkInt(1)
 		}
-		return ReturnValue(NumberObj{Value: 0, IsInt: true})
+		return ReturnOkInt(0)
 	default:
 		return ReturnErrorf("cannot convert type '%s' to int", obj.Type())
 	}
 }
 
-func nativeFloat(obj Object) Object {
+func nativeFloat(obj Object) *ResultObject {
 	switch v := obj.(type) {
 	case NumberObj:
-		return ReturnValue(NumberObj{Value: v.Value, IsInt: false})
+		return ReturnOk(NumberObj{Value: v.Value, IsInt: false})
 	case StringObj:
 		f, err := strconv.ParseFloat(v.Value, 64)
 		if err != nil {
 			return ReturnErrorf("could not convert string '%s' to float", v.Value)
 		}
-		return ReturnValue(NumberObj{Value: f, IsInt: false})
+		return ReturnOk(NumberObj{Value: f, IsInt: false})
 	case BooleanObj:
 		if v.Value {
-			return ReturnValue(NumberObj{Value: 1.0, IsInt: false})
+			return ReturnOk(NumberObj{Value: 1.0, IsInt: false})
 		}
-		return ReturnValue(NumberObj{Value: 0.0, IsInt: false})
+		return ReturnOk(NumberObj{Value: 0.0, IsInt: false})
 	default:
 		return ReturnErrorf("cannot convert type '%s' to float", obj.Type())
 	}
@@ -92,18 +92,18 @@ func nativeBool(obj Object) BooleanObj {
 	return BooleanObj{Value: obj.IsTruthy()}
 }
 
-func nativeArray(obj Object) Object {
+func nativeArray(obj Object) *ResultObject  {
 	switch v := obj.(type) {
 	case *ArrayObj:
-		return ReturnValue(v)
+		return ReturnOk(v)
 	case *TupleObj:
-		return ReturnValue(&ArrayObj{Elements: v.Elements})
+		return ReturnOk(&ArrayObj{Elements: v.Elements})
 	case StringObj:
 		elements := make([]Object, len(v.Value))
 		for i, char := range v.Value {
 			elements[i] = StringObj{Value: string(char)}
 		}
-		return ReturnValue(&ArrayObj{Elements: elements})
+		return ReturnOk(&ArrayObj{Elements: elements})
 	case *MapObj:
 		elements := make([]Object, 0, len(v.Pairs))
 		for _, bucket := range v.Pairs {
@@ -111,13 +111,13 @@ func nativeArray(obj Object) Object {
 				elements = append(elements, pair.Value)
 			}
 		}
-		return ReturnValue(&ArrayObj{Elements: elements})
+		return ReturnOk(&ArrayObj{Elements: elements})
 	case *RangeObj:
 		elements := []Object{}
 		for i := v.Start; (v.Step > 0 && i < v.End) || (v.Step < 0 && i > v.End); i += v.Step {
 			elements = append(elements, NumberObj{Value: float64(i), IsInt: true})
 		}
-		return ReturnValue(&ArrayObj{Elements: elements})
+		return ReturnOk(&ArrayObj{Elements: elements})
 	default:
 		return ReturnErrorf("cannot convert type '%s' to array", obj.Type())
 	}
@@ -137,7 +137,7 @@ func nativeExpect(condition Object, message Object) (Object, error) {
 
 func nativeHash(obj Object) Object {
 	if hashable, ok := obj.(Hashable); ok {
-		return ReturnValue(NumberObj{Value: float64(hashable.Hash()), IsInt: true})
+		return ReturnOkInt(float64(hashable.Hash()))
 	}
 	return ReturnErrorf("object of type '%s' is not hashable", obj.Type())
 }
@@ -147,7 +147,7 @@ func nativeExit() Object{
 	return CreateNull()
 }
 
-func nativeAsciiCode(obj Object) Object {
+func nativeAsciiCode(obj Object) *ResultObject {
 	switch v := obj.(type) {
 	case StringObj:
 		if len(v.Value) == 0 {
@@ -156,7 +156,7 @@ func nativeAsciiCode(obj Object) Object {
 		if len(v.Value) > 1 {
 			return ReturnError("string must be exactly one character")
 		}
-		return ReturnValue(NumberObj{Value: float64(v.Value[0]), IsInt: true})
+		return ReturnOkInt(float64(v.Value[0]))
 	default:
 		return ReturnErrorf("cannot convert type '%s' to ascii code", obj.Type())
 	}
@@ -178,10 +178,10 @@ func nativePanic(message Object) (Object, error) {
 }
 
 func nativeOk(value Object) Object {
-	return ReturnValue(value)
+	return ReturnOk(value)
 }
 
-func nativeErr(message Object) Object {
+func nativeErr(message Object) *ResultObject {
 	switch v := message.(type) {
 	case StringObj:
 		return ReturnError(v.Value)
@@ -208,8 +208,9 @@ var Builtins = map[string]any{
 	"asciiCode": nativeAsciiCode,
 	"error":     nativeError,
 	"panic":     nativePanic,
-	"ok":        nativeOk,
-	"err":       nativeErr,
+	// Capital letter to avoid conflict
+	"Ok":        nativeOk,
+	"Err":       nativeErr,
 }
 
 var BuiltinDocs = map[string]*DocstringObj{

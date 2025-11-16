@@ -16,7 +16,7 @@
 - [x] `continue` inside for and while loop
 - [x] Hashable types
 - [ ] Save errors instead of returing so can print stack trace
-- [ ] Value unpacking into variable, multiple return types/Tuple unpacking
+- [x] Value unpacking into variable, multiple return types/Tuple unpacking
 - [x] Design how should language acess object attributes or methods
 - [x] Add method support for builtin types
 - [x] For Comparable types create new comparable interface and streamline those process like equals, greater tahn function with functions
@@ -36,8 +36,8 @@
 - [ ] Add a separate pass for bytecode optimization
 
 ## Known Bugs
-- [ ] Lambda/Closure function does not capture scope variables
-- [ ] Object does not take token, which is needed for printing proper error msg
+- [x] Lambda/Closure function does not capture scope variables
+- [x] Object does not take token, which is needed for printing proper error msg
 
 ## Operators
 - [x] All binary operators support

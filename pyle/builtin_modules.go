@@ -27,75 +27,75 @@ func nativePerfCounter() (float64, error) {
 }
 
 // OS module
-func nativeOsReadFile(path string) (string, error) {
+func nativeOsReadFile(path string) *ResultObject {
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return "", err
+		return ReturnError(err.Error())
 	}
-	return string(data), nil
+	return ReturnOkString(string(data))
 }
 
-func nativeOsWriteFile(path string, content string) (Object, error) {
+func nativeOsWriteFile(path string, content string) *ResultObject {
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
-		return nil, err
+		return ReturnError(err.Error())
 	}
-	return NullObj{}, nil
+	return ReturnOkNull()
 }
 
-func nativeOsAppendFile(path string, content string) (Object, error) {
+func nativeOsAppendFile(path string, content string) *ResultObject {
 	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
 	if err != nil {
-		return nil, err
+		return ReturnError(err.Error())
 	}
 	defer f.Close()
 	if _, err := f.WriteString(content); err != nil {
-		return nil, err
+		return ReturnError(err.Error())
 	}
-	return NullObj{}, nil
+	return ReturnOkNull()
 }
 
-func nativeOsRemove(path string) (Object, error) {
+func nativeOsRemove(path string) *ResultObject {
 	if err := os.Remove(path); err != nil {
-		return nil, err
+		return ReturnError(err.Error())
 	}
-	return NullObj{}, nil
+	return ReturnOkNull()
 }
 
-func nativeOsExists(path string) (bool, error) {
+func nativeOsExists(path string) *ResultObject {
 	_, err := os.Stat(path)
 	if err == nil {
-		return true, nil
+		return ReturnOkBool(true)
 	}
 	if os.IsNotExist(err) {
-		return false, nil
+		return ReturnOkBool(false)
 	}
-	return false, err
+	return ReturnError(err.Error())
 }
 
-func nativeOsMkdir(path string) (Object, error) {
+func nativeOsMkdir(path string) *ResultObject {
 	if err := os.Mkdir(path, 0o755); err != nil {
-		return nil, err
+		return ReturnError(err.Error())
 	}
-	return NullObj{}, nil
+	return ReturnOkNull()
 }
 
-func nativeOsMkdirAll(path string) (Object, error) {
+func nativeOsMkdirAll(path string) *ResultObject {
 	if err := os.MkdirAll(path, 0o755); err != nil {
-		return nil, err
+		return ReturnError(err.Error())
 	}
-	return NullObj{}, nil
+	return ReturnOkNull()
 }
 
-func nativeOsListdir(path string) ([]string, error) {
-	entries, err := os.ReadDir(path)
-	if err != nil {
-		return nil, err
-	}
-	names := make([]string, 0, len(entries))
-	for _, e := range entries {
-		names = append(names, e.Name())
-	}
-	return names, nil
+func nativeOsListdir(path string) *ResultObject {
+    entries, err := os.ReadDir(path)
+    if err != nil {
+        return ReturnError(err.Error())
+    }
+    elements := make([]Object, len(entries))
+    for i, e := range entries {
+        elements[i] = StringObj{Value: e.Name()} 
+    }
+    return ReturnOk(&ArrayObj{Elements: elements})
 }
 
 func nativeOsStat(path string) (Object, error) {

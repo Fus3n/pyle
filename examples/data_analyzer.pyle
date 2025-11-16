@@ -27,7 +27,7 @@ fn generateSampleData() {
 
 // Function to read and parse CSV data
 fn readCSV(filename) {
-    const content = os.readFile(filename)
+    const content = os.readFile(filename)?
     const lines = content.split("\n")
     const headers = lines[0].split(",")
     
@@ -54,7 +54,7 @@ fn readCSV(filename) {
         i = i + 1
     }
     
-    return records
+    return Ok(records)
 }
 
 // Function to calculate average of a field
@@ -64,15 +64,15 @@ fn calculateAverage(records, field) {
     
     for record in records {
         if record.has(field) {
-            sum = sum + int(record[field])
+            sum = sum + int(record[field])?
             count = count + 1
         }
     }
     
     if count > 0 {
-        return sum / count
+        return Ok(sum / count)
     }
-    return 0
+    return Ok(0)
 }
 
 // Function to group records by a field
@@ -116,13 +116,13 @@ echo("--- Generating Sample Data ---")
 const filename = generateSampleData()
 
 echo("\n--- Reading and Analyzing Data ---")
-const employees = readCSV(filename)
+const employees = readCSV(filename).unwrap() // same as readCSV(filename)!
 
 echo("Total employees: {}".format(employees.len()))
 
 // Calculate average age and score
-const avgAge = calculateAverage(employees, "Age")
-const avgScore = calculateAverage(employees, "Score")
+const avgAge = calculateAverage(employees, "Age")!
+const avgScore = calculateAverage(employees, "Score")!
 
 echo("Average age: {:.1f}".format(avgAge))
 echo("Average score: {:.1f}".format(avgScore))
@@ -134,7 +134,7 @@ const byDepartment = groupBy(employees, "Department")
 for item in byDepartment.items() {
     const dept = item[0]
     const deptEmployees = item[1]
-    const deptAvgScore = calculateAverage(deptEmployees, "Score")
+    const deptAvgScore = calculateAverage(deptEmployees, "Score")!
     echo("{}: {} employees, average score {:.1f}".format(dept, deptEmployees.len(), deptAvgScore))
 }
 
@@ -147,7 +147,7 @@ if topPerformer != null {
 }
 
 // Clean up
-os.remove(filename)
+os.remove(filename)!
 echo("\nCleaned up sample data file")
 
 echo("\n=== Data Analyzer Complete ===")
