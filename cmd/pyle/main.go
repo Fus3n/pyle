@@ -3,7 +3,8 @@ package main
 import (
 	"fmt"
 	"os"
-	"pylevm/pyle"
+
+	"github.com/Fus3n/pyle/pyle"
 
 	"github.com/alexflint/go-arg"
 )

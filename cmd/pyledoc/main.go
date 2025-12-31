@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"pylevm/pyle"
+	"github.com/Fus3n/pyle/pyle"
 )
 
 
