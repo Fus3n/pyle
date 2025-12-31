@@ -124,7 +124,7 @@ fn greet(name: string) {
 
 ### Built-in Methods
 
-Pyle provides methods on its core types. Strings have methods like `.len()`, `.split()`, `.format()`, `.contains()`, `.toLower()`, `.toUpper()`, `.replace()`, and `.trimSpace()`. Arrays support `.append()`, `.pop()`, `.len()`, `.join()`, `.map()`, `.filter()`, and `.reverse()`. Maps have `.keys()`, `.values()`, `.items()`, and `.has()`.
+Pyle provides methods on its core types. Learn more in the [docs](https://Fus3n.github.io/pyle/).
 
 ```ts
 const text = "Hello World"
@@ -205,3 +205,10 @@ const data = os.readFile("missing.txt").catch(fn(e) {
 })
 ```
 
+## Generating Documentation
+
+To generate HTML documentation for the standard library:
+
+```sh
+go run ./cmd/pyledoc/
+```
