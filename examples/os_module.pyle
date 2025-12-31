@@ -1,0 +1,32 @@
+// '!' at the end means panic if the function returns a result with a error or unpack otherwise
+// '?' at the end means return the error if the function returns a result with a error or unpack otherwise
+
+const testFile = "testfile.txt"
+const testDir = "testdir"
+
+os.writeFile(testFile, "hello")!
+const content = os.readFile(testFile)!
+echo("Read content:", content)
+
+os.appendFile(testFile, " world")!
+echo("Appended content:", os.readFile(testFile)!)
+
+echo("Exists:", os.exists(testFile)!)
+
+os.mkdir(testDir)!
+echo("Dir exists:", os.exists(testDir)!)
+
+os.writeFile(testDir + "/file1.txt", "1")!
+os.writeFile(testDir + "/file2.txt", "2")!
+echo("Listdir:", os.listdir(testDir)!)
+
+const info = os.stat(testDir + "/file1.txt")!
+echo("Stat:", info)
+echo("Size:", info.size)
+echo("IsDir:", info.isDir)
+
+// Cleanup
+os.remove(testFile)!
+os.remove(testDir + "/file1.txt")!
+os.remove(testDir + "/file2.txt")!
+os.remove(testDir)!

@@ -146,17 +146,17 @@ The `os` module provides filesystem operations. You can read and write files, ch
 
 ```ts
 os.writeFile("data.txt", "Hello, file!")
-const content = os.readFile("data.txt")?
+const content = os.readFile("data.txt")!
 echo(content)
 
-if os.exists("data.txt") {
-    os.remove("data.txt")
+if os.exists("data.txt")! {
+    os.remove("data.txt")!
 }
 
-os.mkdir("mydir")
-echo(os.listdir("."))
+os.mkdir("mydir")!
+echo(os.listdir(".")!)
 
-const info = os.stat("somefile.txt")
+const info = os.stat("somefile.txt")!
 echo(info.size, info.isDir)
 ```
 
@@ -174,7 +174,7 @@ Pyle uses a result-based error handling system. Functions that can fail return a
 The `?` operator propagates errors. If the result contains an error, it immediately returns that error from the current function. Otherwise it unwraps the value.
 
 ```ts
-fn loadData(path) {
+fn loadData(path) -> result {
     const content = os.readFile(path)?
     return Ok(content.split("\n"))
 }

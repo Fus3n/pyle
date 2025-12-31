@@ -98,17 +98,17 @@ func nativeOsListdir(path string) *ResultObject {
     return ReturnOk(&ArrayObj{Elements: elements})
 }
 
-func nativeOsStat(path string) (Object, error) {
+func nativeOsStat(path string) *ResultObject {
 	info, err := os.Stat(path)
 	if err != nil {
-		return nil, err
+		return ReturnError(err.Error())
 	}
 	m := NewMap()
 	_ = m.Set(StringObj{Value: "size"}, CreateInt(info.Size()))
 	_ = m.Set(StringObj{Value: "mode"}, StringObj{Value: info.Mode().String()})
 	_ = m.Set(StringObj{Value: "isDir"}, BooleanObj{Value: info.IsDir()})
 	_ = m.Set(StringObj{Value: "mtime"}, NumberObj{Value: float64(info.ModTime().Unix()), IsInt: false})
-	return m, nil
+	return ReturnOk(m) 
 }
 
 func init() {
