@@ -294,7 +294,7 @@ func (c *Compiler) findVariable(name string) (int, bool) {
 func (c *Compiler) visitVariableExpr(node *VariableExpr) error {
 	varName := node.Name.Value
 	if c.scopeDepth > 0 {
-		if _, ok := Builtins[varName]; !ok {
+		if _, ok := BuiltinFunctions[varName]; !ok {
 			if absDepth, ok := c.findVariable(varName); ok {
 				relDepth := c.scopeDepth - 1 - absDepth
 				orig := c.locals[absDepth][varName]
@@ -787,7 +787,6 @@ func (c *Compiler) visitFunctionDefStmt(node *FunctionDefStmt) error {
 	offset := addressAfterBody - functionStartIp
 	c.bytecodeChunk[jmpOverBodyIdx].Operand = &offset
 
-	// Create the Pyle Function object
 	pyleFnName := node.Name.Value
 	funcObj := FunctionObj{
 		Name:         pyleFnName,

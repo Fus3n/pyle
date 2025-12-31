@@ -157,11 +157,11 @@ func ReturnOkString(value string) *ResultObject {
 }
 
 func ReturnOkInt(value float64) *ResultObject {
-	return &ResultObject{Value: NumberObj{Value: float64(value), IsInt: true}}
+	return &ResultObject{Value: NumberObj{Value: float64(value), IsInt: true}, Error: nil}
 }
 
 func ReturnOkFloat(value float64) *ResultObject {
-	return &ResultObject{Value: NumberObj{Value: value, IsInt: false}}
+	return &ResultObject{Value: NumberObj{Value: value, IsInt: false}, Error: nil}
 }
 
 func ReturnOkBool(value bool) *ResultObject {

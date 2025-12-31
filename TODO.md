@@ -66,12 +66,12 @@
 
 ## Error
 - [ ] Stack trace
-- [ ] Proper Error printing for runtime errors
+- [x-] Proper Error printing for runtime errors
 - [ ] Use Error map in VM
 - [ ] Fix places where file name and location is not printed with error message
 
 ## LSP
-- [x] LSP support (Broken)
+- [-] LSP support (Broken)
 - [ ] Fix user defined variables not showing
 - [ ] Doc string for builtin functions
 - [ ] Doc string for user defined functions

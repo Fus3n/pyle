@@ -12,7 +12,7 @@ import (
 	"strings"
 )
 
-// --- Interfaces ---
+// Interfaces
 
 type Iterator interface {
 	Object
@@ -47,7 +47,7 @@ func (o DebugInfo) GetLocation() Loc {
 	return o.loc
 }
 
-// --- Documentation Types ---
+// Documentation Types
 
 type ParamDoc struct {
 	Name        string
@@ -61,7 +61,6 @@ type DocstringObj struct {
 	Returns     string
 }
 
-// new docstring obj easy ways to create it
 func NewDocstring(description string, params []ParamDoc, returns string) *DocstringObj {
 	return &DocstringObj{
 		DebugInfo:  DebugInfo{},
@@ -108,7 +107,7 @@ func (d *DocstringObj) Iter() (Iterator, Error) {
 	return nil, NewRuntimeError("docstring object is not iterable", d.GetLocation())
 }
 
-// --- Core Types ---
+// Core Types
 
 type NumberObj struct {
 	DebugInfo
@@ -272,7 +271,7 @@ func (e ErrorObj) GetAttribute(name string) (Object, bool, Error) {
 	return nil, false, nil
 }
 
-// --- Container Types ---
+// Container Types
 
 type ArrayObj struct {
 	DebugInfo
@@ -337,7 +336,7 @@ func (m *ModuleObj) Iter() (Iterator, Error) {
 	return nil, NewRuntimeError("module object is not iterable", m.GetLocation())
 }
 
-// --- Hash Map Implementation ---
+// HashMap Implementation
 
 type MapPair struct {
 	Key   Object
@@ -465,7 +464,7 @@ func (o *MapObj) Iter() (Iterator, Error) {
 	return NewMapIterator(o, MapIteratorModeKeys), nil
 }
 
-// --- Map Iterator ---
+// Map Iterator
 
 type MapIteratorMode int
 
@@ -541,7 +540,7 @@ func (it *MapIteratorObj) Next() (Object, bool) {
 	return NullObj{}, false
 }
 
-// --- Other Types ---
+// Other Types
 
 type RangeObj struct {
 	DebugInfo

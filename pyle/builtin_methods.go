@@ -17,9 +17,9 @@ func isFunc(obj Object) bool {
 
 // BuiltinMethods holds the native methods for Pyle's built-in types.
 var BuiltinMethods map[string]map[string]*NativeFuncObj
-var BuiltinMethodDocs map[string]map[string]*DocstringObj
 
-// --- String Methods ---
+
+// String Methods
 func methodStringLen(receiver StringObj) (int, error) {
 	return len(receiver.Value), nil
 }
@@ -166,7 +166,7 @@ func methodStringAsciiAt(receiver StringObj, index NumberObj) Object {
 	return ReturnOk(NumberObj{Value: float64(receiver.Value[idx]), IsInt: true})
 }
 
-// --- Array Methods ---
+// Array
 func methodArrayLen(receiver *ArrayObj) int {
 	return len(receiver.Elements)
 }
@@ -302,7 +302,7 @@ func methodArrayJoin(receiver *ArrayObj, sep string) string {
 	return sb.String()
 }
 
-// --- Map Methods ---
+// Map
 func methodMapLen(receiver *MapObj) (int, error) {
 	count := 0
 	for _, bucket := range receiver.Pairs {
@@ -327,7 +327,7 @@ func methodMapHas(receiver *MapObj, key Object) (bool, error) {
 	return ok, nil
 }
 
-// --- Error Methods ---
+// Error
 func methodErrorMessage(receiver ErrorObj) (string, error) {
 	return receiver.Message, nil
 }
@@ -336,7 +336,7 @@ func methodErrorToString(receiver ErrorObj) (string, error) {
 	return receiver.String(), nil
 }
 
-// --- Result Methods ---
+// Result
 func methodResultUnwrap(receiver *ResultObject) (Object, error) {
 	if receiver.Error != nil {
 		return nil, fmt.Errorf("%s", receiver.Error.String())
@@ -395,8 +395,8 @@ func methodResultCatch(vm *VM, receiver *ResultObject, fn Object) (Object, error
 }
 
 func init() {
+	LoadDocs()
 	BuiltinMethods = make(map[string]map[string]*NativeFuncObj)
-	BuiltinMethodDocs = init_docs()
 
 	// Helper to create native functions and panic on error
 	mustCreate := func(name string, fn any, doc *DocstringObj) *NativeFuncObj {

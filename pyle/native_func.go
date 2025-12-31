@@ -5,7 +5,7 @@ import (
 	"reflect"
 )
 
-// --- Fast Path Function Types ---
+// Fast Path Function Types
 type NativeFunc0 func(vm *VM) (Object, Error)
 type NativeFunc1 func(vm *VM, arg Object) (Object, Error)
 type NativeFunc2 func(vm *VM, arg1, arg2 Object) (Object, Error)

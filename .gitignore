@@ -1,4 +1,5 @@
 *.pyled
-pyle_docs.html
 pyle.exe
 .vscode
+docs/
+pyledoc.exe

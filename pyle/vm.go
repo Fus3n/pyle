@@ -68,7 +68,7 @@ func (vm *VM) RegisterModule(name string, funcs map[string]any, doc *DocstringOb
 }
 
 func (vm *VM) LoadBuiltins() error {
-	for name, fn := range Builtins {
+	for name, fn := range BuiltinFunctions {
 		doc := BuiltinDocs[name]
 		err := vm.RegisterGOFunction(name, fn, doc)
 		if err != nil {
@@ -1120,6 +1120,15 @@ func (vm *VM) binaryOpCompare(op OpCode, currentTok *Token) Error {
 		return err
 	}
 
+
+	// *ErrorObj can be nil so we check that and make them proper null objects
+	if errPtr, ok := left.(*ErrorObj); ok && errPtr == nil  {
+		left = CreateNull()
+	}
+	if errPtr, ok := right.(*ErrorObj); ok && errPtr == nil  {
+		right = CreateNull()
+	}
+
 	comparable, ok := left.(Comparable)
 	if !ok {
 		var result bool
@@ -1134,6 +1143,7 @@ func (vm *VM) binaryOpCompare(op OpCode, currentTok *Token) Error {
 		vm.push(BooleanObj{Value: result})
 		return nil
 	}
+	
 
 	cmpResult, cmpErr := comparable.Compare(right)
 	if cmpErr != nil {

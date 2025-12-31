@@ -32,6 +32,7 @@ fn testOs() {
     os.remove(testDir)
 }
 
+// Yes i made it look as complicated as i could so it looks cool.
 fn getAsciiCodes(str: string)  {
     return Ok(str.split(" ").map(fn(x) {
         const wordCodes = array(x)!.map(fn (y) {
@@ -42,7 +43,3 @@ fn getAsciiCodes(str: string)  {
 }
 
 const r = getAsciiCodes("hello world")?
-echo(r)
-
-// echo(r)
-// testOs()

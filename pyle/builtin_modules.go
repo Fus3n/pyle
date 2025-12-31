@@ -7,7 +7,7 @@ import (
 
 var programStartTime = time.Now()
 var BuiltinModules map[string]map[string]any
-var BuiltinModuleDocs map[string]*DocstringObj
+
 
 // Time module
 func nativeTimeNs() (int64, error) {
@@ -113,9 +113,7 @@ func nativeOsStat(path string) (Object, error) {
 
 func init() {
 	BuiltinModules = make(map[string]map[string]any)
-	BuiltinModuleDocs = make(map[string]*DocstringObj)
 
-	// Docs for builtin methods
 
 	// time module
 	BuiltinModules["time"] = map[string]any{
@@ -126,31 +124,7 @@ func init() {
 		"perfCounter": nativePerfCounter,
 	}
 
-	BuiltinModuleDocs["time"] = NewDocstring("This module provides functions for working with time.", nil, "")
-	BuiltinMethodDocs["time"] = map[string]*DocstringObj{
-		"sleep": {
-			Description: "replace(old, new) -> string\n\nReturns a new string with all occurrences of 'old' replaced by 'new'.",
-			Params: []ParamDoc{
-				{"int64", "The number of seconds to sleep."},
-			},
-		},
-		"time": {
-			Description: "time() -> float\n\nReturns the current Unix timestamp as a float (seconds since epoch).",
-			Returns:     "float",
-		},
-		"timeMs": {Description: "timeMs() -> float\n\nReturns the current Unix timestamp in milliseconds as a float.",
-			Returns: "float",
-		},
-		"timeNs": {
-			Description: "timeNs() -> float\n\nReturns the current Unix timestamp in nanoseconds as a float.",
-			Returns:     "float",
-		},
-		"perfCounter": {
-			Description: "perfCounter() -> float\n\nReturns the value of a high-resolution performance counter as a float (seconds since program start).",
-			Returns:     "float",
-		},
-	}
-
+	// os module
 	BuiltinModules["os"] = map[string]any{
 		"readFile":   nativeOsReadFile,
 		"writeFile":  nativeOsWriteFile,
@@ -163,16 +137,5 @@ func init() {
 		"stat":       nativeOsStat,
 	}
 
-	BuiltinModuleDocs["os"] = NewDocstring("This module provides basic filesystem utilities.", nil, "")
-	BuiltinMethodDocs["os"] = map[string]*DocstringObj{
-		"readFile":   NewDocstring("readFile(path) -> string\n\nReads the entire file and returns its contents as a string.", []ParamDoc{{"path", "Filesystem path to read."}}, "string"),
-		"writeFile":  NewDocstring("writeFile(path, content) -> null\n\nWrites content to file, creating/truncating it.", []ParamDoc{{"path", "Filesystem path."}, {"content", "Content to write."}}, "null"),
-		"appendFile": NewDocstring("appendFile(path, content) -> null\n\nAppends content to file, creating it if needed.", []ParamDoc{{"path", "Filesystem path."}, {"content", "Content to append."}}, "null"),
-		"remove":     NewDocstring("remove(path) -> null\n\nRemoves a file or empty directory.", []ParamDoc{{"path", "Path to remove."}}, "null"),
-		"exists":     NewDocstring("exists(path) -> bool\n\nReturns whether a path exists.", []ParamDoc{{"path", "Path to check."}}, "bool"),
-		"mkdir":      NewDocstring("mkdir(path) -> null\n\nCreates a directory with mode 0755.", []ParamDoc{{"path", "Directory path."}}, "null"),
-		"mkdirAll":   NewDocstring("mkdirAll(path) -> null\n\nCreates a directory and all parents with mode 0755.", []ParamDoc{{"path", "Directory path."}}, "null"),
-		"listdir":    NewDocstring("listdir(path) -> array\n\nLists names in a directory.", []ParamDoc{{"path", "Directory path."}}, "array"),
-		"stat":       NewDocstring("stat(path) -> map\n\nReturns a map with keys: size (int), mode (string), isDir (bool), mtime (float seconds).", []ParamDoc{{"path", "Path to stat."}}, "map"),
-	}
+
 }

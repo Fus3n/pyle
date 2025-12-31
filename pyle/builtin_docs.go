@@ -1,55 +1,419 @@
 package pyle
 
-func init_docs() map[string]map[string]*DocstringObj {
-	BuiltinMethodDocs := make(map[string]map[string]*DocstringObj)
+var BuiltinDocs map[string]*DocstringObj
+var BuiltinModuleDocs map[string]*DocstringObj
+var BuiltinMethodDocs map[string]map[string]*DocstringObj
 
-	// --- String Docs & Methods ---
+func LoadDocs() {
+	// Globals
+	BuiltinDocs = map[string]*DocstringObj{
+		"echo": NewDocstring(
+			"Prints values to the console.",
+			[]ParamDoc{
+				{"values", "Objects to print."},
+			},
+			"null",
+		),
+		"scan": NewDocstring(
+			"Reads a line of input from the user.",
+			[]ParamDoc{
+				{"prompt", "The string to display to the user."},
+			},
+			"string",
+		),
+		"type": NewDocstring(
+			"Returns the type of an object as a string.",
+			[]ParamDoc{
+				{"object", "The object to inspect."},
+			},
+			"string",
+		),
+		"int": NewDocstring(
+			"Converts an object to an integer.",
+			[]ParamDoc{
+				{"object", "The object to convert."},
+			},
+			"result<int>",
+		),
+		"float": NewDocstring(
+			"Converts an object to a float.",
+			[]ParamDoc{
+				{"object", "The object to convert."},
+			},
+			"result<float>",
+		),
+		"tuple": NewDocstring(
+			"Creates a new tuple containing the given elements.",
+			[]ParamDoc{
+				{"elements", "Objects to include in the tuple."},
+			},
+			"result<tuple>",
+		),
+		"hash": NewDocstring(
+			"Returns the hash value of a hashable object.",
+			[]ParamDoc{
+				{"object", "The object to hash."},
+			},
+			"result<int>",
+		),
+		"asciiCode": NewDocstring(
+			"Returns the ASCII code of a single-character string.",
+			[]ParamDoc{
+				{"string", "A string containing exactly one character."},
+			},
+			"result<int>",
+		),
+		"array": NewDocstring(
+			"Converts an object to an array.",
+			[]ParamDoc{
+				{"object", "The object to convert."},
+			},
+			"result<array>",
+		),
+		"error": NewDocstring(
+			"Creates a new error object with the given message.",
+			[]ParamDoc{
+				{"message", "The error message string."},
+			},
+			"error",
+		),
+		"panic": NewDocstring(
+			"Stops execution and reports an error.",
+			[]ParamDoc{
+				{"message", "The error message string."},
+			},
+			"never",
+		),
+		"Ok": NewDocstring(
+			"Wraps a value in a result object with no error.",
+			[]ParamDoc{
+				{"value", "The value to wrap."},
+			},
+			"result<T>",
+		),
+		"Err": NewDocstring(
+			"Creates a result object representing an error.",
+			[]ParamDoc{
+				{"message|error", "A string message or error object."},
+			},
+			"result<T>",
+		),
+	}
+
+	// Modules
+	BuiltinModuleDocs = map[string]*DocstringObj{
+		"time": NewDocstring("This module provides functions for working with time.", nil, ""),
+		"os":   NewDocstring("This module provides basic filesystem utilities.", nil, ""),
+	}
+
+	BuiltinMethodDocs = make(map[string]map[string]*DocstringObj)
+
+	// String Methods
 	BuiltinMethodDocs["string"] = map[string]*DocstringObj{
-		"len": {Description: "len() -> int\n\nReturns the number of characters in the string."},
-		"replace": {
-			Description: "replace(old, new) -> string\n\nReturns a new string with all occurrences of 'old' replaced by 'new'.",
-			Params: []ParamDoc{
+		"len": NewDocstring(
+			"Returns the number of characters in the string.",
+			nil,
+			"int",
+		),
+		"trimSpace": NewDocstring(
+			"Returns a new string with leading and trailing white space removed.",
+			nil,
+			"string",
+		),
+		"split": NewDocstring(
+			"Splits the string into a slice of substrings separated by the specified delimiter.",
+			[]ParamDoc{
+				{"delim", "The substring to split by."},
+			},
+			"[]string",
+		),
+		"format": NewDocstring(
+			"Formats the string using the specified format string and arguments.",
+			[]ParamDoc{
+				{"format", "The format string."},
+				{"args", "The arguments to format."},
+			},
+			"result<string>",
+		),
+		"contains": NewDocstring(
+			"Returns true if the string contains the specified substring.",
+			[]ParamDoc{
+				{"substring", "The substring to search for."},
+			},
+			"bool",
+		),
+		"startsWith": NewDocstring(
+			"Returns true if the string starts with the specified prefix.",
+			[]ParamDoc{
+				{"prefix", "The prefix to search for."},
+			},
+			"bool",
+		),
+		"endsWith": NewDocstring(
+			"Returns true if the string ends with the specified suffix.",
+			[]ParamDoc{
+				{"suffix", "The suffix to search for."},
+			},
+			"bool",
+		),
+		"toLower": NewDocstring(
+			"Returns a new string with all characters converted to lowercase.",
+			nil,
+			"string",
+		),
+		"toUpper": NewDocstring(
+			"Returns a new string with all characters converted to uppercase.",
+			nil,
+			"string",
+		),
+		"indexOf": NewDocstring(
+			"Returns the index of the first occurrence of the specified substring, or -1 if not found.",
+			[]ParamDoc{
+				{"substring", "The substring to search for."},
+			},
+			"int",
+		),
+		"replace": NewDocstring(
+			"Returns a new string with all occurrences of 'old' replaced by 'new'.",
+			[]ParamDoc{
 				{"old", "The substring to be replaced."},
 				{"new", "The substring to replace with."},
 			},
-			Returns: "A new string with replacements made.",
-		},
-		// .. more needed
+			"string",
+		),
+		"repeat": NewDocstring(
+			"Returns a new string with the specified string repeated the specified number of times.",
+			[]ParamDoc{
+				{"count", "The number of times to repeat the string."},
+			},
+			"string",
+		),
+		"asciiAt": NewDocstring(
+			"Returns the ASCII value of the character at the specified index.",
+			[]ParamDoc{
+				{"index", "The index of the character to get the ASCII value of."},
+			},
+			"result<int>",
+		),
 	}
 
-	// --- Array Docs & Methods ---
+	// Array Methods
 	BuiltinMethodDocs["array"] = map[string]*DocstringObj{
-		"len":    {Description: "len() -> int\n\nReturns the number of elements in the array."},
-		"append": {Description: "append(value)\n\nAppends a value to the end of the array in-place."},
-		"join": {
-			Description: "join(separator) -> string\n\nJoins the elements of the array into a string using the specified separator.",
-			Params: []ParamDoc{
+		"len": NewDocstring(
+			"Returns the number of elements in the array.",
+			nil,
+			"int",
+		),
+		"append": NewDocstring(
+			"Appends a value to the end of the array in-place.",
+			[]ParamDoc{
+				{"object", "The value to append to the array."},
+			},
+			"null",
+		),
+		"join": NewDocstring(
+			"Joins the elements of the array into a string using the specified separator.",
+			[]ParamDoc{
 				{"separator", "The string to use as a separator between elements."},
 			},
-			Returns: "A new string with the joined elements.",
-		},
+			"string",
+		),
+		"pop": NewDocstring(
+			"Removes and returns the last element of the array.",
+			nil,
+			"object",
+		),
+		"reverse": NewDocstring(
+			"Reverses the order of the elements in the array in-place.",
+			nil,
+			"array",
+		),
+		"filter": NewDocstring(
+			"Returns a new array with elements that pass the test implemented by the provided function.",
+			[]ParamDoc{
+				{"fn", "The function to test each element of the array."},
+			},
+			"result<array>",
+		),
+		"map": NewDocstring(
+			"Returns a new array with each element transformed by the provided function.",
+			[]ParamDoc{
+				{"fn", "The function to apply to each element of the array."},
+			},
+			"result<array>",
+		),
+		"toTuple": NewDocstring(
+			"Converts the array to a tuple.",
+			nil,
+			"tuple",
+		),
 	}
 
-	// --- Map Docs & Methods ---
+	// Map Methods
 	BuiltinMethodDocs["map"] = map[string]*DocstringObj{
-		"len":  {Description: "len() -> int\n\nReturns the number of key-value pairs in the map."},
-		"keys": {Description: "keys() -> iterator\n\nReturns an iterator over the map's keys."},
+		"len": NewDocstring(
+			"Returns the number of key-value pairs in the map.",
+			nil,
+			"int",
+		),
+		"keys": NewDocstring(
+			"Returns an iterator over the map's keys.",
+			nil,
+			"iterator<T>",
+		),
+		"values": NewDocstring(
+			"Returns an iterator over the map's values.",
+			nil,
+			"iterator<T>",
+		),
+		"items": NewDocstring(
+			"Returns an iterator over the map's key-value pairs.",
+			nil,
+			"iterator<T>",
+		),
+		"has": NewDocstring(
+			"Checks if the map has a key.",
+			[]ParamDoc{
+				{"key", "The key to check."},
+			},
+			"bool",
+		),
 	}
 
-	// --- Error Docs & Methods ---
+	// Error Methods
 	BuiltinMethodDocs["error"] = map[string]*DocstringObj{
-		"message":  {Description: "message() -> string\n\nReturns the error message."},
-		"toString": {Description: "toString() -> string\n\nReturns the string representation of the error."},
+		"message": NewDocstring(
+			"Returns the error message.",
+			nil,
+			"string",
+		),
+		"toString": NewDocstring(
+			"Returns the string representation of the error.",
+			nil,
+			"string",
+		),
 	}
 
-	// --- Result Docs & Methods ---
+	// Result Methods
 	BuiltinMethodDocs["result"] = map[string]*DocstringObj{
-		"unwrap":   {Description: "unwrap() -> T\n\nReturns the value inside the result, or panics if the result is an error."},
-		"unwrapOr": {Description: "unwrapOr(default) -> T\n\nReturns the value inside the result, or the default value if the result is an error."},
-		"catch":    {Description: "catch(handler) -> result\n\nCatches any errors in the result and returns the result of the handler function."},
+		"unwrap": NewDocstring(
+			"Returns the value inside the result, or panics if the result is an error.",
+			nil,
+			"T",
+		),
+		"unwrapOr": NewDocstring(
+			"Returns the value inside the result, or the default value if the result is an error.",
+			[]ParamDoc{
+				{"defaultValue", "The default value to return if the result is an error."},
+			},
+			"T",
+		),
+		"catch": NewDocstring(
+			"Catches any errors in the result and returns the result of the handler function.",
+			[]ParamDoc{
+				{"fn", "The function to apply to the error if the result is an error."},
+			},
+			"result<T>",
+		),
 	}
 
-	// TODO: more docs needed
+	// Module Methods: Time
+	BuiltinMethodDocs["time"] = map[string]*DocstringObj{
+		"sleep": NewDocstring(
+			"Pauses execution for the specified number of seconds.",
+			[]ParamDoc{
+				{"seconds", "The number of seconds to sleep."},
+			},
+			"null",
+		),
+		"time": NewDocstring(
+			"Returns the current Unix timestamp as a float (seconds since epoch).",
+			nil,
+			"float",
+		),
+		"timeMs": NewDocstring(
+			"Returns the current Unix timestamp in milliseconds as a float.",
+			nil,
+			"float",
+		),
+		"timeNs": NewDocstring(
+			"Returns the current Unix timestamp in nanoseconds as a float.",
+			nil,
+			"float",
+		),
+		"perfCounter": NewDocstring(
+			"Returns the value of a high-resolution performance counter as a float (seconds since program start).",
+			nil,
+			"float",
+		),
+	}
 
-	return BuiltinMethodDocs
+	// Module Methods: OS
+	BuiltinMethodDocs["os"] = map[string]*DocstringObj{
+		"readFile": NewDocstring(
+			"Reads the entire file and returns its contents as a string.",
+			[]ParamDoc{
+				{"path", "Filesystem path to read."},
+			},
+			"string",
+		),
+		"writeFile": NewDocstring(
+			"Writes content to file, creating/truncating it.",
+			[]ParamDoc{
+				{"path", "Filesystem path."},
+				{"content", "Content to write."},
+			},
+			"null",
+		),
+		"appendFile": NewDocstring(
+			"Appends content to file, creating it if needed.",
+			[]ParamDoc{
+				{"path", "Filesystem path."},
+				{"content", "Content to append."},
+			},
+			"null",
+		),
+		"remove": NewDocstring(
+			"Removes a file or empty directory.",
+			[]ParamDoc{
+				{"path", "Path to remove."},
+			},
+			"null",
+		),
+		"exists": NewDocstring(
+			"Returns whether a path exists.",
+			[]ParamDoc{
+				{"path", "Path to check."},
+			},
+			"bool",
+		),
+		"mkdir": NewDocstring(
+			"Creates a directory with mode 0755.",
+			[]ParamDoc{
+				{"path", "Directory path."},
+			},
+			"null",
+		),
+		"mkdirAll": NewDocstring(
+			"Creates a directory and all parents with mode 0755.",
+			[]ParamDoc{
+				{"path", "Directory path."},
+			},
+			"null",
+		),
+		"listdir": NewDocstring(
+			"Lists names in a directory.",
+			[]ParamDoc{
+				{"path", "Directory path."},
+			},
+			"array",
+		),
+		"stat": NewDocstring(
+			"Returns a map with keys: size (int), mode (string), isDir (bool), mtime (float seconds).",
+			[]ParamDoc{
+				{"path", "Path to stat."},
+			},
+			"map",
+		),
+	}
 }

@@ -170,7 +170,7 @@ func nativePanic(message Object) (Object, error) {
 	switch v := message.(type) {
 	case StringObj:
 		return nil, NewRuntimeError(v.Value, Loc{})
-	case ErrorObj:
+	case *ErrorObj:
 		return nil, NewRuntimeError(v.Message, Loc{})
 	default:
 		return nil, NewRuntimeError(message.String(), Loc{})
@@ -185,14 +185,14 @@ func nativeErr(message Object) *ResultObject {
 	switch v := message.(type) {
 	case StringObj:
 		return ReturnError(v.Value)
-	case ErrorObj:
+	case *ErrorObj:
 		return ReturnError(v.Message)
 	default:
 		return ReturnError(message.String())
 	}
 }
 
-var Builtins = map[string]any{
+var BuiltinFunctions = map[string]any{
 	"echo":      builtinEcho,
 	"scan":      nativeScan,
 	"tuple":     nativeTuple,
@@ -213,70 +213,4 @@ var Builtins = map[string]any{
 	"Err":       nativeErr,
 }
 
-var BuiltinDocs = map[string]*DocstringObj{
-	"echo": {
-		Description: "echo(...values) -> null\n\nPrints the given values to the console, separated by spaces.",
-		Params:      []ParamDoc{{"values", "A variable number of objects to print."}},
-		Returns:     "null",
-	},
-	"scan": {
-		Description: "scan(prompt) -> string\n\nReads a line of input from the user after displaying a prompt.",
-		Params:      []ParamDoc{{"prompt", "The string to display to the user."}},
-		Returns:     "The user's input as a string.",
-	},
-	"type": {
-		Description: "type(object) -> string\n\nReturns the type of an object as a string.",
-		Params:      []ParamDoc{{"object", "The object to inspect."}},
-		Returns:     "The type name as a string.",
-	},
-	"int": {
-		Description: "int(object) -> (int, null)|(null, error)\n\nConverts an object to an integer. Returns (value, null) on success or (null, error) on failure.",
-		Params:      []ParamDoc{{"object", "The object to convert."}},
-		Returns:     "A tuple: (value, null) on success or (null, error) on failure.",
-	},
-	"float": {
-		Description: "float(object) -> (float, null)|(null, error)\n\nConverts an object to a float. Returns (value, null) on success or (null, error) on failure.",
-		Params:      []ParamDoc{{"object", "The object to convert."}},
-		Returns:     "A tuple: (value, null) on success or (null, error) on failure.",
-	},
-	"tuple": {
-		Description: "tuple(...elements) -> tuple\n\nCreates a new tuple containing the given elements.",
-		Params:      []ParamDoc{{"elements", "A variable number of objects to include in the tuple."}},
-		Returns:     "A new tuple object.",
-	},
-	"hash": {
-		Description: "hash(object) -> (int, null)|(null, error)\n\nReturns the hash value of a hashable object. Returns (value, null) on success or (null, error) on failure.",
-		Params:      []ParamDoc{{"object", "The object to hash."}},
-		Returns:     "A tuple: (value, null) on success or (null, error) on failure.",
-	},
-	"asciiCode": {
-		Description: "asciiCode(char_string) -> (int, null)|(null, error)\n\nReturns the ASCII code of a single-character string. Returns (value, null) on success or (null, error) on failure.",
-		Params:      []ParamDoc{{"string", "A string containing exactly one character."}},
-		Returns:     "A tuple: (value, null) on success or (null, error) on failure.",
-	},
-	"array": {
-		Description: "array(object) -> (array, null)|(null, error)\n\nConverts an object to an array. Returns (value, null) on success or (null, error) on failure.",
-		Params:      []ParamDoc{{"object", "The object to convert."}},
-		Returns:     "A tuple: (value, null) on success or (null, error) on failure.",
-	},
-	"error": {
-		Description: "error(message) -> error\n\nCreates a new error object with the given message.",
-		Params:      []ParamDoc{{"message", "The error message string."}},
-		Returns:     "A new error object.",
-	},
-	"panic": {
-		Description: "panic(message) -> never returns\n\nStops execution and reports an error with the given message.",
-		Params:      []ParamDoc{{"message", "The error message string."}},
-		Returns:     "Never returns - execution stops.",
-	},
-	"ok": {
-		Description: "ok(value) -> result\n\nWraps a value in a result object with no error.",
-		Params:      []ParamDoc{{"value", "The value to wrap."}},
-		Returns:     "A result object with the value set and no error.",
-	},
-	"err": {
-		Description: "err(message|error) -> result\n\nCreates a result object representing an error.",
-		Params:      []ParamDoc{{"message|error", "A string message or error object."}},
-		Returns:     "A result object with null value and the error set.",
-	},
-}
+
