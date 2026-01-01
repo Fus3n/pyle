@@ -205,16 +205,24 @@ func prepareBuiltinPages() (SiteMeta, []PageData) {
 
 
 	var modKeys []string
-	for k := range pyle.BuiltinModules { modKeys = append(modKeys, k) }
+	// Use BuiltinMethodDocs for discovery to include pylegame/http even if not linked
+	for name := range pyle.BuiltinModuleDocs {
+		modKeys = append(modKeys, name)
+	}
 	sort.Strings(modKeys)
 
 	for _, name := range modKeys {
 		desc := ""
-		if d, ok := pyle.BuiltinModuleDocs[name]; ok { desc = d.Description }
-		
-		modFuncs := pyle.BuiltinModules[name]
+		if d, ok := pyle.BuiltinModuleDocs[name]; ok {
+			desc = d.Description
+		}
+
 		var funcKeys []string
-		for k := range modFuncs { funcKeys = append(funcKeys, k) }
+		if docMap, ok := pyle.BuiltinMethodDocs[name]; ok {
+			for k := range docMap {
+				funcKeys = append(funcKeys, k)
+			}
+		}
 		sort.Strings(funcKeys)
 		
 		cat := buildCategory(name, "module", desc, funcKeys, pyle.BuiltinMethodDocs[name])

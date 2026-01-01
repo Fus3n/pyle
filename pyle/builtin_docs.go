@@ -102,8 +102,11 @@ func LoadDocs() {
 
 	// Modules
 	BuiltinModuleDocs = map[string]*DocstringObj{
-		"time": NewDocstring("This module provides functions for working with time.", nil, ""),
-		"os":   NewDocstring("This module provides basic filesystem utilities.", nil, ""),
+		"time":     NewDocstring("This module provides functions for working with time.", nil, ""),
+		"os":       NewDocstring("This module provides basic filesystem utilities.", nil, ""),
+		"pylegame": NewDocstring("A high-performance 2D game engine module based on Ebitengine.", nil, ""),
+		"http":     NewDocstring("This module provides a basic HTTP server for building web applications.", nil, ""),
+		"random":   NewDocstring("This module provides functions for generating random numbers.", nil, ""),
 	}
 
 	BuiltinMethodDocs = make(map[string]map[string]*DocstringObj)
@@ -461,6 +464,116 @@ func LoadDocs() {
 				{"max", "Maximum value (exclusive)."},
 			},
 			"float",
+		),
+	}
+
+	// Module Methods: HTTP
+	BuiltinMethodDocs["http"] = map[string]*DocstringObj{
+		"handle": NewDocstring(
+			"Registers a handler function for a given URI path.",
+			[]ParamDoc{
+				{"path", "The URL path to handle (e.g. '/')"},
+				{"handler", "Function(request, response) to call."},
+			},
+			"null",
+		),
+		"listen": NewDocstring(
+			"Starts the HTTP server on the specified address.",
+			[]ParamDoc{
+				{"addr", "The network address to listen on (e.g. ':8080')"},
+			},
+			"result<null>",
+		),
+	}
+
+	// Module Methods: PyleGame
+	BuiltinMethodDocs["pylegame"] = map[string]*DocstringObj{
+		"init": NewDocstring(
+			"Initializes the game window with the given size and title.",
+			[]ParamDoc{
+				{"width", "Window width in pixels."},
+				{"height", "Window height in pixels."},
+				{"title", "Window title string."},
+			},
+			"null",
+		),
+		"run": NewDocstring(
+			"Starts the game loop. Takes an update function and a draw function.",
+			[]ParamDoc{
+				{"update_fn", "Function called every tick."},
+				{"draw_fn", "Function called every frame (receives screen)."},
+			},
+			"result<null>",
+		),
+		"load_image": NewDocstring(
+			"Loads an image from the specified file path.",
+			[]ParamDoc{{"path", "Path to image file."}},
+			"result<UserObject>",
+		),
+		"draw_image": NewDocstring(
+			"Draws an image onto the screen at the specified coordinates.",
+			[]ParamDoc{
+				{"screen", "The target screen image."},
+				{"image", "The image to draw."},
+				{"x", "X coordinate."},
+				{"y", "Y coordinate."},
+			},
+			"null",
+		),
+		"load_font": NewDocstring(
+			"Loads a TTF or OTF font file.",
+			[]ParamDoc{{"path", "Path to font file."}},
+			"result<Font>",
+		),
+		"draw_text": NewDocstring(
+			"Draws text using a specific font and color.",
+			[]ParamDoc{
+				{"screen", "The target screen image."},
+				{"font", "The Font object to use."},
+				{"text", "The string to draw."},
+				{"x", "X coordinate."},
+				{"y", "Y coordinate."},
+				{"r, g, b, a", "Optional color components (0-255)."},
+			},
+			"null",
+		),
+		"measure_text": NewDocstring(
+			"Returns the dimensions of the text if rendered with the given font.",
+			[]ParamDoc{
+				{"font", "The Font object."},
+				{"text", "The text string."},
+			},
+			"map{w, h}",
+		),
+		"is_key_pressed": NewDocstring(
+			"Returns true if the specified keyboard key is currently held down.",
+			[]ParamDoc{{"key", "Key name (e.g. 'SPACE', 'A', 'UP')."}},
+			"bool",
+		),
+		"get_fps": NewDocstring(
+			"Returns the current actual frames per second.",
+			nil,
+			"float",
+		),
+		"draw_rect": NewDocstring(
+			"Draws a filled rectangle using the vector engine.",
+			[]ParamDoc{
+				{"screen", "The target screen image."},
+				{"x", "X position."},
+				{"y", "Y position."},
+				{"w", "Width."},
+				{"h", "Height."},
+				{"r, g, b, a", "Color components (0-255)."},
+			},
+			"null",
+		),
+		"debug_print": NewDocstring(
+			"Draws a quick debug string at the top-left of the screen.",
+			[]ParamDoc{
+				{"screen", "The screen image."},
+				{"text", "The text to print."},
+			},
+			"null",
 		),
 	}
 }
