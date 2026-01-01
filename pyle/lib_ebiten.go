@@ -1,3 +1,5 @@
+//go:build !pyle_no_game
+
 package pyle
 
 import (
