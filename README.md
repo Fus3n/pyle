@@ -209,6 +209,8 @@ Pyle comes with improved built-in modules and a powerful Go interoperability lay
 ### HTTP Module
 Create web servers easily using the `http` module.
 ```ts
+use http
+
 http.handle("/", fn(req, res) {
     res.setHeader("Content-Type", "application/json")
     res.send({ message: "Hello Pyle!" })
@@ -220,13 +222,33 @@ http.listen(":8080")
 ### Game Module (Ebiten)
 Built-in support for the Ebiten game engine (v2).
 ```ts
-game.init(640, 480, "Pyle Game")
-game.run(update_fn, draw_fn)
+use pylegame as pg
+
+pg.init(640, 480, "Pyle Game")
+pg.run(update_fn, draw_fn)
 ```
 
 ### Go Interop (UserObject)
 Pyle can wrap arbitrary Go objects (structs, images, database connections) and interact with them using reflection.
 - Go methods are mapped automatically (e.g. `obj.MethodName()` in Go is callable as `obj.methodName()` in Pyle).
+
+### Examples
+There are many examples available in the `examples` directory covering arithmetic, HTTP servers, and a simple game.
+
+### Game Showcase
+<table align="center">
+  <tr>
+    <td align="center">
+      <img src="assets/star_sentinel_menu.png" width="300" style="border-radius: 6px; border: 1px solid #2d3436; box-shadow: 0 2px 4px rgba(0,0,0,0.3);" alt="Star Sentinel Menu">
+      <br><i>Main Menu</i>
+    </td>
+    <td align="center">
+      <img src="assets/star_sentinel_game.png" width="300" style="border-radius: 6px; border: 1px solid #2d3436; box-shadow: 0 2px 4px rgba(0,0,0,0.3);" alt="Star Sentinel Gameplay">
+      <br><i>Gameplay</i>
+    </td>
+  </tr>
+</table>
+<p align="center"><b>Star Sentinel</b> - A classic arcade shooter built entirely in Pyle (<a href="examples/star_sentinel_game.pyle">View Source</a>)</p>
 
 ## Generating Documentation
 

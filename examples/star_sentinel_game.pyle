@@ -2,7 +2,20 @@ use pylegame as pg
 use random
 use time
 
-pg.init(640, 480, "Star Sentinel")
+// --- Global Constants ---
+const SCREEN_WIDTH = 740
+const SCREEN_HEIGHT = 580
+const TITLE = "Star Sentinel"
+
+const PLAYER_WIDTH = 30
+const PLAYER_HEIGHT = 20
+const PLAYER_SPEED = 7
+const SHOOT_COOLDOWN_VAL = 15
+
+const STAR_COUNT = 100
+const MAX_LIVES = 3
+
+pg.init(SCREEN_WIDTH, SCREEN_HEIGHT, TITLE)
 
 let ui_font = pg.load_font("assets/font.ttf")?
 let title_font = pg.load_font("assets/font.ttf")?
@@ -11,14 +24,14 @@ title_font.set_size(24)
 
 let state = "START" // START, PLAYING, GAMEOVER
 let score = 0
-let lives = 3
+let lives = MAX_LIVES
 
 let player = {
-    x: 300,
-    y: 420,
-    w: 30,
-    h: 20,
-    speed: 7,
+    x: (SCREEN_WIDTH - PLAYER_WIDTH) / 2,
+    y: SCREEN_HEIGHT - 60,
+    w: PLAYER_WIDTH,
+    h: PLAYER_HEIGHT,
+    speed: PLAYER_SPEED,
     shoot_cooldown: 0
 }
 
@@ -29,10 +42,10 @@ let particles = []
 let stars = []
 
 // Initialize Starfield
-for i in 0:100 {
+for i in 0:STAR_COUNT {
     stars.append({
-        x: random.rangeInt(0, 640),
-        y: random.rangeInt(0, 480),
+        x: random.rangeInt(0, SCREEN_WIDTH),
+        y: random.rangeInt(0, SCREEN_HEIGHT),
         speed: random.rangeFloat(0.5, 2.5),
         size: random.rangeInt(1, 3)
     })
@@ -57,7 +70,7 @@ fn explode(x, y, color) {
 
 fn draw_text_centered(screen, font, text, y, r, g, b) {
     let size = pg.measure_text(font, text)
-    let x = (640 - size.w) / 2
+    let x = (SCREEN_WIDTH - size.w) / 2
     pg.draw_text(screen, font, text, x, y, r, g, b)
 }
 
@@ -78,13 +91,15 @@ fn update() {
         if pg.is_key_pressed("ENTER") {
             // Reset
             score = 0
-            lives = 3
+            lives = MAX_LIVES
             state = "PLAYING"
             enemies.clear()
             bullets.clear()
             enemy_bullets.clear()
             particles.clear()
             difficulty = 60
+            player.x = (SCREEN_WIDTH - PLAYER_WIDTH) / 2
+            player.y = SCREEN_HEIGHT - 60
         }
         return
     }
@@ -93,9 +108,9 @@ fn update() {
     for i in 0:stars.len() {
         let s = stars[i]
         s.y = s.y + s.speed
-        if s.y > 480 {
+        if s.y > SCREEN_HEIGHT {
             s.y = 0
-            s.x = random.rangeInt(0, 640)
+            s.x = random.rangeInt(0, SCREEN_WIDTH)
         }
     }
 
@@ -107,24 +122,24 @@ fn update() {
     
     // Bounds
     if player.x < 0 { player.x = 0 }
-    if player.x > 610 { player.x = 610 }
-    if player.y < 200 { player.y = 200 }
-    if player.y > 450 { player.y = 450 }
+    if player.x > SCREEN_WIDTH - player.w { player.x = SCREEN_WIDTH - player.w }
+    if player.y < SCREEN_HEIGHT / 2 { player.y = SCREEN_HEIGHT / 2 }
+    if player.y > SCREEN_HEIGHT - player.h - 10 { player.y = SCREEN_HEIGHT - player.h - 10 }
 
     // Shooting
     if player.shoot_cooldown > 0 {
         player.shoot_cooldown = player.shoot_cooldown - 1
     }
     if pg.is_key_pressed("SPACE") and player.shoot_cooldown <= 0 {
-        bullets.append({"x": player.x + 13, "y": player.y - 10, "w": 4, "h": 12, "active": true})
-        player.shoot_cooldown = 15
+        bullets.append({x: player.x + (player.w / 2) - 2, y: player.y - 10, w: 4, h: 12, active: true})
+        player.shoot_cooldown = SHOOT_COOLDOWN_VAL
     }
 
     // Spawn Enemies
     spawn_timer = spawn_timer + 1
     if spawn_timer > difficulty {
         enemies.append({
-            x: random.rangeInt(50, 590),
+            x: random.rangeInt(50, SCREEN_WIDTH - 50),
             y: -30,
             w: 30,
             h: 30,
@@ -151,15 +166,15 @@ fn update() {
         e.y = e.y + e.speed_y
         if e.type == 1 {
             e.x = e.x + e.speed_x * 2
-            if e.x < 10 or e.x > 600 { e.speed_x = 0 - e.speed_x }
+            if e.x < 10 or e.x > SCREEN_WIDTH - e.w - 10 { e.speed_x = 0 - e.speed_x }
         }
 
-        if e.y > 480 { e.active = false }
+        if e.y > SCREEN_HEIGHT { e.active = false }
         
         // Shoot
         e.shoot_timer = e.shoot_timer - 1
         if e.shoot_timer <= 0 {
-            enemy_bullets.append({"x": e.x + 13, "y": e.y + 30, "w": 4, "h": 10, "active": true})
+            enemy_bullets.append({x: e.x + (e.w / 2) - 2, y: e.y + 30, w: 4, h: 10, active: true})
             e.shoot_timer = random.rangeInt(80, 200)
         }
 
@@ -186,7 +201,7 @@ fn update() {
     for i in 0:enemy_bullets.len() {
         let eb = enemy_bullets[i]
         eb.y = eb.y + 6
-        if eb.y > 480 { eb.active = false }
+        if eb.y > SCREEN_HEIGHT { eb.active = false }
 
         if eb.active and eb.x < player.x + player.w and eb.x + eb.w > player.x and eb.y < player.y + player.h and eb.y + eb.h > player.y {
             eb.active = false
@@ -227,7 +242,8 @@ fn update() {
 }
 
 fn draw(screen) {
-    pg.draw_rect(screen, 0, 0, 640, 480, 5, 5, 15, 255)
+    // Clear screen
+    pg.draw_rect(screen, 0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, 5, 5, 15, 255)
 
     for i in 0:stars.len() {
         let s = stars[i]
@@ -235,26 +251,27 @@ fn draw(screen) {
     }
 
     if state == "START" {
-        draw_text_centered(screen, title_font, "STAR SENTINEL", 150, 0, 255, 255)
-        draw_text_centered(screen, ui_font, "PROTECT THE SECTOR", 200, 255, 255, 255)
+        draw_text_centered(screen, title_font, "STAR SENTINEL", SCREEN_HEIGHT * 0.3, 0, 255, 255)
+        draw_text_centered(screen, ui_font, "PROTECT THE SECTOR", SCREEN_HEIGHT * 0.4, 255, 255, 255)
         
-        pg.draw_rect(screen, 150, 250, 340, 100, 20, 20, 40, 200)
-        pg.draw_text(screen, ui_font, "CONTROLS:", 170, 265, 255, 255, 0)
-        pg.draw_text(screen, ui_font, "- WASD / ARROWS TO MOVE", 170, 290, 200, 200, 200)
-        pg.draw_text(screen, ui_font, "- SPACE TO FIRE", 170, 315, 200, 200, 200)
+        pg.draw_rect(screen, (SCREEN_WIDTH - 340) / 2, 250, 340, 100, 20, 20, 40, 200)
+        pg.draw_text(screen, ui_font, "CONTROLS:", (SCREEN_WIDTH - 340) / 2 + 20, 265, 255, 255, 0)
+        pg.draw_text(screen, ui_font, "- WASD / ARROWS TO MOVE", (SCREEN_WIDTH - 340) / 2 + 20, 290, 200, 200, 200)
+        pg.draw_text(screen, ui_font, "- SPACE TO FIRE", (SCREEN_WIDTH - 340) / 2 + 20, 315, 200, 200, 200)
         
-        draw_text_centered(screen, ui_font, "PRESS ENTER TO START", 380, 255, 255, 255)
+        draw_text_centered(screen, ui_font, "PRESS ENTER TO START", SCREEN_HEIGHT * 0.8, 255, 255, 255)
         return
     }
 
     if state == "GAMEOVER" {
-        pg.draw_rect(screen, 120, 180, 400, 120, 30, 0, 0, 200)
-        draw_text_centered(screen, title_font, "MISSION FAILED", 200, 255, 0, 0)
-        draw_text_centered(screen, ui_font, "FINAL SCORE: " + string(score), 240, 255, 255, 0)
-        draw_text_centered(screen, ui_font, "PRESS ENTER TO REDEPLOY", 270, 255, 255, 255)
+        pg.draw_rect(screen, (SCREEN_WIDTH - 400) / 2, SCREEN_HEIGHT * 0.35, 400, 120, 30, 0, 0, 200)
+        draw_text_centered(screen, title_font, "MISSION FAILED", SCREEN_HEIGHT * 0.4, 255, 0, 0)
+        draw_text_centered(screen, ui_font, "FINAL SCORE: " + string(score), SCREEN_HEIGHT * 0.5, 255, 255, 0)
+        draw_text_centered(screen, ui_font, "PRESS ENTER TO REDEPLOY", SCREEN_HEIGHT * 0.55, 255, 255, 255)
         return
     }
 
+    // Draw Player
     pg.draw_rect(screen, player.x, player.y, player.w, player.h, 0, 200, 255, 255)
     pg.draw_rect(screen, player.x + 10, player.y - 5, 10, 5, 255, 255, 255, 255)
 
@@ -281,10 +298,11 @@ fn draw(screen) {
         pg.draw_rect(screen, p.x, p.y, 2, 2, p.color[0], p.color[1], p.color[2], a)
     }
 
-    pg.draw_rect(screen, 0, 0, 640, 30, 0, 0, 0, 180)
+    // UI Header
+    pg.draw_rect(screen, 0, 0, SCREEN_WIDTH, 30, 0, 0, 0, 180)
     pg.draw_text(screen, ui_font, "SENTINEL ALPHA", 20, 10, 0, 255, 255)
-    pg.draw_text(screen, ui_font, "SCORE: " + string(score), 250, 10, 255, 255, 0)
-    pg.draw_text(screen, ui_font, "LIVES: " + string(lives), 520, 10, 255, 0, 0)
+    pg.draw_text(screen, ui_font, "SCORE: " + string(score), SCREEN_WIDTH * 0.4, 10, 255, 255, 0)
+    pg.draw_text(screen, ui_font, "LIVES: " + string(lives), SCREEN_WIDTH * 0.8, 10, 255, 0, 0)
     
     pg.debug_print(screen, "FPS: " + string(pg.get_fps()))
 }

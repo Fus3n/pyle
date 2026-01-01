@@ -1,4 +1,3 @@
-// Yes i made it look as complicated as i could so it looks cool.
 fn getAsciiCodes(str: string) -> result  {
     return Ok(str.split(" ").map(fn(x) {
         const wordCodes = array(x)!.map(fn (y) {
@@ -10,6 +9,3 @@ fn getAsciiCodes(str: string) -> result  {
 
 const r = getAsciiCodes("hello world")
 echo(r)
-let v = [1, 2]
-
-echo(v.remove(1))
