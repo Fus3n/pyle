@@ -102,15 +102,6 @@ func (vm *VM) LoadBuiltins() error {
 			return module
 		})
 	}
-
-	vm.RegisterBuiltinModule("http", func(vm *VM) Object {
-		return CreateHttpModule(vm)
-	})
-
-	vm.RegisterBuiltinModule("pylegame", func(vm *VM) Object {
-		return CreateGameModule(vm)
-	})
-
 	return nil
 }
 

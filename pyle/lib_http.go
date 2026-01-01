@@ -123,3 +123,7 @@ func CreateHttpModule(vm *VM) Object {
 	
 	return httpModule
 }
+
+func RegisterHttpModule(vm *VM) {
+	vm.RegisterBuiltinModule("http", CreateHttpModule)
+}

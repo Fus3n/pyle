@@ -285,6 +285,8 @@ fn draw(screen) {
     pg.draw_text(screen, ui_font, "SENTINEL ALPHA", 20, 10, 0, 255, 255)
     pg.draw_text(screen, ui_font, "SCORE: " + string(score), 250, 10, 255, 255, 0)
     pg.draw_text(screen, ui_font, "LIVES: " + string(lives), 520, 10, 255, 0, 0)
+    
+    pg.debug_print(screen, "FPS: " + string(pg.get_fps()))
 }
 
 pg.run(update, draw)

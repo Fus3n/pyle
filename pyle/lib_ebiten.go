@@ -193,6 +193,10 @@ var keyMap = map[string]ebiten.Key{
 	"SPACE": ebiten.KeySpace, "ENTER": ebiten.KeyEnter, "ESC": ebiten.KeyEscape,
 }
 
+func gameGetFPS() float64 {
+	return ebiten.ActualFPS()
+}
+
 func CreateGameModule(vm *VM) Object {
 	gameMod := NewModule("pylegame")
 	ModuleMustRegister(gameMod, "init", gameInit, nil)
@@ -204,6 +208,11 @@ func CreateGameModule(vm *VM) Object {
 	ModuleMustRegister(gameMod, "draw_text", gameDrawText, nil)
 	ModuleMustRegister(gameMod, "measure_text", gameMeasureText, nil)
 	ModuleMustRegister(gameMod, "is_key_pressed", gameIsKeyPressed, nil)
+	ModuleMustRegister(gameMod, "get_fps", gameGetFPS, nil)
 	ModuleMustRegister(gameMod, "draw_rect", gameDrawRect, nil)
 	return gameMod
+}
+
+func RegisterGameModule(vm *VM) {
+	vm.RegisterBuiltinModule("pylegame", CreateGameModule)
 }

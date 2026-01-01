@@ -22,6 +22,8 @@ func main() {
 	if e != nil {
 		panic(e)
 	}
+	pyle.RegisterHttpModule(vm)
+	pyle.RegisterGameModule(vm)
 	
 	p := arg.MustParse(&args)
 
