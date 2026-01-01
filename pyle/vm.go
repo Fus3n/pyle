@@ -5,6 +5,7 @@ import (
 	"io"
 	"math"
 	"os"
+	"strings"
 	"sync"
 )
 
@@ -576,11 +577,16 @@ func (vm *VM) run(targetFrameDepth int) Result[Object] {
 
 		case OpUse:
 			useInfo := operand.(*UseInfo)
-			name := vm.constants[useInfo.ModuleIdx].(StringObj).Value
+			fullName := vm.constants[useInfo.ModuleIdx].(StringObj).Value
 
-			alias := name
+			parts := strings.Split(fullName, ".")
+			baseName := parts[0]
+
+			alias := baseName
 			if useInfo.AliasIdx != -1 {
 				alias = vm.constants[useInfo.AliasIdx].(StringObj).Value
+			} else {
+				alias = parts[len(parts)-1]
 			}
 
 			// Check if already in globals under this alias
@@ -589,11 +595,29 @@ func (vm *VM) run(targetFrameDepth int) Result[Object] {
 			}
 
 			// Check registry
-			if constructor, ok := vm.moduleRegistry[name]; ok {
+			if constructor, ok := vm.moduleRegistry[baseName]; ok {
 				module := constructor(vm)
-				vm.AddGlobal(alias, module)
+				var currentObj Object = module
+
+				for i := 1; i < len(parts); i++ {
+					attrName := parts[i]
+					if getter, ok := currentObj.(AttributeGetter); ok {
+						val, found, err := getter.GetAttribute(attrName)
+						if err != nil {
+							return ResErr[Object](err)
+						}
+						if !found {
+							return vm.runtimeErrorRes(currentTok.Loc, "Module '%s' has no attribute '%s'", baseName, attrName)
+						}
+						currentObj = val
+					} else {
+						return vm.runtimeErrorRes(currentTok.Loc, "Cannot get attribute '%s' from non-object module part", attrName)
+					}
+				}
+
+				vm.AddGlobal(alias, currentObj)
 			} else {
-				return vm.runtimeErrorRes(currentTok.Loc, "Module '%s' not found", name)
+				return vm.runtimeErrorRes(currentTok.Loc, "Module '%s' not found", baseName)
 			}
 
 		case OpAdd, OpSubtract, OpMultiply, OpDivide, OpModulo:

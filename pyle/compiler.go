@@ -888,7 +888,15 @@ type UseInfo struct {
 }
 
 func (c *Compiler) visitUseStmt(node *UseStmt) error {
-	nameIdx := c.addConstant(StringObj{Value: node.Module.Value})
+	pathStr := ""
+	for i, t := range node.Path {
+		if i > 0 {
+			pathStr += "."
+		}
+		pathStr += t.Value
+	}
+
+	nameIdx := c.addConstant(StringObj{Value: pathStr})
 	aliasIdx := -1
 	if node.Alias != nil {
 		aliasIdx = c.addConstant(StringObj{Value: node.Alias.Value})

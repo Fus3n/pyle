@@ -784,18 +784,25 @@ func (s *ReturnStmt) MarshalJSON() ([]byte, error) {
 }
 
 type UseStmt struct {
-	Token  *Token
-	Module *Token
-	Alias  *Token
+	Token *Token
+	Path  []*Token
+	Alias *Token
 }
 
 func (a *UseStmt) TypeString() string { return "" }
 func (s *UseStmt) GetToken() *Token   { return s.Token }
 func (s *UseStmt) String() string {
-	if s.Alias != nil {
-		return fmt.Sprintf("UseStmt (Module: %s as %s)", s.Module.Value, s.Alias.Value)
+	pathStr := ""
+	for i, t := range s.Path {
+		if i > 0 {
+			pathStr += "."
+		}
+		pathStr += t.Value
 	}
-	return fmt.Sprintf("UseStmt (Module: %s)", s.Module.Value)
+	if s.Alias != nil {
+		return fmt.Sprintf("UseStmt (Path: %s as %s)", pathStr, s.Alias.Value)
+	}
+	return fmt.Sprintf("UseStmt (Path: %s)", pathStr)
 }
 func (s *UseStmt) stmtNode() {}
 func (s *UseStmt) MarshalJSON() ([]byte, error) {

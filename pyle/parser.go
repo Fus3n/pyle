@@ -805,12 +805,18 @@ func (p *Parser) array_literal() Result[Expr] {
 func (p *Parser) useStatement() Result[Stmt] {
 	useTok := p.previous()
 
-	// accept "module" or module (ident)
-	var moduleName *Token
+	var path []*Token
 	if p.check(TokenString) {
-		moduleName = p.advance()
+		path = append(path, p.advance())
 	} else if p.check(TokenIdent) {
-		moduleName = p.advance()
+		path = append(path, p.advance())
+		for p.match(TokenDot) {
+			identRes := p.consume(TokenIdent, "Expected identifier after '.' in 'use' statement.")
+			if identRes.IsErr() {
+				return ResErr[Stmt](identRes.Err)
+			}
+			path = append(path, identRes.Value)
+		}
 	} else {
 		return ResErr[Stmt](NewParserError("Expected module name as a string or identifier after 'use'", p.current().Loc))
 	}
@@ -825,7 +831,7 @@ func (p *Parser) useStatement() Result[Stmt] {
 	}
 
 	p.match(TokenSemiColon)
-	return ResOk[Stmt](&UseStmt{Token: useTok, Module: moduleName, Alias: alias})
+	return ResOk[Stmt](&UseStmt{Token: useTok, Path: path, Alias: alias})
 }
 
 func (p *Parser) whileStatement() Result[Stmt] {
