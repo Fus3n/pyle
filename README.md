@@ -35,20 +35,17 @@ echo("Fibonacci of 10 is:", result)
 
 ```ts
 // A function to get the ASCII codes for each character in a string
-fn getAsciiCodes(str: string) {
-    const words = str.split(" ")
-    const result = []
-    for word in words {
-        const wordCodes = []
-        for char in array(word) {
-            wordCodes.append(asciiCode(char))
-        }
-        result.append(wordCodes)
-    }
-    return result
+fn getAsciiCodes(str: string) -> result  {
+    return Ok(str.split(" ").map(fn(x) {
+        const wordCodes = array(x)!.map(fn (y) {
+            return asciiCode(y)!
+        })!
+        return wordCodes
+    })?)
 }
 
-echo(getAsciiCodes("Hello Pyle"))
+
+echo(getAsciiCodes("Hello Pyle")?)
 ```
 
 ## How to Run

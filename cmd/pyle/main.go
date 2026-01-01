@@ -11,6 +11,7 @@ import (
 
 var args struct {
 	Input   string   `arg:"positional"`
+	Help    bool     `arg:"-h,--help"`
 	Diss  bool     `arg:"-d,--disassemble"`
 }
 
@@ -22,7 +23,12 @@ func main() {
 		panic(e)
 	}
 	
-	arg.MustParse(&args)
+	p := arg.MustParse(&args)
+
+	if args.Help || args.Input == "" {
+		p.WriteHelp(os.Stdout)
+		os.Exit(0)
+	}
 
 	srcName := args.Input
 	source, err := os.ReadFile(srcName)
@@ -37,6 +43,7 @@ func main() {
 			fmt.Fprintf(os.Stderr, "error dissassembling: %s\n", err)
 			os.Exit(1)
 		}
+		os.Exit(0)
 	}
 
 	vmerr := pyle.RunScript(vm, srcName, string(source))
