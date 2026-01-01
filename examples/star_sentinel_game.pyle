@@ -1,0 +1,290 @@
+use pylegame as pg
+use random
+use time
+
+pg.init(640, 480, "Star Sentinel")
+
+let ui_font = pg.load_font("assets/font.ttf")?
+let title_font = pg.load_font("assets/font.ttf")?
+ui_font.set_size(12)
+title_font.set_size(24)
+
+let state = "START" // START, PLAYING, GAMEOVER
+let score = 0
+let lives = 3
+
+let player = {
+    x: 300,
+    y: 420,
+    w: 30,
+    h: 20,
+    speed: 7,
+    shoot_cooldown: 0
+}
+
+let bullets = []
+let enemies = []
+let enemy_bullets = []
+let particles = []
+let stars = []
+
+// Initialize Starfield
+for i in 0:100 {
+    stars.append({
+        x: random.rangeInt(0, 640),
+        y: random.rangeInt(0, 480),
+        speed: random.rangeFloat(0.5, 2.5),
+        size: random.rangeInt(1, 3)
+    })
+}
+
+fn create_particle(x, y, color) {
+    return {
+        x: x,
+        y: y,
+        vx: random.rangeFloat(-3, 3),
+        vy: random.rangeFloat(-3, 3),
+        life: random.rangeInt(20, 50),
+        color: color
+    }
+}
+
+fn explode(x, y, color) {
+    for i in 0:15 {
+        particles.append(create_particle(x, y, color))
+    }
+}
+
+fn draw_text_centered(screen, font, text, y, r, g, b) {
+    let size = pg.measure_text(font, text)
+    let x = (640 - size.w) / 2
+    pg.draw_text(screen, font, text, x, y, r, g, b)
+}
+
+let spawn_timer = 0
+let difficulty = 60 
+
+fn update() {
+    if pg.is_key_pressed("ESC") { return }
+
+    if state == "START" {
+        if pg.is_key_pressed("ENTER") or pg.is_key_pressed("SPACE") {
+            state = "PLAYING"
+        }
+        return
+    }
+
+    if state == "GAMEOVER" {
+        if pg.is_key_pressed("ENTER") {
+            // Reset
+            score = 0
+            lives = 3
+            state = "PLAYING"
+            enemies.clear()
+            bullets.clear()
+            enemy_bullets.clear()
+            particles.clear()
+            difficulty = 60
+        }
+        return
+    }
+
+    // Starfield movement
+    for i in 0:stars.len() {
+        let s = stars[i]
+        s.y = s.y + s.speed
+        if s.y > 480 {
+            s.y = 0
+            s.x = random.rangeInt(0, 640)
+        }
+    }
+
+    // Player Movement
+    if pg.is_key_pressed("A") or pg.is_key_pressed("LEFT") { player.x = player.x - player.speed }
+    if pg.is_key_pressed("D") or pg.is_key_pressed("RIGHT") { player.x = player.x + player.speed }
+    if pg.is_key_pressed("W") or pg.is_key_pressed("UP") { player.y = player.y - player.speed }
+    if pg.is_key_pressed("S") or pg.is_key_pressed("DOWN") { player.y = player.y + player.speed }
+    
+    // Bounds
+    if player.x < 0 { player.x = 0 }
+    if player.x > 610 { player.x = 610 }
+    if player.y < 200 { player.y = 200 }
+    if player.y > 450 { player.y = 450 }
+
+    // Shooting
+    if player.shoot_cooldown > 0 {
+        player.shoot_cooldown = player.shoot_cooldown - 1
+    }
+    if pg.is_key_pressed("SPACE") and player.shoot_cooldown <= 0 {
+        bullets.append({"x": player.x + 13, "y": player.y - 10, "w": 4, "h": 12, "active": true})
+        player.shoot_cooldown = 15
+    }
+
+    // Spawn Enemies
+    spawn_timer = spawn_timer + 1
+    if spawn_timer > difficulty {
+        enemies.append({
+            x: random.rangeInt(50, 590),
+            y: -30,
+            w: 30,
+            h: 30,
+            speed_y: random.rangeFloat(1.5, 3.5),
+            speed_x: random.rangeFloat(-1, 1),
+            shoot_timer: random.rangeInt(40, 120),
+            active: true,
+            type: random.rangeInt(0, 2) 
+        })
+        spawn_timer = 0
+        if difficulty > 15 { difficulty = difficulty - 0.2 }
+    }
+
+    // Update Bullets
+    for i in 0:bullets.len() {
+        let b = bullets[i]
+        b.y = b.y - 12
+        if b.y < -20 { b.active = false }
+    }
+
+    // Update Enemies
+    for i in 0:enemies.len() {
+        let e = enemies[i]
+        e.y = e.y + e.speed_y
+        if e.type == 1 {
+            e.x = e.x + e.speed_x * 2
+            if e.x < 10 or e.x > 600 { e.speed_x = 0 - e.speed_x }
+        }
+
+        if e.y > 480 { e.active = false }
+        
+        // Shoot
+        e.shoot_timer = e.shoot_timer - 1
+        if e.shoot_timer <= 0 {
+            enemy_bullets.append({"x": e.x + 13, "y": e.y + 30, "w": 4, "h": 10, "active": true})
+            e.shoot_timer = random.rangeInt(80, 200)
+        }
+
+        // Collisions
+        for j in 0:bullets.len() {
+            let b = bullets[j]
+            if b.active and b.x < e.x + e.w and b.x + b.w > e.x and b.y < e.y + e.h and b.y + b.h > e.y {
+                e.active = false
+                b.active = false
+                score = score + 150
+                explode(e.x + 15, e.y + 15, [255, 100, 0])
+            }
+        }
+
+        if e.active and e.x < player.x + player.w and e.x + e.w > player.x and e.y < player.y + player.h and e.y + e.h > player.y {
+            e.active = false
+            lives = lives - 1
+            explode(player.x + 15, player.y + 10, [255, 0, 0])
+            if lives <= 0 { state = "GAMEOVER" }
+        }
+    }
+
+    // Update Enemy Bullets
+    for i in 0:enemy_bullets.len() {
+        let eb = enemy_bullets[i]
+        eb.y = eb.y + 6
+        if eb.y > 480 { eb.active = false }
+
+        if eb.active and eb.x < player.x + player.w and eb.x + eb.w > player.x and eb.y < player.y + player.h and eb.y + eb.h > player.y {
+            eb.active = false
+            lives = lives - 1
+            explode(player.x + 15, player.y + 10, [255, 255, 0])
+            if lives <= 0 { state = "GAMEOVER" }
+        }
+    }
+
+    // Clean up
+    let new_bullets = []
+    for i in 0:bullets.len() {
+        if bullets[i].active { new_bullets.append(bullets[i]) }
+    }
+    bullets = new_bullets
+
+    let new_enemies = []
+    for i in 0:enemies.len() {
+        if enemies[i].active { new_enemies.append(enemies[i]) }
+    }
+    enemies = new_enemies
+
+    let new_ebullets = []
+    for i in 0:enemy_bullets.len() {
+        if enemy_bullets[i].active { new_ebullets.append(enemy_bullets[i]) }
+    }
+    enemy_bullets = new_ebullets
+
+    let new_particles = []
+    for i in 0:particles.len() {
+        let p = particles[i]
+        p.x = p.x + p.vx
+        p.y = p.y + p.vy
+        p.life = p.life - 1
+        if p.life > 0 { new_particles.append(p) }
+    }
+    particles = new_particles
+}
+
+fn draw(screen) {
+    pg.draw_rect(screen, 0, 0, 640, 480, 5, 5, 15, 255)
+
+    for i in 0:stars.len() {
+        let s = stars[i]
+        pg.draw_rect(screen, s.x, s.y, s.size, s.size, 200, 200, 255, 150)
+    }
+
+    if state == "START" {
+        draw_text_centered(screen, title_font, "STAR SENTINEL", 150, 0, 255, 255)
+        draw_text_centered(screen, ui_font, "PROTECT THE SECTOR", 200, 255, 255, 255)
+        
+        pg.draw_rect(screen, 150, 250, 340, 100, 20, 20, 40, 200)
+        pg.draw_text(screen, ui_font, "CONTROLS:", 170, 265, 255, 255, 0)
+        pg.draw_text(screen, ui_font, "- WASD / ARROWS TO MOVE", 170, 290, 200, 200, 200)
+        pg.draw_text(screen, ui_font, "- SPACE TO FIRE", 170, 315, 200, 200, 200)
+        
+        draw_text_centered(screen, ui_font, "PRESS ENTER TO START", 380, 255, 255, 255)
+        return
+    }
+
+    if state == "GAMEOVER" {
+        pg.draw_rect(screen, 120, 180, 400, 120, 30, 0, 0, 200)
+        draw_text_centered(screen, title_font, "MISSION FAILED", 200, 255, 0, 0)
+        draw_text_centered(screen, ui_font, "FINAL SCORE: " + string(score), 240, 255, 255, 0)
+        draw_text_centered(screen, ui_font, "PRESS ENTER TO REDEPLOY", 270, 255, 255, 255)
+        return
+    }
+
+    pg.draw_rect(screen, player.x, player.y, player.w, player.h, 0, 200, 255, 255)
+    pg.draw_rect(screen, player.x + 10, player.y - 5, 10, 5, 255, 255, 255, 255)
+
+    for i in 0:bullets.len() {
+        let b = bullets[i]
+        pg.draw_rect(screen, b.x, b.y, b.w, b.h, 255, 255, 0, 255)
+    }
+
+    for i in 0:enemies.len() {
+        let e = enemies[i]
+        pg.draw_rect(screen, e.x, e.y, e.w, e.h, 255, 60, 60, 255)
+        pg.draw_rect(screen, e.x + 5, e.y + 5, e.w - 10, 3, 255, 255, 255, 100)
+    }
+
+    for i in 0:enemy_bullets.len() {
+        let eb = enemy_bullets[i]
+        pg.draw_rect(screen, eb.x, eb.y, eb.w, eb.h, 255, 150, 0, 255)
+    }
+
+    for i in 0:particles.len() {
+        let p = particles[i]
+        let a = p.life * 5
+        if a > 255 { a = 255 }
+        pg.draw_rect(screen, p.x, p.y, 2, 2, p.color[0], p.color[1], p.color[2], a)
+    }
+
+    pg.draw_rect(screen, 0, 0, 640, 30, 0, 0, 0, 180)
+    pg.draw_text(screen, ui_font, "SENTINEL ALPHA", 20, 10, 0, 255, 255)
+    pg.draw_text(screen, ui_font, "SCORE: " + string(score), 250, 10, 255, 255, 0)
+    pg.draw_text(screen, ui_font, "LIVES: " + string(lives), 520, 10, 255, 0, 0)
+}
+
+pg.run(update, draw)

@@ -168,6 +168,12 @@ func (p *Parser) statement() Result[ASTNode] {
 				return ResErr[ASTNode](ifRes.Err)
 			}
 			return ResOk[ASTNode](ifRes.Value)
+		case "use":
+			useRes := p.useStatement()
+			if useRes.IsErr() {
+				return ResErr[ASTNode](useRes.Err)
+			}
+			return ResOk[ASTNode](useRes.Value)
 		}
 	} else if p.match(TokenLCurlyBrace) {
 		blockResult := p.block()
@@ -405,13 +411,13 @@ func (p *Parser) ranges() Result[Expr] {
 		}
 		endExpr := endExprRes.Value
 
-		var stepExpr *Expr = nil
+		var stepExpr Expr = nil
 		if p.match(TokenColon) {
 			stepExprRes := p.logical_and()
 			if stepExprRes.IsErr() {
 				return stepExprRes
 			}
-			stepExpr = &stepExprRes.Value
+			stepExpr = stepExprRes.Value
 		}
 
 		return ResOk(Expr(
@@ -796,6 +802,32 @@ func (p *Parser) array_literal() Result[Expr] {
 	return ResOk[Expr](&ArrayExpr{Token: p.previous(), Elements: elements})
 }
 
+func (p *Parser) useStatement() Result[Stmt] {
+	useTok := p.previous()
+
+	// accept "module" or module (ident)
+	var moduleName *Token
+	if p.check(TokenString) {
+		moduleName = p.advance()
+	} else if p.check(TokenIdent) {
+		moduleName = p.advance()
+	} else {
+		return ResErr[Stmt](NewParserError("Expected module name as a string or identifier after 'use'", p.current().Loc))
+	}
+
+	var alias *Token
+	if p.matchKeyword("as") {
+		aliasRes := p.consume(TokenIdent, "Expected alias identifier after 'as'")
+		if aliasRes.IsErr() {
+			return ResErr[Stmt](aliasRes.Err)
+		}
+		alias = aliasRes.Value
+	}
+
+	p.match(TokenSemiColon)
+	return ResOk[Stmt](&UseStmt{Token: useTok, Module: moduleName, Alias: alias})
+}
+
 func (p *Parser) whileStatement() Result[Stmt] {
 	whileTok := p.previous()
 
@@ -953,7 +985,7 @@ func (p *Parser) returnStatement() Result[Stmt] {
 
 	return ResOk[Stmt](&ReturnStmt{
 		Token: returnTok,
-		Value: &valueExpr,
+		Value: valueExpr,
 	})
 }
 

@@ -206,6 +206,8 @@ func (c *Compiler) compileNode(node ASTNode) error {
 		return c.visitBreakStmt(n)
 	case *ContinueStmt:
 		return c.visitContinueStmt(n)
+	case *UseStmt:
+		return c.visitUseStmt(n)
 	default:
 		// This is the equivalent of Python's `generic_visit` for unhandled cases.
 		return fmt.Errorf("compiler error: unhandled AST node type %T", n)
@@ -499,7 +501,7 @@ func (c *Compiler) visitRangeSpecifier(node *RangeSpecifier) error {
 	}
 
 	if node.Step != nil {
-		if err := c.compileNode(*node.Step); err != nil {
+		if err := c.compileNode(node.Step); err != nil {
 			return err
 		}
 	} else {
@@ -880,9 +882,24 @@ func (c *Compiler) visitFunctionExpr(node *FunctionExpr) error {
 	return nil
 }
 
+type UseInfo struct {
+	ModuleIdx int
+	AliasIdx  int // -1 if no alias
+}
+
+func (c *Compiler) visitUseStmt(node *UseStmt) error {
+	nameIdx := c.addConstant(StringObj{Value: node.Module.Value})
+	aliasIdx := -1
+	if node.Alias != nil {
+		aliasIdx = c.addConstant(StringObj{Value: node.Alias.Value})
+	}
+	c.emitInstruct(OpUse, &UseInfo{ModuleIdx: nameIdx, AliasIdx: aliasIdx}, node.Token)
+	return nil
+}
+
 func (c *Compiler) visitReturnStmt(node *ReturnStmt) error {
 	if node.Value != nil {
-		if err := c.compileNode(*node.Value); err != nil {
+		if err := c.compileNode(node.Value); err != nil {
 			return err
 		}
 	} else {

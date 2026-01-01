@@ -136,6 +136,14 @@ func DisassembleBytecode(chunk *BytecodeChunk) string {
 					default:
 						line += " (INVALID CONSTANT TYPE)"
 					}
+				case OpUse:
+					if info, ok := operandVal.(*UseInfo); ok {
+						if info.AliasIdx != -1 {
+							line += fmt.Sprintf(" (%v as %v)", chunk.Constants[info.ModuleIdx], chunk.Constants[info.AliasIdx])
+						} else {
+							line += fmt.Sprintf(" (%v)", chunk.Constants[info.ModuleIdx])
+						}
+					}
 				}
 			}
 			parts = append(parts, line+"\n")
@@ -147,6 +155,12 @@ func DisassembleBytecode(chunk *BytecodeChunk) string {
 	return strings.Join(parts, "")
 }
 
+// Panics if function registration fails
+func ModuleMustRegister(module *ModuleObj, name string, fn any, doc *DocstringObj) {
+	if err := module.RegisterFunction(name, fn, doc); err != nil {
+		panic(fmt.Sprintf("Failed to register %s: %v", name, err))
+	}
+}
 
 func ReturnOk(value Object) *ResultObject {
 	return &ResultObject{Value: value, Error: nil}
@@ -186,4 +200,55 @@ func CreateError(message string) ErrorObj {
 
 func CreateErrorf(format string, args ...interface{}) ErrorObj {
 	return ErrorObj{Message: fmt.Sprintf(format, args...)}
+}
+
+// ToGoValue converts Pyle Objects to Go interface{} (primitives, slices, maps) for JSON marshaling or other Go interop.
+func ToGoValue(obj Object) interface{} {
+	if obj == nil {
+		return nil
+	}
+	switch o := obj.(type) {
+	case StringObj:
+		return o.Value
+	case NumberObj:
+		if o.IsInt {
+			return int64(o.Value)
+		}
+		return o.Value
+	case BooleanObj:
+		return o.Value
+	case NullObj:
+		return nil
+	case *ArrayObj:
+		slice := make([]interface{}, len(o.Elements))
+		for i, elem := range o.Elements {
+			slice[i] = ToGoValue(elem)
+		}
+		return slice
+	case *MapObj:
+		m := make(map[string]interface{})
+		for _, bucket := range o.Pairs {
+			for _, pair := range bucket {
+				var keyStr string
+				if s, ok := pair.Key.(StringObj); ok {
+					keyStr = s.Value
+				} else {
+					keyStr = pair.Key.String()
+				}
+				m[keyStr] = ToGoValue(pair.Value)
+			}
+		}
+		return m
+	case *UserObject:
+		return o.Value
+	case *ResultObject:
+		if o.Error != nil {
+			return map[string]interface{}{
+				"error": o.Error.Message,
+			}
+		}
+		return ToGoValue(o.Value)
+	default:
+		return o.String()
+	}
 }

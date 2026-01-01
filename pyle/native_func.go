@@ -9,6 +9,22 @@ import (
 type NativeFunc0 func(vm *VM) (Object, Error)
 type NativeFunc1 func(vm *VM, arg Object) (Object, Error)
 type NativeFunc2 func(vm *VM, arg1, arg2 Object) (Object, Error)
+type NativeFunc3 func(vm *VM, arg1, arg2, arg3 Object) (Object, Error)
+
+type ArgSpec struct {
+	Type reflect.Type
+	Name string
+}
+
+type FunctionMetadata struct {
+	Name         string
+	Args         []ArgSpec
+	Returns      []reflect.Type
+	IsVariadic   bool
+	FnValue      reflect.Value
+	ReturnsError bool
+	WantsVM      bool
+}
 
 func CreateNativeFunction(name string, fn any, doc *DocstringObj) (*NativeFuncObj, error) {
 	if directCall, arity, ok := createDirectCall(fn); ok {
@@ -44,6 +60,13 @@ func createDirectCall(fn any) (any, int, bool) {
 			}
 			return res, nil
 		}), 0, true
+
+	case NativeFunc1:
+		return f, 1, true
+	case NativeFunc2:
+		return f, 2, true
+	case NativeFunc3:
+		return f, 3, true
 
 	case func() (int64, error):
 		return NativeFunc0(func(vm *VM) (Object, Error) {
@@ -408,10 +431,24 @@ func createTypeConverter(targetType reflect.Type) func(Object) (reflect.Value, e
 			}
 			return reflect.Value{}, fmt.Errorf("expected integer, got %s", obj.Type())
 		}
+	case reflect.Int32:
+		return func(obj Object) (reflect.Value, error) {
+			if numObj, ok := obj.(NumberObj); ok && numObj.IsInt {
+				return reflect.ValueOf(int32(numObj.Value)), nil
+			}
+			return reflect.Value{}, fmt.Errorf("expected integer, got %s", obj.Type())
+		}
 	case reflect.Float64:
 		return func(obj Object) (reflect.Value, error) {
 			if numObj, ok := obj.(NumberObj); ok {
 				return reflect.ValueOf(numObj.Value), nil
+			}
+			return reflect.Value{}, fmt.Errorf("expected number, got %s", obj.Type())
+		}
+	case reflect.Float32:
+		return func(obj Object) (reflect.Value, error) {
+			if numObj, ok := obj.(NumberObj); ok {
+				return reflect.ValueOf(float32(numObj.Value)), nil
 			}
 			return reflect.Value{}, fmt.Errorf("expected number, got %s", obj.Type())
 		}
@@ -487,6 +524,22 @@ func createTypeConverter(targetType reflect.Type) func(Object) (reflect.Value, e
 
 // Convert VM Object to Go value using reflection
 func convertVMObjectToGoValue(obj Object, targetType reflect.Type) (reflect.Value, error) {
+	// If the target is the Object interface itself, just pass it through
+	if targetType == reflect.TypeOf((*Object)(nil)).Elem() {
+		return reflect.ValueOf(obj), nil
+	}
+	// Special handling for UserObject unwrapping
+	if userObj, ok := obj.(*UserObject); ok {
+		val := reflect.ValueOf(userObj.Value)
+		if val.Type().AssignableTo(targetType) {
+			return val, nil
+		}
+		// Try conversions if types don't match exactly but are compatible (e.g. interface implementation)
+		if val.Type().ConvertibleTo(targetType) {
+			return val.Convert(targetType), nil
+		}
+	}
+
 	// Hybrid approach: Fast path for common types, slower reflection for the rest.
 	switch targetType.Kind() {
 	case reflect.Ptr:
@@ -580,6 +633,41 @@ func convertVMObjectToGoValue(obj Object, targetType reflect.Type) (reflect.Valu
 			return goSlice, nil
 		}
 		return reflect.Value{}, fmt.Errorf("expected array, got %s", obj.Type())
+
+	case reflect.Map:
+		if mapObj, ok := obj.(*MapObj); ok {
+			keyType := targetType.Key()
+			valType := targetType.Elem()
+			goMap := reflect.MakeMap(targetType)
+			for _, bucket := range mapObj.Pairs {
+				for _, pair := range bucket {
+					k, err := convertVMObjectToGoValue(pair.Key, keyType)
+					if err != nil {
+						return reflect.Value{}, fmt.Errorf("error converting map key: %v", err)
+					}
+					v, err := convertVMObjectToGoValue(pair.Value, valType)
+					if err != nil {
+						return reflect.Value{}, fmt.Errorf("error converting map value: %v", err)
+					}
+					goMap.SetMapIndex(k, v)
+				}
+			}
+			return goMap, nil
+		}
+		return reflect.Value{}, fmt.Errorf("expected map, got %s", obj.Type())
+
+	case reflect.Interface:
+		// If it's a generic interface{}, use ToGoValue to get a clean Go representation
+		if targetType.NumMethod() == 0 {
+			return reflect.ValueOf(ToGoValue(obj)), nil
+		}
+		// If it's a specific interface, check if the Object itself implements it
+		val := reflect.ValueOf(obj)
+		if val.Type().Implements(targetType) {
+			return val, nil
+		}
+		return reflect.Value{}, fmt.Errorf("object of type %s does not implement interface %s", obj.Type(), targetType)
+
 	default:
 		return reflect.Value{}, fmt.Errorf("unsupported Go type: %v", targetType.Kind())
 	}
@@ -647,6 +735,7 @@ func convertGoValueToVMObject(value reflect.Value) (Object, error) {
 		}
 		return &ArrayObj{Elements: elements}, nil
 	default:
-		return nil, fmt.Errorf("Unsupported Go type: %v", value.Kind())
+		// Wrap unknown types in UserObject
+		return &UserObject{Value: value.Interface()}, nil
 	}
 }

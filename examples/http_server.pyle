@@ -1,0 +1,20 @@
+use http
+use time
+
+echo("Pyle HTTP Server Example")
+
+http.handle("/", fn(req, res) {
+    echo("Request:", req.Method, req.URL)
+    res.setHeader("Content-Type", "text/html")
+    res.send("<h1>Hello from Pyle!</h1><p>Running on the internal HTTP module.</p>")
+})
+
+http.handle("/api/time", fn(req, res) {
+    res.sendJson({
+        time: string(time.time())
+    })?
+})
+
+echo("Starting server on http://127.0.0.1:8080")
+http.listen(":8080")
+ 

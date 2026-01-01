@@ -182,6 +182,21 @@ func methodArrayPop(receiver *ArrayObj) Object {
 	receiver.Elements = receiver.Elements[:len(receiver.Elements)-1]
 	return last
 }
+func methodArrayRemove(receiver *ArrayObj, index NumberObj) Object {
+	if !index.IsInt {
+		return ReturnError("index must be an integer")
+	}
+	idx := int(index.Value)
+	if idx < 0 || idx >= len(receiver.Elements) {
+		return ReturnErrorf("index out of bounds: %d", idx)
+	}
+	removed := receiver.Elements[idx]
+	receiver.Elements = append(receiver.Elements[:idx], receiver.Elements[idx+1:]...)
+	return removed
+}
+func methodArrayClear(receiver *ArrayObj) {
+	receiver.Elements = nil
+}
 func methodArrayReverse(receiver *ArrayObj) Object{
 	// in place
 	for i, j := 0, len(receiver.Elements)-1; i < j; i, j = i+1, j-1 {
@@ -430,6 +445,8 @@ func init() {
 		"len":     mustCreate("len", methodArrayLen, BuiltinMethodDocs["array"]["len"]),
 		"append":  mustCreate("append", methodArrayAppend, BuiltinMethodDocs["array"]["append"]),
 		"pop":     mustCreate("pop", methodArrayPop, nil),
+		"remove":  mustCreate("remove", methodArrayRemove, nil),
+		"clear":   mustCreate("clear", methodArrayClear, nil),
 		"reverse": mustCreate("reverse", methodArrayReverse, nil),
 		"filter":  mustCreate("filter", methodArrayFilter, nil),
 		"map":     mustCreate("map", methodArrayMap, nil),

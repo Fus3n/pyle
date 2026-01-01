@@ -247,6 +247,18 @@ func LoadDocs() {
 			nil,
 			"tuple",
 		),
+		"remove": NewDocstring(
+			"Removes and returns the element at the specified index.",
+			[]ParamDoc{
+				{"index", "The index of the element to remove."},
+			},
+			"result<object>",
+		),
+		"clear": NewDocstring(
+			"Removes all elements from the array.",
+			nil,
+			"null",
+		),
 	}
 
 	// Map Methods
@@ -414,6 +426,41 @@ func LoadDocs() {
 				{"path", "Path to stat."},
 			},
 			"map",
+		),
+	}
+
+	// Module Methods: Random
+	BuiltinMethodDocs["random"] = map[string]*DocstringObj{
+		"intn": NewDocstring(
+			"Returns a random integer in [0, n).",
+			[]ParamDoc{{"n", "Upper bound (exclusive)."}},
+			"int",
+		),
+		"float": NewDocstring(
+			"Returns a random float in [0.0, 1.0).",
+			[]ParamDoc{},
+			"float",
+		),
+		"int": NewDocstring(
+			"Returns a random non-negative integer.",
+			[]ParamDoc{},
+			"int",
+		),
+		"rangeInt": NewDocstring(
+			"Returns a random integer in [min, max).",
+			[]ParamDoc{
+				{"min", "Minimum value (inclusive)."},
+				{"max", "Maximum value (exclusive)."},
+			},
+			"int",
+		),
+		"rangeFloat": NewDocstring(
+			"Returns a random float in [min, max).",
+			[]ParamDoc{
+				{"min", "Minimum value (inclusive)."},
+				{"max", "Maximum value (exclusive)."},
+			},
+			"float",
 		),
 	}
 }

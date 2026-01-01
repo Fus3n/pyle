@@ -202,6 +202,32 @@ const data = os.readFile("missing.txt").catch(fn(e) {
 })
 ```
 
+## Standard Modules & Interop
+
+Pyle comes with improved built-in modules and a powerful Go interoperability layer.
+
+### HTTP Module
+Create web servers easily using the `http` module.
+```ts
+http.handle("/", fn(req, res) {
+    res.setHeader("Content-Type", "application/json")
+    res.send({ message: "Hello Pyle!" })
+})
+echo("Server starting on :8080")
+http.listen(":8080")
+```
+
+### Game Module (Ebiten)
+Built-in support for the Ebiten game engine (v2).
+```ts
+game.init(640, 480, "Pyle Game")
+game.run(update_fn, draw_fn)
+```
+
+### Go Interop (UserObject)
+Pyle can wrap arbitrary Go objects (structs, images, database connections) and interact with them using reflection.
+- Go methods are mapped automatically (e.g. `obj.MethodName()` in Go is callable as `obj.methodName()` in Pyle).
+
 ## Generating Documentation
 
 To generate HTML documentation for the standard library:

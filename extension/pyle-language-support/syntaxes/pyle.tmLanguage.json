@@ -2,26 +2,52 @@
   "scopeName": "source.pyle",
   "name": "Pyle",
   "patterns": [
-    { "include": "#constant-declarations" },
-    { "include": "#functions" },
-    { "include": "#keywords" },
-    { "include": "#type-hints" },
-    { "include": "#function-calls" },
-    { "include": "#language-constants" },
-    { "include": "#range" },
-    { "include": "#numbers" },
-    { "include": "#strings" },
-    { "include": "#identifiers" },
-    { "include": "#comments" },
-    { "include": "#operators" },
-    { "include": "#brackets" }
+    {
+      "include": "#constant-declarations"
+    },
+    {
+      "include": "#functions"
+    },
+    {
+      "include": "#keywords"
+    },
+    {
+      "include": "#type-hints"
+    },
+    {
+      "include": "#function-calls"
+    },
+    {
+      "include": "#language-constants"
+    },
+    {
+      "include": "#range"
+    },
+    {
+      "include": "#numbers"
+    },
+    {
+      "include": "#strings"
+    },
+    {
+      "include": "#identifiers"
+    },
+    {
+      "include": "#comments"
+    },
+    {
+      "include": "#operators"
+    },
+    {
+      "include": "#brackets"
+    }
   ],
   "repository": {
     "keywords": {
       "patterns": [
         {
           "name": "keyword.control.pyle",
-          "match": "\\b(and|or|not|for|in|if|else|while|return|continue|break|fn|let)\\b"
+          "match": "\\b(and|or|not|for|in|if|else|while|return|continue|break|fn|let|use|as)\\b"
         }
       ]
     },
@@ -137,8 +163,12 @@
           "name": "meta.declaration.constant.pyle",
           "match": "\\b(const)\\s+([a-zA-Z_][a-zA-Z0-9_]*)\\b",
           "captures": {
-            "1": { "name": "storage.type.pyle" },
-            "2": { "name": "variable.other.constant.pyle" }
+            "1": {
+              "name": "storage.type.pyle"
+            },
+            "2": {
+              "name": "variable.other.constant.pyle"
+            }
           }
         }
       ]
@@ -149,8 +179,12 @@
           "name": "meta.function.pyle",
           "begin": "\\b(fn)\\b\\s+([a-zA-Z_][a-zA-Z0-9_]*)",
           "beginCaptures": {
-            "1": { "name": "storage.type.function.pyle" },
-            "2": { "name": "entity.name.function.pyle" }
+            "1": {
+              "name": "storage.type.function.pyle"
+            },
+            "2": {
+              "name": "entity.name.function.pyle"
+            }
           },
           "end": "(?=\\()",
           "patterns": []
@@ -163,8 +197,12 @@
           "name": "meta.function-call.pyle",
           "match": "\\b([a-zA-Z_][a-zA-Z0-9_]*)\\s*(\\()",
           "captures": {
-            "1": { "name": "entity.name.function.pyle" },
-            "2": { "name": "punctuation.section.arguments.begin.pyle" }
+            "1": {
+              "name": "entity.name.function.pyle"
+            },
+            "2": {
+              "name": "punctuation.section.arguments.begin.pyle"
+            }
           }
         }
       ]

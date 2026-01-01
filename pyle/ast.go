@@ -95,8 +95,10 @@ func Walk(node ASTNode, visitor Visitor) {
 		Walk(n.Start, visitor)
 		Walk(n.End, visitor)
 		if n.Step != nil {
-			Walk(*n.Step, visitor)
+			Walk(n.Step, visitor)
 		}
+	case *UseStmt:
+		// no children to walk
 	}
 }
 
@@ -380,7 +382,7 @@ type RangeSpecifier struct {
 	Token *Token
 	Start Expr
 	End   Expr
-	Step  *Expr
+	Step  Expr
 }
 
 func (a *RangeSpecifier) TypeString() string { return "range" }
@@ -758,14 +760,14 @@ func (s *FunctionDefStmt) MarshalJSON() ([]byte, error) {
 
 type ReturnStmt struct {
 	Token *Token
-	Value *Expr
+	Value Expr
 }
 
 func (a *ReturnStmt) TypeString() string { return "" }
 func (s *ReturnStmt) GetToken() *Token   { return s.Token }
 func (s *ReturnStmt) String() string {
 	if s.Value != nil {
-		return fmt.Sprintf("ReturnStmt (\n  Value: %v\n)", *s.Value)
+		return fmt.Sprintf("ReturnStmt (\n  Value: %v\n)", s.Value)
 	}
 	return "ReturnStmt (No Value)"
 }
@@ -777,6 +779,32 @@ func (s *ReturnStmt) MarshalJSON() ([]byte, error) {
 		*Alias
 	}{
 		Type:  "ReturnStmt",
+		Alias: (*Alias)(s),
+	})
+}
+
+type UseStmt struct {
+	Token  *Token
+	Module *Token
+	Alias  *Token
+}
+
+func (a *UseStmt) TypeString() string { return "" }
+func (s *UseStmt) GetToken() *Token   { return s.Token }
+func (s *UseStmt) String() string {
+	if s.Alias != nil {
+		return fmt.Sprintf("UseStmt (Module: %s as %s)", s.Module.Value, s.Alias.Value)
+	}
+	return fmt.Sprintf("UseStmt (Module: %s)", s.Module.Value)
+}
+func (s *UseStmt) stmtNode() {}
+func (s *UseStmt) MarshalJSON() ([]byte, error) {
+	type Alias UseStmt
+	return json.Marshal(&struct {
+		Type string `json:"type"`
+		*Alias
+	}{
+		Type:  "UseStmt",
 		Alias: (*Alias)(s),
 	})
 }

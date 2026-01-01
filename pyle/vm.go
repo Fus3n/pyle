@@ -5,6 +5,7 @@ import (
 	"io"
 	"math"
 	"os"
+	"sync"
 )
 
 type CallFrame struct {
@@ -17,6 +18,7 @@ type CallFrame struct {
 const InitialStackCapacity = 256
 
 type VM struct {
+	mu            sync.Mutex
 	bytecodeChunk []Instruction
 	constants     []Object
 	ip            int
@@ -26,6 +28,8 @@ type VM struct {
 	environments  []map[string]*Variable
 	frames        []*CallFrame
 	Stdout        io.Writer
+
+	moduleRegistry map[string]func(*VM) Object
 }
 
 func NewVM() *VM {
@@ -36,15 +40,17 @@ func NewVM() *VM {
 		environments: make([]map[string]*Variable, 0),
 		frames:       make([]*CallFrame, 0),
 		Stdout:       os.Stdout,
+		moduleRegistry: make(map[string]func(*VM) Object),
 	}
 }
 
 func (vm *VM) AddGlobal(name string, value Object) Error {
-	if _, ok := vm.globals[name]; ok {
-		return vm.runtimeError(value.GetLocation(), "Global variable '%s' already defined", name)
-	}
 	vm.globals[name] = &Variable{Name: name, Value: value, IsConst: false}
 	return nil
+}
+
+func (vm *VM) RegisterBuiltinModule(name string, constructor func(*VM) Object) {
+	vm.moduleRegistry[name] = constructor
 }
 
 func (vm *VM) RegisterModule(name string, funcs map[string]any, doc *DocstringObj) Error {
@@ -76,11 +82,34 @@ func (vm *VM) LoadBuiltins() error {
 		}
 	}
 
+	// Register modules for lazy loading via 'use'
 	for name, functions := range BuiltinModules {
-		if err := vm.RegisterModule(name, functions, BuiltinModuleDocs[name]); err != nil {
-			return err
-		}
+		mName := name
+		funcs := functions
+		doc := BuiltinModuleDocs[mName]
+		vm.RegisterBuiltinModule(mName, func(vm *VM) Object {
+			module := NewModule(mName)
+			module.Doc = doc
+			for funcName, fn := range funcs {
+				var fnDoc *DocstringObj
+				docMap, ok := BuiltinMethodDocs[mName]
+				if ok {
+					fnDoc = docMap[funcName]
+				}
+				nativeFunc, _ := CreateNativeFunction(funcName, fn, fnDoc)
+				module.Methods.Set(StringObj{Value: funcName}, nativeFunc)
+			}
+			return module
+		})
 	}
+
+	vm.RegisterBuiltinModule("http", func(vm *VM) Object {
+		return CreateHttpModule(vm)
+	})
+
+	vm.RegisterBuiltinModule("pylegame", func(vm *VM) Object {
+		return CreateGameModule(vm)
+	})
 
 	return nil
 }
@@ -106,7 +135,20 @@ func (vm *VM) Interpret(bytecodeChunk []Instruction, constants []Object) Result[
 	return vm.run(0)
 }
 
+
+
+func (vm *VM) Lock() {
+	vm.mu.Lock()
+}
+
+func (vm *VM) Unlock() {
+	vm.mu.Unlock()
+}
+
 func (vm *VM) CallFunction(callable Object, args []Object) (Object, Error) {
+	vm.mu.Lock()
+	defer vm.mu.Unlock()
+
 	stackBottom := vm.sp
 	vm.push(callable)
 	for _, arg := range args {
@@ -263,6 +305,10 @@ func (vm *VM) handleCall(numArgs int, loc Loc) (bool, Error) {
 			case 2:
 				if fn, ok := c.DirectCall.(NativeFunc2); ok {
 					result, err = fn(vm, args[0], args[1])
+				}
+			case 3:
+				if fn, ok := c.DirectCall.(NativeFunc3); ok {
+					result, err = fn(vm, args[0], args[1], args[2])
 				}
 			}
 
@@ -535,6 +581,28 @@ func (vm *VM) run(targetFrameDepth int) Result[Object] {
 				variable.Value = valToAssign
 			} else {
 				return vm.runtimeErrorRes(currentTok.Loc, "Cannot assign to undefined local variable '%s'", varScoped.Name)
+			}
+
+		case OpUse:
+			useInfo := operand.(*UseInfo)
+			name := vm.constants[useInfo.ModuleIdx].(StringObj).Value
+
+			alias := name
+			if useInfo.AliasIdx != -1 {
+				alias = vm.constants[useInfo.AliasIdx].(StringObj).Value
+			}
+
+			// Check if already in globals under this alias
+			if _, loaded := vm.globals[alias]; loaded {
+				continue
+			}
+
+			// Check registry
+			if constructor, ok := vm.moduleRegistry[name]; ok {
+				module := constructor(vm)
+				vm.AddGlobal(alias, module)
+			} else {
+				return vm.runtimeErrorRes(currentTok.Loc, "Module '%s' not found", name)
 			}
 
 		case OpAdd, OpSubtract, OpMultiply, OpDivide, OpModulo:

@@ -1,6 +1,7 @@
 package pyle
 
 import (
+	"math/rand"
 	"os"
 	"time"
 )
@@ -111,6 +112,24 @@ func nativeOsStat(path string) *ResultObject {
 	return ReturnOk(m) 
 }
 
+func nativeRandomIntn(n int) int {
+	return rand.Intn(n)
+}
+
+func nativeRandomFloat() float64 {
+	return rand.Float64()
+}
+func nativeRandomInt() int {
+	return rand.Int()
+}
+func nativeRandomRangeInt(min int, max int) int {
+	return rand.Intn(max - min) + min
+}
+
+func nativeRandomRangeFloat(min float64, max float64) float64 {
+	return rand.Float64() * (max - min) + min
+}
+
 func init() {
 	BuiltinModules = make(map[string]map[string]any)
 
@@ -137,5 +156,13 @@ func init() {
 		"stat":       nativeOsStat,
 	}
 
+	// random module
+	BuiltinModules["random"] = map[string]any{
+		"intn": nativeRandomIntn,
+		"float": nativeRandomFloat,
+		"int": nativeRandomInt,
+		"rangeInt": nativeRandomRangeInt,
+		"rangeFloat": nativeRandomRangeFloat,
+	}
 
 }

@@ -9,7 +9,7 @@ type TokenType int
 
 var KeywordConsts = []string{
 	"and", "or", "not", "for", "in", "if", "else", "let",
-	"true", "false", "while", "fn", "return", "break", "continue", "const", "null",
+	"true", "false", "while", "fn", "return", "break", "continue", "const", "null", "use", "as",
 }
 
 func IsKeyword(s string) bool {

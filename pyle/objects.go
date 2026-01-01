@@ -327,6 +327,21 @@ func (m *ModuleObj) GetAttribute(name string) (Object, bool, Error) {
 	}
 	return NullObj{}, true, nil
 }
+func (m *ModuleObj) RegisterFunction(name string, fn any, doc *DocstringObj) Error {
+	// Create a minimal docstring (can be expanded later to accept doc string arg)
+	if doc == nil {
+		doc = NewDocstring(name, []ParamDoc{}, "any")
+	}
+	
+	nativeFunc, err := CreateNativeFunction(name, fn, doc)
+	if err != nil {
+		return NewRuntimeError(fmt.Sprintf("Error creating native function '%s': %v", name, err), Loc{})
+	}
+
+	m.Methods.Set(StringObj{Value: name}, nativeFunc)
+	return nil
+}
+
 func (m *ModuleObj) String() string {
 	return fmt.Sprintf("<module '%s'>", m.Name)
 }
@@ -722,6 +737,7 @@ func (o *ResultIteratorObj) Iter() (Iterator, Error) {
 }
 
 
+
 type TupleIteratorObj struct {
 	DebugInfo
 	Tuple *TupleObj
@@ -743,19 +759,78 @@ func (o *TupleIteratorObj) Iter() (Iterator, Error) {
 	return o, nil
 }
 
-type ArgSpec struct {
-	Type reflect.Type
-	Name string
+// Wrapper for arbitrary Go types
+type UserObject struct {
+	DebugInfo
+	Value   interface{}
+	methods map[string]*NativeFuncObj
 }
 
-type FunctionMetadata struct {
-	Name         string
-	Args         []ArgSpec
-	Returns      []reflect.Type
-	IsVariadic   bool
-	FnValue      reflect.Value
-	ReturnsError bool
-	WantsVM      bool
+func (u *UserObject) String() string {
+	return fmt.Sprintf("%v", u.Value)
+}
+func (u *UserObject) Type() string {
+	return fmt.Sprintf("%T", u.Value)
+}
+func (u *UserObject) IsTruthy() bool {
+	return u.Value != nil
+}
+func (u *UserObject) Iter() (Iterator, Error) {
+	return nil, NewRuntimeError("user object is not iterable", u.GetLocation())
+}
+
+func (u *UserObject) GetAttribute(name string) (Object, bool, Error) {
+	val := reflect.ValueOf(u.Value)
+
+	// If it's a pointer, dereference it for field access, but keep original for method access
+	var elemVal reflect.Value
+	if val.Kind() == reflect.Ptr {
+		elemVal = val.Elem()
+	} else {
+		elemVal = val
+	}
+
+	// 1. Try to find a field (if it's a struct)
+	if elemVal.Kind() == reflect.Struct {
+		field := elemVal.FieldByName(name)
+		if field.IsValid() {
+			// Convert the field value back to a Pyle object
+			obj, err := convertGoValueToVMObject(field)
+			if err != nil {
+				return nil, false, NewRuntimeError(err.Error(), u.GetLocation())
+			}
+			return obj, true, nil
+		}
+	}
+
+	// 2. Try to find a method
+	method := val.MethodByName(name)
+	if !method.IsValid() {
+		// Fallback: Try capitalizing the first letter (e.g. "send" -> "Send")
+		if len(name) > 0 && name[0] >= 'a' && name[0] <= 'z' {
+			upperName := string(rune(name[0]-32)) + name[1:]
+			method = val.MethodByName(upperName)
+		}
+	}
+
+	if method.IsValid() {
+		if u.methods == nil {
+			u.methods = make(map[string]*NativeFuncObj)
+		}
+		if cached, ok := u.methods[name]; ok {
+			return cached, true, nil
+		}
+
+		// Use the centralized binder logic
+		nativeFn, err := CreateNativeFunction(name, method.Interface(), nil)
+		if err != nil {
+			return nil, false, NewRuntimeError(err.Error(), u.GetLocation())
+		}
+		u.methods[name] = nativeFn
+		return nativeFn, true, nil
+	}
+
+	return nil, false, nil
 }
 
 type NativeFuncObj struct {
