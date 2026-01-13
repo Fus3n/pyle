@@ -107,6 +107,7 @@ func LoadDocs() {
 		"pylegame": NewDocstring("A high-performance 2D game engine module based on Ebitengine.", nil, ""),
 		"http":     NewDocstring("This module provides a basic HTTP server for building web applications.", nil, ""),
 		"random":   NewDocstring("This module provides functions for generating random numbers.", nil, ""),
+		"json":     NewDocstring("This module provides functions for working with JSON data.", nil, ""),
 	}
 
 	BuiltinMethodDocs = make(map[string]map[string]*DocstringObj)
@@ -470,19 +471,25 @@ func LoadDocs() {
 	// Module Methods: HTTP
 	BuiltinMethodDocs["http"] = map[string]*DocstringObj{
 		"handle": NewDocstring(
-			"Registers a handler function for a given URI path.",
+			"Registers a handler for the given path pattern. Supports path parameters like /users/:id",
 			[]ParamDoc{
-				{"path", "The URL path to handle (e.g. '/')"},
-				{"handler", "Function(request, response) to call."},
+				{"path", "URL pattern (e.g. '/users/:id')"},
+				{"handler", "Function(req, res) or {GET: fn, POST: fn, ...}"},
+			},
+			"null",
+		),
+		"static": NewDocstring(
+			"Serves static files from a directory at the given route prefix.",
+			[]ParamDoc{
+				{"route", "URL prefix (e.g. '/static')"},
+				{"directory", "Local directory path (e.g. './public')"},
 			},
 			"null",
 		),
 		"listen": NewDocstring(
-			"Starts the HTTP server on the specified address.",
-			[]ParamDoc{
-				{"addr", "The network address to listen on (e.g. ':8080')"},
-			},
-			"result<null>",
+			"Starts the HTTP server.",
+			[]ParamDoc{{"addr", "Address to listen on (e.g. ':8080')"}},
+			"null",
 		),
 	}
 
@@ -575,5 +582,11 @@ func LoadDocs() {
 			},
 			"null",
 		),
+	}
+
+	// Module Methods: Json
+	BuiltinMethodDocs["json"] = map[string]*DocstringObj{
+		"parse":     NewDocstring("Parses a JSON string into a Pyle object (Map or Array).", []ParamDoc{{"text", "JSON string"}}, "Map | Array | String | Number | Boolean | null"),
+		"stringify": NewDocstring("Converts a Pyle object into a JSON string.", []ParamDoc{{"value", "Value to stringify"}}, "string"),
 	}
 }
