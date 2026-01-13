@@ -24,6 +24,7 @@ func main() {
 	}
 	pyle.RegisterHttpModule(vm)
 	pyle.RegisterGameModule(vm)
+	pyle.RegisterJsonModule(vm)
 	
 	p := arg.MustParse(&args)
 

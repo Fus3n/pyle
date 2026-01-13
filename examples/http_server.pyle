@@ -1,20 +1,36 @@
 use http
-use time
 
-echo("Pyle HTTP Server Example")
+echo("Starting simple HTTP server on :8080...")
 
+// basic text handler
 http.handle("/", fn(req, res) {
-    echo("Request:", req.Method, req.URL)
-    res.setHeader("Content-Type", "text/html")
-    res.send("<h1>Hello from Pyle!</h1><p>Running on the internal HTTP module.</p>")
+    res.Send("Hello World! Try /json or /greet/YourName")
 })
 
-http.handle("/api/time", fn(req, res) {
-    res.sendJson({
-        time: string(time.time())
+// JSON response
+http.handle("/json", fn(req, res) {
+    res.SendJson({ 
+        success: true, 
+        message: "This is a JSON response" 
     })?
 })
 
-echo("Starting server on http://127.0.0.1:8080")
+// path parameters
+http.handle("/greet/:name", fn(req, res) {
+    let name = req.Params.name
+    res.Send("Hello " + name + "!")
+})
+
+// method handling (GET vs POST)
+http.handle("/echo", {
+    GET: fn(req, res) {
+        res.Send("Send a POST request here with body to echo it.")
+    },
+    POST: fn(req, res) {
+        // read body and echo it back
+        let body = req.Json()?
+        res.SendJson({ received: body })?
+    }
+})
+
 http.listen(":8080")
- 

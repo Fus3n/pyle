@@ -1,0 +1,109 @@
+use http
+use json
+use os
+use time
+
+const BOARD_FILE = "examples/pyle_board/data/board.json"
+
+// --- Helper Functions ---
+
+fn loadBoard() {
+    if not os.exists(BOARD_FILE)! {
+        // Fallback initial state if file missing
+        return {
+            lanes: [
+                {id: "lane-1", title: "To Do", cards: []},
+                {id: "lane-2", title: "In Progress", cards: []},
+                {id: "lane-3", title: "Done", cards: []}
+            ]
+        }
+    }
+    const content = os.readFile(BOARD_FILE)!
+    return json.parse(content)!
+}
+
+fn saveBoard(board) {
+    const content = json.stringify(board)!
+    os.writeFile(BOARD_FILE, content)!
+}
+
+http.static("/static", "examples/pyle_board/public")
+
+// serve index
+http.handle("/", fn(req, res) {
+    res.SendFile("examples/pyle_board/public/index.html")
+})
+
+// get board state
+http.handle("/api/board", {
+    GET: fn(req, res) {
+        let board = loadBoard()
+        res.SendJson(board)?
+    }
+})
+
+// create Card
+http.handle("/api/cards", {
+    POST: fn(req, res) {
+        let body = req.Json()?
+        let board = loadBoard()
+        let newCard = {
+            id: "card-" + string(hash(body.text)! + hash(string(time.time()))!), // Simple ID generation
+            text: body.text,
+            tag: body.tag
+        }
+
+        // Find lane and append
+        for lane in board.lanes {
+            if lane.id == body.laneId {
+                lane.cards.append(newCard)
+                break
+            }
+        }
+
+        saveBoard(board)
+        res.Status(201).SendJson(newCard)?
+    }
+})
+
+http.handle("/api/cards/move", {
+    PUT: fn(req, res) {
+        const body = req.Json()?
+        const board = loadBoard()
+        let cardToMove = null
+
+        // remove from source lane
+        for lane in board.lanes {
+            if lane.id == body.sourceLaneId {
+                let newCards = []
+                for card in lane.cards {
+                    if card.id == body.cardId {
+                        cardToMove = card
+                    } else {
+                        newCards.append(card)
+                    }
+                }
+                lane.cards = newCards
+            }
+        }
+
+        if cardToMove == null {
+            res.Status(404).SendJson({error: "Card not found"})?
+            return
+        }
+
+        // add to target lane
+        for lane in board.lanes {
+            if lane.id == body.targetLaneId {
+                lane.cards.append(cardToMove)
+                break
+            }
+        }
+
+        saveBoard(board)
+        res.SendJson({success: true})?
+    }
+})
+
+echo("PyleBoard Server running on http://127.0.0.1:3000")
+http.listen(":3000")

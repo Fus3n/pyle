@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PyleBoard</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📋</text></svg>">
+</head>
+<body>
+    <header>
+        <div style="display: flex; align-items: center; gap: 1rem;">
+            <h1>PyleBoard</h1>
+            <span style="font-size: 0.9rem; color: #666;">Kanban Project Manager</span>
+        </div>
+        <button onclick="showAddCardModal()" class="primary" style="width: auto;">+ New Card</button>
+    </header>
+
+    <div class="board" id="board">
+        <!-- Lanes will be injected here -->
+    </div>
+
+    <!-- Add Card Modal -->
+    <div class="modal" id="addCardModal">
+        <div class="modal-content">
+            <h2>Add New Card</h2>
+            <form onsubmit="handleAddCard(event)">
+                <label>Lane</label>
+                <select id="newCardLane" required></select>
+                
+                <label>Content</label>
+                <textarea id="newCardText" rows="3" required placeholder="What needs to be done?"></textarea>
+                
+                <label>Priority</label>
+                <select id="newCardTag">
+                    <option value="High">High Priority</option>
+                    <option value="Medium" selected>Medium Priority</option>
+                    <option value="Low">Low Priority</option>
+                    <option value="None">No Priority</option>
+                </select>
+
+                <div style="display: flex; gap: 1rem; margin-top: 1rem;">
+                    <button type="button" onclick="closeModal()" class="secondary">Cancel</button>
+                    <button type="submit" class="primary">Add Card</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>
