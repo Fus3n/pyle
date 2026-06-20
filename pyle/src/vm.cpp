@@ -399,8 +399,7 @@ bool VM::values_equal(const Value& a, const Value& b) {
                     }
 
                     HeapIdx name_idx = name_val.as_ref;
-                    Value val = eval_stack.back();
-                    globals[name_idx] = val;
+                    globals[name_idx] = pop();
                     break;
                 }
                 case OpCode::SET_GLOBAL: {
@@ -425,7 +424,7 @@ bool VM::values_equal(const Value& a, const Value& b) {
                         return;
                     }
 
-                    it->second = eval_stack.back();
+                    it->second = pop();
                     break;
                 }
                 case OpCode::LOAD_GLOBAL: {
@@ -456,7 +455,7 @@ bool VM::values_equal(const Value& a, const Value& b) {
                     break;
                 }
                 case OpCode::SET_LOCAL: {
-                    eval_stack[frame->stack_base + arg] = eval_stack.back();
+                    eval_stack[frame->stack_base + arg] = pop();
                     break;
                 }
                 case OpCode::CALL: {

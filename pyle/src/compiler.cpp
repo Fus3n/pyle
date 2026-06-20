@@ -158,7 +158,10 @@ namespace pyle {
 
     void Compiler::visit_expression(ExpressionStmt *stmt) {
         stmt->expression->accept(this);
-        emit_instruction(OpCode::POP, 0, 1);
+
+        if (!dynamic_cast<AssignExpr*>(stmt->expression.get())) {
+            emit_instruction(OpCode::POP, 0, 1);
+        }
     }
 
     void Compiler::visit_var_decl(VarDeclStmt *stmt) {
@@ -174,9 +177,7 @@ namespace pyle {
         } else {
             HeapIdx idx = vm.intern_string(stmt->name.lexeme);
             uint32_t const_idx = make_constant(Value(Value::Tag::StringRef, idx));
-
             emit_instruction(OpCode::DEFINE_GLOBAL, const_idx, stmt->name.selection.line);
-            emit_instruction(OpCode::POP, 0, stmt->name.selection.line);
         }
     }
 
@@ -376,7 +377,6 @@ namespace pyle {
         HeapIdx name_idx = vm.intern_string(stmt->name.lexeme);
         uint32_t name_const_idx = make_constant(Value(Value::Tag::StringRef, name_idx));
         emit_instruction(OpCode::DEFINE_GLOBAL, name_const_idx, stmt->name.selection.line);
-        emit_instruction(OpCode::POP, 0, stmt->name.selection.line);
     }
 
     void Compiler::visit_return(ReturnStmt* stmt) {
