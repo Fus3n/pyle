@@ -32,6 +32,7 @@ namespace pyle {
         void begin_scope();
         void end_scope();
         int resolve_local(const Token& name) const;
+        int resolve_global_slot(const Token& name);
 
     public:
         Compiler(VM& vm, ErrorReporter& reporter): reporter(reporter), vm(vm) {};

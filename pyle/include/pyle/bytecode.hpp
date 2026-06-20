@@ -14,6 +14,10 @@ namespace pyle {
         SET_GLOBAL,
         LOAD_GLOBAL,
 
+        LOAD_GLOBAL_SLOT,
+        SET_GLOBAL_SLOT,
+        DEFINE_GLOBAL_SLOT,
+
         // arithmetic
         ADD,
         SUB,

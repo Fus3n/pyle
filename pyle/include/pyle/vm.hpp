@@ -2,6 +2,7 @@
 #include "pyle/bytecode.hpp"
 #include "pyle/value.hpp"
 #include <ankerl/unordered_dense.h>
+#include <vector>
 #include "unordered_set"
 
 namespace pyle {
@@ -26,6 +27,18 @@ namespace pyle {
 
     class VM {
     public:
+        struct CallFrame {
+            HeapIdx function;
+            size_t ip;
+            size_t stack_base;
+        };
+
+        std::vector<Value> eval_stack;
+        std::vector<CallFrame> frames;
+
+        std::vector<Value> global_slots;
+        ankerl::unordered_dense::map<std::string, int> global_slot_map;
+
         HeapIdx alloc(Object obj);
         HeapIdx intern_string(std::string_view str);
 
@@ -44,6 +57,8 @@ namespace pyle {
 
         const auto& get_interned_strings() const { return interned_strings; }
 
+        int declare_global(const std::string& name);
+
         bool is_truthy(const Value& v);
 
         VM() {
@@ -61,14 +76,8 @@ namespace pyle {
         
         std::vector<Object> heap;
         std::vector<HeapIdx> free_list;
-        std::vector<Value> eval_stack;
 
-        struct CallFrame {
-            HeapIdx function;
-            size_t ip;
-            size_t stack_base;
-        };
-        std::vector<CallFrame> frames;
+
 
         struct StringHash {
             using is_transparent = void;
@@ -77,7 +86,6 @@ namespace pyle {
             }
         };
         ankerl::unordered_dense::map<std::string, HeapIdx, StringHash, std::equal_to<>> interned_strings;
-        ankerl::unordered_dense::map<HeapIdx, Value> globals;
 
         static constexpr size_t INITIAL_THRESHOLD = 256;
         size_t gc_threshold = INITIAL_THRESHOLD;

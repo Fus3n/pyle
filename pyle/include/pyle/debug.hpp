@@ -67,6 +67,9 @@ namespace pyle {
                 case OpCode::JUMP:          fmt::print("{:16} {:4}\n", "JUMP", operand); break;
                 case OpCode::LOOP:          fmt::print("{:16} {:4}\n", "LOOP", operand); break;
                 case OpCode::CALL_METHOD: fmt::print("{:16} {:4} (args)\n", "CALL_METHOD", operand); break;
+                case OpCode::LOAD_GLOBAL_SLOT:   fmt::print("{:16} {:4}\n", "LOAD_GLOBAL_SLOT", operand); break;
+                case OpCode::SET_GLOBAL_SLOT:    fmt::print("{:16} {:4}\n", "SET_GLOBAL_SLOT", operand); break;
+                case OpCode::DEFINE_GLOBAL_SLOT: fmt::print("{:16} {:4}\n", "DEFINE_GLOBAL_SLOT", operand); break;
                 default: fmt::print("UNKNOWN OPCODE\n"); break;
             }
         }

@@ -87,6 +87,16 @@ namespace pyle {
         return -1;
     }
 
+    int Compiler::resolve_global_slot(const Token& name) {
+        auto it = vm.global_slot_map.find(std::string(name.lexeme));
+        if (it == vm.global_slot_map.end()) {
+            reporter.report(name.selection, ErrorType::Compile,
+                            fmt::format("Undefined global '{}'.", name.lexeme));
+            return -1;
+        }
+        return it->second;
+    }
+
     Chunk Compiler::compile(const std::vector<std::unique_ptr<Stmt>>& statements) {
         Chunk main_chunk;
         current_chunk = &main_chunk;
@@ -159,9 +169,7 @@ namespace pyle {
     void Compiler::visit_expression(ExpressionStmt *stmt) {
         stmt->expression->accept(this);
 
-        if (!dynamic_cast<AssignExpr*>(stmt->expression.get())) {
-            emit_instruction(OpCode::POP, 0, 1);
-        }
+        emit_instruction(OpCode::POP, 0, 1);
     }
 
     void Compiler::visit_var_decl(VarDeclStmt *stmt) {
@@ -175,9 +183,8 @@ namespace pyle {
         if (scope_depth > 0) {
             locals.push_back(Local{stmt->name, scope_depth});
         } else {
-            HeapIdx idx = vm.intern_string(stmt->name.lexeme);
-            uint32_t const_idx = make_constant(Value(Value::Tag::StringRef, idx));
-            emit_instruction(OpCode::DEFINE_GLOBAL, const_idx, stmt->name.selection.line);
+            int slot = vm.declare_global(std::string(stmt->name.lexeme));
+            emit_instruction(OpCode::DEFINE_GLOBAL_SLOT, slot, stmt->name.selection.line);
         }
     }
 
@@ -187,9 +194,9 @@ namespace pyle {
         if (arg != -1) {
             emit_instruction(OpCode::LOAD_LOCAL, arg, expr->name.selection.line);
         } else {
-            HeapIdx idx = vm.intern_string(expr->name.lexeme);
-            uint32_t const_idx = make_constant(Value(Value::Tag::StringRef, idx));
-            emit_instruction(OpCode::LOAD_GLOBAL, const_idx, expr->name.selection.line);
+            int slot = resolve_global_slot(expr->name);
+            if (slot < 0) return;   // error already reported
+            emit_instruction(OpCode::LOAD_GLOBAL_SLOT, slot, expr->name.selection.line);
         }
     }
 
@@ -201,9 +208,9 @@ namespace pyle {
         if (arg != -1) {
             emit_instruction(OpCode::SET_LOCAL, arg, expr->name.selection.line);
         } else {
-            HeapIdx name_idx = vm.intern_string(expr->name.lexeme);
-            uint32_t const_idx = make_constant(Value(Value::Tag::StringRef, name_idx));
-            emit_instruction(OpCode::SET_GLOBAL, const_idx, expr->name.selection.line);
+            int slot = resolve_global_slot(expr->name);
+            if (slot < 0) return;
+            emit_instruction(OpCode::SET_GLOBAL_SLOT, slot, expr->name.selection.line);
         }
     }
 
@@ -337,7 +344,7 @@ namespace pyle {
         emit_instruction(OpCode::SET_INDEX, 0, 0);
     }
 
-        void Compiler::visit_func_decl(FuncDeclStmt* stmt) {
+    void Compiler::visit_func_decl(FuncDeclStmt* stmt) {
         Function fn;
         fn.name = stmt->name.lexeme;
         fn.arity = stmt->params.size();
@@ -374,9 +381,8 @@ namespace pyle {
         uint32_t fn_const_idx = make_constant(fn_val);
         emit_instruction(OpCode::LOAD_CONST, fn_const_idx, stmt->name.selection.line);
         
-        HeapIdx name_idx = vm.intern_string(stmt->name.lexeme);
-        uint32_t name_const_idx = make_constant(Value(Value::Tag::StringRef, name_idx));
-        emit_instruction(OpCode::DEFINE_GLOBAL, name_const_idx, stmt->name.selection.line);
+        int slot = vm.declare_global(std::string(stmt->name.lexeme));
+        emit_instruction(OpCode::DEFINE_GLOBAL_SLOT, slot, stmt->name.selection.line);
     }
 
     void Compiler::visit_return(ReturnStmt* stmt) {

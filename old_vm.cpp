@@ -104,8 +104,8 @@ namespace pyle {
             mark_value(val);
         }
 
-        for (const Value& val : global_slots) {
-            mark_value(val);
+        for (const auto &pair: globals) {
+            mark_value(pair.second);
         }
 
         for (const auto& frame: frames) {
@@ -216,10 +216,9 @@ namespace pyle {
         }
     }
 
-#define BINARY_OP(op, sync_expr) \
+#define BINARY_OP(op) \
     do { \
         if (eval_stack.size() < 2) { \
-            sync_expr; \
             runtime_error(RuntimeError::StackUnderflow, "Not enough values in the stack to apply binary operation"); \
             return; \
         } \
@@ -235,7 +234,6 @@ namespace pyle {
         } else { \
             std::string msg = fmt::format("Unsupported operand types. a.tag={}, b.tag={}", \
             static_cast<int>(a.tag), static_cast<int>(b.tag)); \
-            sync_expr; \
             runtime_error(RuntimeError::Type, msg); \
             return; \
         } \
@@ -261,10 +259,9 @@ bool VM::values_equal(const Value& a, const Value& b) {
     }
 }
 
-#define COMPARISON_OP(op, sync_expr) \
+#define COMPARISON_OP(op) \
     do { \
         if (eval_stack.size() < 2) { \
-            sync_expr; \
             runtime_error(RuntimeError::StackUnderflow, "Not enough values in the stack to apply comparison operation"); \
             return; \
         } \
@@ -280,7 +277,6 @@ bool VM::values_equal(const Value& a, const Value& b) {
         } else { \
             std::string msg = fmt::format("Unsupported operand types for comparison. a.tag={}, b.tag={}", \
             a.tag_to_string(), b.tag_to_string()); \
-            sync_expr; \
             runtime_error(RuntimeError::Type, msg); \
             return; \
         } \
@@ -303,63 +299,50 @@ bool VM::values_equal(const Value& a, const Value& b) {
         panicked = false;
 
         CallFrame* frame = &frames.back();
-        
-        const uint32_t* instr_data = get_function(*frame).chunk.instr.data();
-        const uint32_t* ip = instr_data + frame->ip;
-        const uint32_t* ip_end = instr_data + get_function(*frame).chunk.instr.size();
-        const Value* const_pool = get_function(*frame).chunk.const_pool.data();
-        size_t const_pool_size = get_function(*frame).chunk.const_pool.size();
-
-        auto sync_ip = [&]() {
-            frame->ip = ip - instr_data;
-        };
 
         while (true) {
             if (panicked) return;
 
-            if (ip >= ip_end) { 
-                sync_ip();
+            Function& func = get_function(*frame);
+            if (frame->ip >= func.chunk.instr.size()) { 
                 runtime_error(RuntimeError::OutOfBounds, "Instruction pointer out of bounds.");
                 return;
             }
-            uint32_t instruction = *ip++;
+            uint32_t instruction = func.chunk.instr[frame->ip++];
 
             OpCode op = get_op(instruction);
             uint32_t arg = get_operand(instruction);
 
             switch (op) {
                 case OpCode::LOAD_CONST: {
-                    if (arg >= const_pool_size) {
-                        sync_ip();
+                    Function& f = get_function(*frame);
+                    if (arg >= f.chunk.const_pool.size()) {
                         runtime_error(RuntimeError::OutOfBounds, "Load constant index out of bounds.");
                         return;
                     }
-                    push(const_pool[arg]);
+                    push(f.chunk.const_pool[arg]);
                     break;
                 }
                 case OpCode::POP: pop(); break;
-                case OpCode::ADD: BINARY_OP(+, sync_ip()); break;
-                case OpCode::SUB: BINARY_OP(-, sync_ip()); break;
-                case OpCode::MUL: BINARY_OP(*, sync_ip()); break;
+                case OpCode::ADD: BINARY_OP(+); break;
+                case OpCode::SUB: BINARY_OP(-); break;
+                case OpCode::MUL: BINARY_OP(*); break;
                 case OpCode::DIV: {
                     if (eval_stack.size() < 2) {
-                        sync_ip();
                         runtime_error(RuntimeError::StackUnderflow, "Stack underflow in division\n");
                         return;
                     }
                     Value b = eval_stack.back();
                     if ((b.tag == Value::Tag::Int && b.as_int == 0) ||
                         (b.tag == Value::Tag::Float && b.as_float == 0.0)) {
-                        sync_ip();
                         runtime_error(RuntimeError::ZeroDivision, "Division by zero.");
                         return;
                     }
-                    BINARY_OP(/, sync_ip());
+                    BINARY_OP(/);
                     break;
                 } 
                 case OpCode::MOD: {
                     if (eval_stack.size() < 2) {
-                        sync_ip();
                         runtime_error(RuntimeError::StackUnderflow, "Not enough values in the stack to apply modulo");
                         return;
                     }
@@ -368,7 +351,6 @@ bool VM::values_equal(const Value& a, const Value& b) {
                     
                     if ((b.tag == Value::Tag::Int && b.as_int == 0) ||
                         (b.tag == Value::Tag::Float && b.as_float == 0.0)) {
-                        sync_ip();
                         runtime_error(RuntimeError::ZeroDivision, "Modulo by zero.");
                         return;
                     }
@@ -383,7 +365,6 @@ bool VM::values_equal(const Value& a, const Value& b) {
                     } else {
                         std::string msg = fmt::format("Unsupported operand types for modulo. a.tag={}, b.tag={}", 
                         static_cast<int>(a.tag), static_cast<int>(b.tag));
-                        sync_ip();
                         runtime_error(RuntimeError::Type, msg);
                         return;
                     }
@@ -401,10 +382,75 @@ bool VM::values_equal(const Value& a, const Value& b) {
                     push(Value(!values_equal(a, b)));
                     break;
                 }
-                case OpCode::LT: COMPARISON_OP(<, sync_ip()); break;
-                case OpCode::LTE: COMPARISON_OP(<=, sync_ip()); break;
-                case OpCode::GT: COMPARISON_OP(>, sync_ip()); break;
-                case OpCode::GTE: COMPARISON_OP(>=, sync_ip()); break;
+                case OpCode::LT: COMPARISON_OP(<); break;
+                case OpCode::LTE: COMPARISON_OP(<=); break;
+                case OpCode::GT: COMPARISON_OP(>); break;
+                case OpCode::GTE: COMPARISON_OP(>=); break;
+                case OpCode::DEFINE_GLOBAL: {
+                    Function& func = get_function(*frame);
+                    if (arg >= func.chunk.const_pool.size()) {
+                        runtime_error(RuntimeError::OutOfBounds, "Constant pool index out of bounds.");
+                        return;
+                    }
+                    Value name_val = func.chunk.const_pool[arg];
+                    if (name_val.tag != Value::Tag::StringRef) {
+                        runtime_error(RuntimeError::Type, "Expected string for global variable name.");
+                        return;
+                    }
+
+                    HeapIdx name_idx = name_val.as_ref;
+                    Value val = eval_stack.back();
+                    globals[name_idx] = val;
+                    break;
+                }
+                case OpCode::SET_GLOBAL: {
+                    Function& func = get_function(*frame);
+                    if (arg >= func.chunk.const_pool.size()) {
+                        runtime_error(RuntimeError::OutOfBounds, "Constant pool index out of bounds.");
+                        return;
+                    }
+                    Value name_val = func.chunk.const_pool[arg];
+                    if (name_val.tag != Value::Tag::StringRef) {
+                        runtime_error(RuntimeError::Type, "Expected string for global variable name.");
+                        return;
+                    }
+
+                    HeapIdx name_idx = name_val.as_ref;
+
+                    auto it = globals.find(name_idx);
+                    if (it == globals.end()) {
+                        std::string name = std::get<std::string>(heap[name_idx].data);
+                        std::string msg = fmt::format("Cannot assign to undeclared variable '{}'.", name);
+                        runtime_error(RuntimeError::Name, msg);
+                        return;
+                    }
+
+                    it->second = eval_stack.back();
+                    break;
+                }
+                case OpCode::LOAD_GLOBAL: {
+                    Function& func = get_function(*frame);
+                    if (arg >= func.chunk.const_pool.size()) {
+                        runtime_error(RuntimeError::OutOfBounds, "Constant pool index out of bounds.");
+                        return;
+                    }
+                    Value name_val = func.chunk.const_pool[arg];
+                    if (name_val.tag != Value::Tag::StringRef) {
+                        runtime_error(RuntimeError::Type, "Expected string for global variable name.");
+                        return;
+                    }
+
+                    HeapIdx name_idx = name_val.as_ref;
+                    auto it = globals.find(name_idx);
+                    if (it == globals.end()) {
+                        std::string name = std::get<std::string>(heap[name_idx].data);
+                        runtime_error(RuntimeError::Name, fmt::format("Undefined variable '{}'", name));
+                        return;
+                    }
+
+                    push(it->second);
+                    break;
+                }
                 case OpCode::LOAD_LOCAL: {
                     push(eval_stack[frame->stack_base + arg]);
                     break;
@@ -413,26 +459,9 @@ bool VM::values_equal(const Value& a, const Value& b) {
                     eval_stack[frame->stack_base + arg] = eval_stack.back();
                     break;
                 }
-                case OpCode::LOAD_GLOBAL_SLOT: {
-                    if (arg >= global_slots.size()) {sync_ip(); runtime_error(RuntimeError::OutOfBounds, "Global slot out of bounds.");return;}
-                    push(global_slots[arg]);
-                    break;
-                } 
-                case OpCode::SET_GLOBAL_SLOT: {
-                    if (arg >= global_slots.size()) {sync_ip(); runtime_error(RuntimeError::OutOfBounds, "Global slot out of bounds.");return;}
-                    global_slots[arg] = eval_stack.back();
-                    break;
-                } 
-                case OpCode::DEFINE_GLOBAL_SLOT: {
-                    while (arg >= global_slots.size()) global_slots.push_back(Value());
-
-                    global_slots[arg] = pop();
-                    break;
-                }
                 case OpCode::CALL: {
                     int arg_count = arg;
                     if (eval_stack.size() < arg_count + 1) {
-                        sync_ip();
                         runtime_error(RuntimeError::StackUnderflow, "Not enough values on stack for function call.");
                         return;
                     }
@@ -456,12 +485,9 @@ bool VM::values_equal(const Value& a, const Value& b) {
                         Function& fn = std::get<Function>(heap[callee.as_ref].data);
                         
                         if (fn.arity != arg_count) {
-                            sync_ip();
                             runtime_error(RuntimeError::ArgumentError, fmt::format("Expected {} arguments, got {}.", fn.arity, arg_count));
                             return;
                         }
-
-                        sync_ip(); // Save current ip before pushing a new frame
 
                         CallFrame new_frame;
                         new_frame.function = callee.as_ref;
@@ -470,19 +496,16 @@ bool VM::values_equal(const Value& a, const Value& b) {
                         new_frame.stack_base = eval_stack.size() - arg_count;
                         frames.push_back(new_frame);
                         frame = &frames.back();
-
-                        // Resync local cache for new frame
-                        instr_data = get_function(*frame).chunk.instr.data();
-                        ip = instr_data + frame->ip;
-                        ip_end = instr_data + get_function(*frame).chunk.instr.size();
-                        const_pool = get_function(*frame).chunk.const_pool.data();
-                        const_pool_size = get_function(*frame).chunk.const_pool.size();
                     } 
                     else {
                         std::string msg = fmt::format("Can only call functions. Grabbed Tag={}, StackSize={}",
                                       static_cast<int>(callee.tag), eval_stack.size());
-                        sync_ip();
                         runtime_error(RuntimeError::Type, msg);
+                        // fmt::print("--- STACK DUMP ---\n");
+                        // for (size_t i = 0; i < eval_stack.size(); i++) {
+                        //     fmt::print("  stack[{}]: {}\n", i, value_to_string(eval_stack[i]));
+                        // }
+                        // fmt::print("------------------\n");
                         return;
                     }
                     break;
@@ -497,20 +520,12 @@ bool VM::values_equal(const Value& a, const Value& b) {
                     eval_stack.resize(stack_base);
 
                     frame = &frames.back();  
-
-                    // Resync local cache for restored frame
-                    instr_data = get_function(*frame).chunk.instr.data();
-                    ip = instr_data + frame->ip;
-                    ip_end = instr_data + get_function(*frame).chunk.instr.size();
-                    const_pool = get_function(*frame).chunk.const_pool.data();
-                    const_pool_size = get_function(*frame).chunk.const_pool.size();
                     break;
                 }
                 case OpCode::CALL_METHOD: {
                     int arg_count = arg;
 
                     if (eval_stack.size() < static_cast<size_t>(arg_count + 2)) {
-                        sync_ip();
                         runtime_error(RuntimeError::StackUnderflow, "Not enough values on stack for method call.");
                         return;
                     }
@@ -519,7 +534,6 @@ bool VM::values_equal(const Value& a, const Value& b) {
                     Value callee = *(eval_stack.end() - 2 - arg_count);
 
                     if (name_val.tag != Value::Tag::StringRef) {
-                        sync_ip();
                         runtime_error(RuntimeError::Type, "Expected string for method name.");
                         return;
                     }
@@ -536,7 +550,6 @@ bool VM::values_equal(const Value& a, const Value& b) {
                     } else if (callee.tag == Value::Tag::StringRef) {
                         result = StringMethods::dispatch(*this, callee.as_ref, method_name, args_view);
                     } else {
-                        sync_ip();
                         runtime_error(RuntimeError::Type, fmt::format("Expected object with method, got {} instead", callee.tag_to_string()));
                         return;
                     }
@@ -561,7 +574,6 @@ bool VM::values_equal(const Value& a, const Value& b) {
                 }
                 case OpCode::GET_INDEX: {
                     if (eval_stack.size() < 2) {
-                        sync_ip();
                         runtime_error(RuntimeError::StackUnderflow, "Stack underflow in GET_INDEX.");
                         return;
                     }
@@ -570,7 +582,6 @@ bool VM::values_equal(const Value& a, const Value& b) {
                     Value container = pop();
 
                     if (index.tag != Value::Tag::Int) {
-                        sync_ip();
                         runtime_error(RuntimeError::Type, fmt::format("Array index must be an integer, got '{}'.", index.tag_to_string()));
                         return;
                     }
@@ -580,7 +591,6 @@ bool VM::values_equal(const Value& a, const Value& b) {
                         case Value::Tag::ArrayRef: { 
                             auto& vec = std::get<ArrayType>(heap[container.as_ref].data);
                             if (index.as_int < 0 || index.as_int >= static_cast<int64_t>(vec.size())) {
-                                sync_ip();
                                 runtime_error(RuntimeError::Index, fmt::format("Array index {} out of bounds for size {}.", index.as_int, vec.size()));
                                 return;
                             }
@@ -590,7 +600,6 @@ bool VM::values_equal(const Value& a, const Value& b) {
                         case Value::Tag::StringRef: {
                             const auto& str = std::get<std::string>(heap[container.as_ref].data);
                             if (index.as_int < 0 || index.as_int >= static_cast<int64_t>(str.size())) {
-                                sync_ip();
                                 runtime_error(RuntimeError::Index, fmt::format("String index {} out of bounds for length {}.", index.as_int, str.size()));
                                 return;
                             }
@@ -600,7 +609,6 @@ bool VM::values_equal(const Value& a, const Value& b) {
                             break;
                         }
                         default: {
-                            sync_ip();
                             runtime_error(RuntimeError::Type, fmt::format("Cannot set index on type '{}'.", container.tag_to_string()));
                             return;
                         }
@@ -609,7 +617,6 @@ bool VM::values_equal(const Value& a, const Value& b) {
                 }
                 case OpCode::SET_INDEX: {
                     if (eval_stack.size() < 3) {
-                        sync_ip();
                         runtime_error(RuntimeError::StackUnderflow, "Stack underflow in SET_INDEX.");
                         return;
                     }
@@ -619,20 +626,17 @@ bool VM::values_equal(const Value& a, const Value& b) {
                     Value array_val = pop();
 
                     if (array_val.tag != Value::Tag::ArrayRef) {
-                        sync_ip();
                         runtime_error(RuntimeError::Type, fmt::format("Cannot set index on non-array type '{}'.", array_val.tag_to_string()));
                         return;
                     }
 
                     if (index.tag != Value::Tag::Int) {
-                        sync_ip();
                         runtime_error(RuntimeError::Type, fmt::format("Array index must be an integer, got '{}'.", index.tag_to_string()));
                         return;
                     }
 
                     auto& vec = std::get<ArrayType>(heap[array_val.as_ref].data);
                     if (index.as_int < 0 || index.as_int >= static_cast<int64_t>(vec.size())) {
-                        sync_ip();
                         runtime_error(RuntimeError::Index, fmt::format("Array index {} out of bounds for size {}.", index.as_int, vec.size()));
                         return;
                     }
@@ -643,13 +647,13 @@ bool VM::values_equal(const Value& a, const Value& b) {
                 }
                 case OpCode::JUMP_IF_FALSE: {
                     if (!is_truthy(eval_stack.back())) {
-                        ip += arg;
+                        frame->ip += arg;
                     }
                     break;
                 }
                 case OpCode::JUMP_IF_TRUE: {
                     if (is_truthy(eval_stack.back())) {
-                        ip += arg;
+                        frame->ip += arg;
                     }
                     break;
                 }
@@ -660,7 +664,6 @@ bool VM::values_equal(const Value& a, const Value& b) {
                 }
                 case OpCode::NEG: {
                     if (eval_stack.empty()) {
-                        sync_ip();
                         runtime_error(RuntimeError::StackUnderflow, "Stack underflow in unary minus.");
                         return;
                     }   
@@ -670,50 +673,34 @@ bool VM::values_equal(const Value& a, const Value& b) {
                         case Value::Tag::Int: push(Value(-val.as_int)); break;
                         case Value::Tag::Float: push(Value(-val.as_float)); break;
                         default:
-                            sync_ip();
                             runtime_error(RuntimeError::Type, fmt::format("Cannot negate type '{}'.", val.tag_to_string()));
                             return;
                     }
                     break;
                 }
                 case OpCode::JUMP: {
-                    ip += arg;
+                    frame->ip += arg;
                     break;
                 }
                 case OpCode::LOOP: {
                     // jump backwards
-                    ip -= arg;
+                    frame->ip -= arg;
                     break;
                 }
                 case OpCode::HALT:
                     return;
                 default:
-                    sync_ip();
                     runtime_error(RuntimeError::Runtime, "Unsupported opcode.");
                     return;
             }
         }
     }
 
-    
-    int VM::declare_global(const std::string& name) {
-        auto it = global_slot_map.find(name);
-        if (it != global_slot_map.end()) return it->second;
-
-        int slot = static_cast<int>(global_slot_map.size());
-        global_slots.push_back(Value());
-        global_slot_map[name] = slot;
-        return slot;
-    }
-
     void VM::define_native(const std::string &name, NativeFn function) {
         HeapIdx name_idx = intern_string(name);
         HeapIdx fn_idx = alloc(Object(function));
 
-        Value fn_val(Value::Tag::NativeFuncRef, fn_idx);
-        int slot = declare_global(name);
-
-        global_slots[slot] = fn_val;
+        globals[name_idx] = Value(Value::Tag::NativeFuncRef, fn_idx);
     }
 
 
