@@ -1,0 +1,30 @@
+{
+  "name": "pyle",
+  "version": "1.0.0",
+  "publisher": "Fus3n",
+  "engines": {
+    "vscode": "^1.0.0"
+  },
+  "contributes": {
+    "languages": [
+      {
+        "id": "pyle",
+        "aliases": [
+          "Pyle",
+          "pyle"
+        ],
+        "extensions": [
+          ".pyl",
+          ".pyle"
+        ]
+      }
+    ],
+    "grammars": [
+      {
+        "language": "pyle",
+        "scopeName": "source.pyle",
+        "path": "./syntaxes/pyle.tmLanguage.json"
+      }
+    ]
+  }
+}

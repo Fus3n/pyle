@@ -1,0 +1,26 @@
+{
+  "scopeName": "source.pyle",
+  "patterns": [
+    {
+      "name": "keyword.control.pyle",
+      "match": "\\b(if|else|elif|for|while|return|func|let|struct)\\b"
+    },
+    {
+      "name": "constant.language.pyle",
+      "match": "\\b(true|false|nil)\\b"
+    },
+    {
+      "name": "comment.line.number-sign.pyle",
+      "match": "#.*$"
+    },
+    {
+      "name": "string.quoted.double.pyle",
+      "begin": "\"",
+      "end": "\""
+    },
+    {
+      "name": "constant.numeric.pyle",
+      "match": "\\b\\d+(\\.\\d+)?\\b"
+    }
+  ]
+}

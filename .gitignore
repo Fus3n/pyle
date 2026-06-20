@@ -1,0 +1,17 @@
+# Xmake cache
+.xmake/
+build/
+.idea/
+.vscode/
+
+# MacOS Cache
+.DS_Store
+
+compile_commands.json
+print_tree.ps1
+test.pyl
+PROGRESS.md
+
+# Handled by xmake
+CMakeLists.txt
+
