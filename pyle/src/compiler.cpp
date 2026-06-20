@@ -349,6 +349,8 @@ namespace pyle {
         fn.name = stmt->name.lexeme;
         fn.arity = stmt->params.size();
 
+        int slot = vm.declare_global(std::string(stmt->name.lexeme));
+
         Chunk* enclosing_chunk = current_chunk;
         std::vector<Local> enclosing_locals = std::move(locals);
         int enclosing_scope = scope_depth;
@@ -381,7 +383,6 @@ namespace pyle {
         uint32_t fn_const_idx = make_constant(fn_val);
         emit_instruction(OpCode::LOAD_CONST, fn_const_idx, stmt->name.selection.line);
         
-        int slot = vm.declare_global(std::string(stmt->name.lexeme));
         emit_instruction(OpCode::DEFINE_GLOBAL_SLOT, slot, stmt->name.selection.line);
     }
 
