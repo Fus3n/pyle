@@ -222,6 +222,32 @@ namespace pyle {
             reporter.report(equals.selection, ErrorType::Syntax, "Invalid assignment target.");
         }
 
+        if (match({TokenType::PLUS_EQUAL, TokenType::MINUS_EQUAL, TokenType::STAR_EQUAL, TokenType::SLASH_EQUAL})) {
+            Token op_eq = previous();
+            std::unique_ptr<Expr> value = assignment();
+            
+            if (auto* var_expr = dynamic_cast<VariableExpr*>(expr.get())) {
+                Token name = var_expr->name;
+                
+                // Map += to +
+                TokenType binary_op_type;
+                std::string_view op_lexeme;
+                if (op_eq.type == TokenType::PLUS_EQUAL) { binary_op_type = TokenType::PLUS; op_lexeme = "+"; }
+                else if (op_eq.type == TokenType::MINUS_EQUAL) { binary_op_type = TokenType::MINUS; op_lexeme = "-"; }
+                else if (op_eq.type == TokenType::STAR_EQUAL) { binary_op_type = TokenType::STAR; op_lexeme = "*"; }
+                else { binary_op_type = TokenType::SLASH; op_lexeme = "/"; }
+                
+                Token binary_op(binary_op_type, op_lexeme, op_eq.selection);
+                
+                auto left_var = std::make_unique<VariableExpr>(name);
+                auto binary_expr = std::make_unique<BinaryExpr>(std::move(left_var), binary_op, std::move(value));
+                return std::make_unique<AssignExpr>(name, std::move(binary_expr));
+            }
+            
+            reporter.report(op_eq.selection, ErrorType::Syntax, "Invalid compound assignment target.");
+        }
+    
+
         return expr;
     }
 

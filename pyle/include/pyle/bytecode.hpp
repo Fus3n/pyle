@@ -10,12 +10,14 @@ namespace pyle {
         LOAD_CONST,
         LOAD_LOCAL,
         SET_LOCAL,
+        SET_LOCAL_POP,
         DEFINE_GLOBAL,
         SET_GLOBAL,
         LOAD_GLOBAL,
 
         LOAD_GLOBAL_SLOT,
         SET_GLOBAL_SLOT,
+        SET_GLOBAL_SLOT_POP,
         DEFINE_GLOBAL_SLOT,
 
         // arithmetic

@@ -1,4 +1,5 @@
 #include "pyle/lexer.hpp"
+#include "pyle/token.hpp"
 
 #include <fmt/format.h>
 
@@ -68,10 +69,18 @@ namespace pyle {
             case '.': return Token(TokenType::DOT, ".", token_start_span);
             case ';': return Token(TokenType::SEMICOLON, ";", token_start_span);
             case ':': return Token(TokenType::COLON, ":", token_start_span);
-            case '+': return Token(TokenType::PLUS, "+", token_start_span);
-            case '-': return Token(TokenType::MINUS, "-", token_start_span);
-            case '*': return Token(TokenType::STAR, "*", token_start_span);
-            case '/': return Token(TokenType::SLASH, "/", token_start_span);
+            case '+': 
+                if (match('=')) return Token(TokenType::PLUS_EQUAL, "+=", token_start_span);
+                return Token(TokenType::PLUS, "+", token_start_span);
+            case '-': 
+                if (match('=')) return Token(TokenType::MINUS_EQUAL, "-=", token_start_span);
+                return Token(TokenType::MINUS, "-", token_start_span);
+            case '*': 
+                if (match('=')) return Token(TokenType::STAR_EQUAL, "*=", token_start_span);
+                return Token(TokenType::STAR, "*", token_start_span);
+            case '/': 
+                if (match('=')) return Token(TokenType::SLASH_EQUAL, "/=", token_start_span);
+                return Token(TokenType::SLASH, "/", token_start_span);
             case '%': return Token(TokenType::PERCENT, "%", token_start_span);
             // Operators
             case '!':
@@ -86,8 +95,6 @@ namespace pyle {
             case '>':
                 if (match('=')) return Token(TokenType::GREATER_EQUAL, ">=", token_start_span);
                 return Token(TokenType::GREATER, ">", token_start_span);
-
-
             case '"': {
                 while (peek() != '"' && !is_at_end()) {
                     if (peek() == '\\') {

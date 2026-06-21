@@ -10,7 +10,8 @@ namespace pyle {
         LEFT_BRACKET, RIGHT_BRACKET, 
         COMMA, DOT, SEMICOLON,    
         COLON,                    
-        PLUS, MINUS, STAR, SLASH, PERCENT, 
+        PLUS, MINUS, STAR, SLASH, PERCENT,
+        PLUS_EQUAL, MINUS_EQUAL, STAR_EQUAL, SLASH_EQUAL,
 
         BANG, BANG_EQUAL,         
         EQUAL, EQUAL_EQUAL,        

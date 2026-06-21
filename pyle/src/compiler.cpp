@@ -167,9 +167,22 @@ namespace pyle {
     }
 
     void Compiler::visit_expression(ExpressionStmt *stmt) {
-        stmt->expression->accept(this);
-
-        emit_instruction(OpCode::POP, 0, 1);
+        
+        if (auto* assign = dynamic_cast<AssignExpr*>(stmt->expression.get())) {
+            assign->value->accept(this);
+            int arg = resolve_local(assign->name);
+            if (arg != -1) {
+                emit_instruction(OpCode::SET_LOCAL_POP, arg, assign->name.selection.line);
+            } else {
+                int slot = resolve_global_slot(assign->name);
+                if (slot >= 0) {
+                    emit_instruction(OpCode::SET_GLOBAL_SLOT_POP, slot, assign->name.selection.line);
+                }
+            }
+        } else {
+            stmt->expression->accept(this);
+            emit_instruction(OpCode::POP, 0, 1);
+        }
     }
 
     void Compiler::visit_var_decl(VarDeclStmt *stmt) {

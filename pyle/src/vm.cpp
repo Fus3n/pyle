@@ -431,7 +431,7 @@ bool VM::values_equal(const Value& a, const Value& b) {
                     break;
                 }
                 case OpCode::SET_LOCAL: {
-                    stack[frame->stack_base + arg] = *(sp - 1);
+                    stack[frame->stack_base + arg] = peek();
                     break;
                 }
                 case OpCode::LOAD_GLOBAL_SLOT: {
@@ -441,12 +441,20 @@ bool VM::values_equal(const Value& a, const Value& b) {
                 } 
                 case OpCode::SET_GLOBAL_SLOT: {
                     if (arg >= global_slots.size()) {sync_ip(); runtime_error(RuntimeError::OutOfBounds, "Global slot out of bounds.");return;}
-                    global_slots[arg] = *(sp - 1);
+                    global_slots[arg] = peek();
                     break;
                 } 
                 case OpCode::DEFINE_GLOBAL_SLOT: {
                     while (arg >= global_slots.size()) global_slots.push_back(Value());
 
+                    global_slots[arg] = pop();
+                    break;
+                }
+                case OpCode::SET_LOCAL_POP: {
+                    stack[frame->stack_base + arg] = pop();
+                    break;
+                }
+                case OpCode::SET_GLOBAL_SLOT_POP: {
                     global_slots[arg] = pop();
                     break;
                 }
