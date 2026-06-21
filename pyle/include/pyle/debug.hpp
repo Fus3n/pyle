@@ -66,6 +66,9 @@ namespace pyle {
                 case OpCode::JUMP_IF_TRUE: fmt::print("{:16} {:4}\n", "JUMP_IF_TRUE", operand); break;
                 case OpCode::JUMP:          fmt::print("{:16} {:4}\n", "JUMP", operand); break;
                 case OpCode::LOOP:          fmt::print("{:16} {:4}\n", "LOOP", operand); break;
+                case OpCode::NEW_ARRAY: fmt::print("{:16} {:4} (elements)\n", "NEW_ARRAY", operand); break;
+                case OpCode::GET_INDEX: fmt::print("{:16} {:4}\n", "GET_INDEX", operand); break;
+                case OpCode::SET_INDEX: fmt::print("{:16} {:4}\n", "SET_INDEX", operand); break;
                 case OpCode::CALL_METHOD: fmt::print("{:16} {:4} (args)\n", "CALL_METHOD", operand); break;
                 case OpCode::LOAD_GLOBAL_SLOT:   fmt::print("{:16} {:4}\n", "LOAD_GLOBAL_SLOT", operand); break;
                 case OpCode::SET_GLOBAL_SLOT:    fmt::print("{:16} {:4}\n", "SET_GLOBAL_SLOT", operand); break;

@@ -12,6 +12,18 @@ namespace pyle {
     constexpr size_t INITIAL_THRESHOLD = 256;
     size_t gc_threshold = INITIAL_THRESHOLD;
 
+
+    PYLE_FORCEINLINE void sync_frame_cache(VM::CallFrame* f, Function& fn,
+                                const uint32_t*& instr_data, const uint32_t*& ip,
+                                const uint32_t*& ip_end, const Value*& const_pool,
+                                size_t& const_pool_size) {
+        instr_data = fn.chunk.instr.data();
+        ip = instr_data + f->ip;
+        ip_end = instr_data + fn.chunk.instr.size();
+        const_pool = fn.chunk.const_pool.data();
+        const_pool_size = fn.chunk.const_pool.size();
+    }
+
     void VM::grow_stack() {
         size_t new_capacity = stack_capacity * 2;
         Value* new_stack = new Value[new_capacity];
@@ -324,12 +336,15 @@ bool VM::values_equal(const Value& a, const Value& b) {
 
         CallFrame* frame = &frames[frame_count - 1];
         
-        const uint32_t* instr_data = get_function(*frame).chunk.instr.data();
-        const uint32_t* ip = instr_data + frame->ip;
-        const uint32_t* ip_end = instr_data + get_function(*frame).chunk.instr.size();
-        const Value* const_pool = get_function(*frame).chunk.const_pool.data();
-        size_t const_pool_size = get_function(*frame).chunk.const_pool.size();
-
+        Function& fn = get_function(*frame);
+        const uint32_t* instr_data;
+        const uint32_t* ip;
+        const uint32_t* ip_end;
+        const Value* const_pool;
+        size_t const_pool_size;
+        sync_frame_cache(frame, fn, instr_data, ip, ip_end, const_pool, const_pool_size);
+                
+        
         auto sync_ip = [&]() {
             frame->ip = ip - instr_data;
         };
@@ -412,13 +427,13 @@ bool VM::values_equal(const Value& a, const Value& b) {
                 }
                 case OpCode::EQ: {
                     Value b = pop();
-                    Value a = pop();
-                    push(Value(values_equal(a, b)));
+                    Value a = peek();
+                    set_top(Value(values_equal(a, b)));
                     break;
-                }
+                }   
                 case OpCode::NEQ: {
                     Value b = pop();
-                    Value a = pop();
+                    Value a = peek();
                     push(Value(!values_equal(a, b)));
                     break;
                 }
@@ -476,9 +491,8 @@ bool VM::values_equal(const Value& a, const Value& b) {
 
                         sync_ip();
                         Value result = native(*this, args_view);
-                        sp -= (arg_count + 1); 
-                        push(result);
-
+                        sp -= arg_count; 
+                        set_top(result);
                     } else if (callee.tag == Value::Tag::FuncRef) {
                         Function& fn = std::get<Function>(heap[callee.as_ref].data);
                         
@@ -502,12 +516,7 @@ bool VM::values_equal(const Value& a, const Value& b) {
                         frames[frame_count++] = new_frame;
                         frame = &frames[frame_count - 1];
 
-                        // Resync local cache for new frame
-                        instr_data = get_function(*frame).chunk.instr.data();
-                        ip = instr_data + frame->ip;
-                        ip_end = instr_data + get_function(*frame).chunk.instr.size();
-                        const_pool = get_function(*frame).chunk.const_pool.data();
-                        const_pool_size = get_function(*frame).chunk.const_pool.size();
+                        sync_frame_cache(frame, fn, instr_data, ip, ip_end, const_pool, const_pool_size);
                     } 
                     else {
                        std::string msg = fmt::format("Can only call functions. Grabbed Tag={}, StackSize={}",
@@ -519,9 +528,8 @@ bool VM::values_equal(const Value& a, const Value& b) {
                     break;
                 }
                 case OpCode::RETURN: {
-                    Value ret_val = pop();
+                    Value ret_val = peek();
                     size_t stack_base = frame->stack_base; 
-                    
                     frame_count--;
                     if (frame_count == 0) return;
 
@@ -530,12 +538,8 @@ bool VM::values_equal(const Value& a, const Value& b) {
 
                     frame = &frames[frame_count - 1];
 
-                    // Resync local cache for restored frame
-                    instr_data = get_function(*frame).chunk.instr.data();
-                    ip = instr_data + frame->ip;
-                    ip_end = instr_data + get_function(*frame).chunk.instr.size();
-                    const_pool = get_function(*frame).chunk.const_pool.data();
-                    const_pool_size = get_function(*frame).chunk.const_pool.size();
+                    Function& fn = get_function(*frame);
+                    sync_frame_cache(frame, fn, instr_data, ip, ip_end, const_pool, const_pool_size);
                     break;
                 }
                 case OpCode::CALL_METHOD: {
@@ -575,19 +579,21 @@ bool VM::values_equal(const Value& a, const Value& b) {
 
                     if (panicked) return;
 
-                    sp -= (arg_count + 2);
-                    push(result);
+                    sp -= (arg_count + 1);
+                    set_top(result);
                     break;
                 }
                 case OpCode::NEW_ARRAY: {
                     int element_count = static_cast<int>(arg);
                     ArrayType elements(element_count);
 
-                    for (int i = element_count - 1; i >= 0; i--) {
-                        elements[i] = pop();
+                    Value* base = sp - element_count;
+                    for (int i = 0; i < element_count; i++) {
+                        elements[i] = base[i];
                     }
 
                     HeapIdx idx = alloc(Object(std::move(elements)));
+                    sp = base;
                     push(Value(Value::Tag::ArrayRef, idx));
                     break;
                 }
@@ -599,7 +605,7 @@ bool VM::values_equal(const Value& a, const Value& b) {
                     }
 
                     Value index = pop();
-                    Value container = pop();
+                    Value container = peek();
 
                     if (index.tag != Value::Tag::Int) {
                         sync_ip();
@@ -616,7 +622,7 @@ bool VM::values_equal(const Value& a, const Value& b) {
                                 runtime_error(RuntimeError::Index, fmt::format("Array index {} out of bounds for size {}.", index.as_int, vec.size()));
                                 return;
                             }
-                            push(vec[index.as_int]);
+                            set_top(vec[index.as_int]);
                             break;
                         }
                         case Value::Tag::StringRef: {
@@ -628,7 +634,7 @@ bool VM::values_equal(const Value& a, const Value& b) {
                             }
                             std::string char_str(1, str[index.as_int]);
                             HeapIdx char_idx = intern_string(char_str);
-                            push(Value(Value::Tag::StringRef, char_idx));
+                            set_top(Value(Value::Tag::StringRef, char_idx));
                             break;
                         }
                         default: {
@@ -646,9 +652,9 @@ bool VM::values_equal(const Value& a, const Value& b) {
                         return;
                     }
 
-                    Value value = pop();
-                    Value index = pop();
-                    Value array_val = pop();
+                    Value value = peek(1);
+                    Value index = peek(2);
+                    Value array_val = peek(3);
 
                     if (array_val.tag != Value::Tag::ArrayRef) {
                         sync_ip();
@@ -670,7 +676,8 @@ bool VM::values_equal(const Value& a, const Value& b) {
                     }
 
                     vec[index.as_int] = value;
-                    push(value);
+                    sp -= 2;
+                    set_top(value);
                     break;
                 }
                 case OpCode::JUMP_IF_FALSE: {
@@ -696,11 +703,10 @@ bool VM::values_equal(const Value& a, const Value& b) {
                         runtime_error(RuntimeError::StackUnderflow, "Stack underflow in unary minus.");
                         return;
                     }   
-                    Value val = pop();
-                    
+                    Value val = peek();
                     switch (val.tag) {
-                        case Value::Tag::Int: push(Value(-val.as_int)); break;
-                        case Value::Tag::Float: push(Value(-val.as_float)); break;
+                        case Value::Tag::Int: set_top(Value(-val.as_int)); break;
+                        case Value::Tag::Float: set_top(Value(-val.as_float)); break;
                         default:
                             sync_ip();
                             runtime_error(RuntimeError::Type, fmt::format("Cannot negate type '{}'.", val.tag_to_string()));

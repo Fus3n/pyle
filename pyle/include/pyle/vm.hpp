@@ -109,7 +109,7 @@ namespace pyle {
         bool panicked = false;
 
         inline void push(Value value) { 
-            if (sp == stack_end) [[unlikely]] {
+            if (sp == stack_end) {
                 grow_stack();
             }
             *sp++ = value;

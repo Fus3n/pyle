@@ -12,6 +12,8 @@ print_tree.ps1
 test.pyl
 PROGRESS.md
 
+examples
+
 # Handled by xmake
 CMakeLists.txt
 
