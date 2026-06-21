@@ -51,7 +51,7 @@ int main(int argc, char* argv[]) {
         return 1;
     }
     if (program.get<bool>("--version")) {
-        fmt::print("Pyle version 1.0.0\n");
+        fmt::print("Pyle version 0.1.0\n");
         return 0;
     }
 

@@ -4,6 +4,7 @@
 #include <ankerl/unordered_dense.h>
 #include <vector>
 #include "unordered_set"
+#include "pyle/platform.hpp"
 
 namespace pyle {
 
@@ -33,7 +34,13 @@ namespace pyle {
             size_t stack_base;
         };
 
-        std::vector<Value> eval_stack;
+        // std::vector<Value> eval_stack;
+        Value* stack = nullptr;
+        Value* sp = nullptr;
+        Value* stack_end = nullptr;
+        size_t stack_capacity = 0;
+        void grow_stack();
+
         std::vector<CallFrame> frames;
 
         std::vector<Value> global_slots;
@@ -62,8 +69,15 @@ namespace pyle {
         bool is_truthy(const Value& v);
 
         VM() {
-            eval_stack.reserve(8192);
+            stack_capacity = 8192;
+            stack = new Value[stack_capacity];
+            sp = stack;
+            stack_end = stack + stack_capacity;
+
             frames.reserve(1024);
+        }
+        ~VM() {
+            delete[] stack;
         }
 
     private:
@@ -76,8 +90,6 @@ namespace pyle {
         
         std::vector<Object> heap;
         std::vector<HeapIdx> free_list;
-
-
 
         struct StringHash {
             using is_transparent = void;
@@ -92,14 +104,19 @@ namespace pyle {
 
         bool panicked = false;
 
-        inline void push(Value value) { eval_stack.push_back(value); }
-        inline Value pop() {
-            Value val = eval_stack.back();
-            eval_stack.pop_back();
-            return val;
+        inline void push(Value value) { 
+            if (sp == stack_end) [[unlikely]] {
+                grow_stack();
+            }
+            *sp++ = value;
         }
+
+        PYLE_FORCEINLINE Value pop() { return *(--sp); }
+        PYLE_FORCEINLINE size_t stack_size() const { return sp - stack; }
+        PYLE_FORCEINLINE Value peek(size_t distance = 1) const { return *(sp - distance); }
+        PYLE_FORCEINLINE void set_top(Value val) { *(sp - 1) = val;}
+
         void value_to_string_helper(const Value& val, std::unordered_set<HeapIdx>& visited, std::stringstream& ss);
-   
         Function& get_function(const CallFrame& frame) {
             return std::get<Function>(heap[frame.function].data);
         }

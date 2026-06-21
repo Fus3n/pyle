@@ -12,6 +12,22 @@ namespace pyle {
     constexpr size_t INITIAL_THRESHOLD = 256;
     size_t gc_threshold = INITIAL_THRESHOLD;
 
+    void VM::grow_stack() {
+        size_t new_capacity = stack_capacity * 2;
+        Value* new_stack = new Value[new_capacity];
+
+        size_t current_size = sp - stack;
+
+        for (size_t i = 0; i < current_size; ++i) {
+            new_stack[i] = stack[i];
+        }
+
+        delete [] stack;
+        stack = new_stack;
+        sp = stack + current_size;
+        stack_end = stack + new_capacity;
+        stack_capacity = new_capacity;
+    }
 
     bool VM::is_truthy(const Value& v) {
         switch (v.tag) {
@@ -100,8 +116,8 @@ namespace pyle {
 
         // mark roots
 
-        for (const Value &val: eval_stack) {
-            mark_value(val);
+        for (Value* ptr = stack; ptr < sp; ++ptr) {
+            mark_value(*ptr);
         }
 
         for (const Value& val : global_slots) {
@@ -218,20 +234,20 @@ namespace pyle {
 
 #define BINARY_OP(op, sync_expr) \
     do { \
-        if (eval_stack.size() < 2) { \
+        if (stack_size() < 2) { \
             sync_expr; \
             runtime_error(RuntimeError::StackUnderflow, "Not enough values in the stack to apply binary operation"); \
             return; \
         } \
         Value b = pop(); \
-        Value a = pop(); \
+        Value a = peek();\
         if (a.tag == Value::Tag::Int && b.tag == Value::Tag::Int) { \
-             push(Value(a.as_int op b.as_int)); \
+            set_top(Value(a.as_int op b.as_int)); \
         } else if ((a.tag == Value::Tag::Int || a.tag == Value::Tag::Float) && \
             (b.tag == Value::Tag::Int || b.tag == Value::Tag::Float)) { \
             double da = (a.tag == Value::Tag::Int) ? static_cast<double>(a.as_int) : a.as_float; \
             double db = (b.tag == Value::Tag::Int) ? static_cast<double>(b.as_int) : b.as_float; \
-            push(Value(da op db));  \
+            set_top(Value(da op db));  \
         } else { \
             std::string msg = fmt::format("Unsupported operand types. a.tag={}, b.tag={}", \
             static_cast<int>(a.tag), static_cast<int>(b.tag)); \
@@ -263,20 +279,20 @@ bool VM::values_equal(const Value& a, const Value& b) {
 
 #define COMPARISON_OP(op, sync_expr) \
     do { \
-        if (eval_stack.size() < 2) { \
+        if (stack_size() < 2) { \
             sync_expr; \
             runtime_error(RuntimeError::StackUnderflow, "Not enough values in the stack to apply comparison operation"); \
             return; \
         } \
         Value b = pop(); \
-        Value a = pop(); \
+        Value a = peek(); \
         if (a.tag == Value::Tag::Int && b.tag == Value::Tag::Int) { \
-             push(Value(a.as_int op b.as_int)); \
+            set_top(Value(a.as_int op b.as_int)); \
         } else if ((a.tag == Value::Tag::Int || a.tag == Value::Tag::Float) && \
             (b.tag == Value::Tag::Int || b.tag == Value::Tag::Float)) { \
             double da = (a.tag == Value::Tag::Int) ? static_cast<double>(a.as_int) : a.as_float; \
             double db = (b.tag == Value::Tag::Int) ? static_cast<double>(b.as_int) : b.as_float; \
-            push(Value(da op db));  \
+            set_top(Value(da op db)); \
         } else { \
             std::string msg = fmt::format("Unsupported operand types for comparison. a.tag={}, b.tag={}", \
             a.tag_to_string(), b.tag_to_string()); \
@@ -342,12 +358,12 @@ bool VM::values_equal(const Value& a, const Value& b) {
                 case OpCode::SUB: BINARY_OP(-, sync_ip()); break;
                 case OpCode::MUL: BINARY_OP(*, sync_ip()); break;
                 case OpCode::DIV: {
-                    if (eval_stack.size() < 2) {
+                    if (stack_size() < 2) {
                         sync_ip();
                         runtime_error(RuntimeError::StackUnderflow, "Stack underflow in division\n");
                         return;
                     }
-                    Value b = eval_stack.back();
+                    Value b = peek();
                     if ((b.tag == Value::Tag::Int && b.as_int == 0) ||
                         (b.tag == Value::Tag::Float && b.as_float == 0.0)) {
                         sync_ip();
@@ -358,13 +374,14 @@ bool VM::values_equal(const Value& a, const Value& b) {
                     break;
                 } 
                 case OpCode::MOD: {
-                    if (eval_stack.size() < 2) {
+                    if (stack_size() < 2) {
                         sync_ip();
                         runtime_error(RuntimeError::StackUnderflow, "Not enough values in the stack to apply modulo");
                         return;
                     }
-                    Value b = pop();
-                    Value a = pop();
+                    
+                    Value b = pop();  
+                    Value a = peek(); 
                     
                     if ((b.tag == Value::Tag::Int && b.as_int == 0) ||
                         (b.tag == Value::Tag::Float && b.as_float == 0.0)) {
@@ -374,12 +391,12 @@ bool VM::values_equal(const Value& a, const Value& b) {
                     }
 
                     if (a.tag == Value::Tag::Int && b.tag == Value::Tag::Int) {
-                        push(Value(a.as_int % b.as_int));
+                        set_top(Value(a.as_int % b.as_int)); // Overwrite in-place
                     } else if ((a.tag == Value::Tag::Int || a.tag == Value::Tag::Float) &&
-                               (b.tag == Value::Tag::Int || b.tag == Value::Tag::Float)) {
+                            (b.tag == Value::Tag::Int || b.tag == Value::Tag::Float)) {
                         double da = (a.tag == Value::Tag::Int) ? static_cast<double>(a.as_int) : a.as_float;
                         double db = (b.tag == Value::Tag::Int) ? static_cast<double>(b.as_int) : b.as_float;
-                        push(Value(std::fmod(da, db)));
+                        set_top(Value(std::fmod(da, db)));   // Overwrite in-place
                     } else {
                         std::string msg = fmt::format("Unsupported operand types for modulo. a.tag={}, b.tag={}", 
                         static_cast<int>(a.tag), static_cast<int>(b.tag));
@@ -406,11 +423,11 @@ bool VM::values_equal(const Value& a, const Value& b) {
                 case OpCode::GT: COMPARISON_OP(>, sync_ip()); break;
                 case OpCode::GTE: COMPARISON_OP(>=, sync_ip()); break;
                 case OpCode::LOAD_LOCAL: {
-                    push(eval_stack[frame->stack_base + arg]);
+                    push(stack[frame->stack_base + arg]);
                     break;
                 }
                 case OpCode::SET_LOCAL: {
-                    eval_stack[frame->stack_base + arg] = eval_stack.back();
+                    stack[frame->stack_base + arg] = *(sp - 1);
                     break;
                 }
                 case OpCode::LOAD_GLOBAL_SLOT: {
@@ -420,7 +437,7 @@ bool VM::values_equal(const Value& a, const Value& b) {
                 } 
                 case OpCode::SET_GLOBAL_SLOT: {
                     if (arg >= global_slots.size()) {sync_ip(); runtime_error(RuntimeError::OutOfBounds, "Global slot out of bounds.");return;}
-                    global_slots[arg] = eval_stack.back();
+                    global_slots[arg] = *(sp - 1);
                     break;
                 } 
                 case OpCode::DEFINE_GLOBAL_SLOT: {
@@ -431,27 +448,25 @@ bool VM::values_equal(const Value& a, const Value& b) {
                 }
                 case OpCode::CALL: {
                     int arg_count = arg;
-                    if (eval_stack.size() < arg_count + 1) {
+                    if (static_cast<size_t>(sp - stack) < static_cast<size_t>(arg_count + 1)) {
                         sync_ip();
                         runtime_error(RuntimeError::StackUnderflow, "Not enough values on stack for function call.");
                         return;
                     }
 
-                    Value callee = *(eval_stack.end() - 1 - arg_count);
+                    Value callee = *(sp - 1 - arg_count);
 
                     if (callee.tag == Value::Tag::NativeFuncRef) {
                         NativeFn native = std::get<NativeFn>(heap[callee.as_ref].data);
 
-                        const Value* args_ptr = nullptr;
-                        if (arg_count > 0) {
-                            args_ptr = &eval_stack[eval_stack.size() - arg_count];
-                        }
-
+                        const Value* args_ptr = arg_count > 0 ? (sp - arg_count) : nullptr;
                         ArgView args_view{args_ptr, static_cast<size_t>(arg_count)};
 
+                        sync_ip();
                         Value result = native(*this, args_view);
-                        eval_stack.resize(eval_stack.size() - arg_count - 1);
+                        sp -= (arg_count + 1); 
                         push(result);
+
                     } else if (callee.tag == Value::Tag::FuncRef) {
                         Function& fn = std::get<Function>(heap[callee.as_ref].data);
                         
@@ -461,13 +476,12 @@ bool VM::values_equal(const Value& a, const Value& b) {
                             return;
                         }
 
-                        sync_ip(); // Save current ip before pushing a new frame
-
+                        sync_ip(); 
                         CallFrame new_frame;
                         new_frame.function = callee.as_ref;
                         new_frame.ip = 0;
 
-                        new_frame.stack_base = eval_stack.size() - arg_count;
+                        new_frame.stack_base = stack_size() - arg_count;
                         frames.push_back(new_frame);
                         frame = &frames.back();
 
@@ -479,8 +493,8 @@ bool VM::values_equal(const Value& a, const Value& b) {
                         const_pool_size = get_function(*frame).chunk.const_pool.size();
                     } 
                     else {
-                        std::string msg = fmt::format("Can only call functions. Grabbed Tag={}, StackSize={}",
-                                      static_cast<int>(callee.tag), eval_stack.size());
+                       std::string msg = fmt::format("Can only call functions. Grabbed Tag={}, StackSize={}",
+                                      static_cast<int>(callee.tag), stack_size());
                         sync_ip();
                         runtime_error(RuntimeError::Type, msg);
                         return;
@@ -493,9 +507,8 @@ bool VM::values_equal(const Value& a, const Value& b) {
                     frames.pop_back();
                     if (frames.empty()) return;
 
-                    eval_stack[stack_base - 1] = ret_val;
-                    eval_stack.resize(stack_base);
-
+                    stack[stack_base - 1] = ret_val;
+                    sp = stack + stack_base; 
                     frame = &frames.back();  
 
                     // Resync local cache for restored frame
@@ -509,14 +522,14 @@ bool VM::values_equal(const Value& a, const Value& b) {
                 case OpCode::CALL_METHOD: {
                     int arg_count = arg;
 
-                    if (eval_stack.size() < static_cast<size_t>(arg_count + 2)) {
+                    if (stack_size() < arg_count + 1) {
                         sync_ip();
                         runtime_error(RuntimeError::StackUnderflow, "Not enough values on stack for method call.");
                         return;
                     }
 
-                    Value name_val = *(eval_stack.end() - 1 - arg_count);
-                    Value callee = *(eval_stack.end() - 2 - arg_count);
+                    Value name_val = peek(arg_count + 1);
+                    Value callee = peek(arg_count + 2);
 
                     if (name_val.tag != Value::Tag::StringRef) {
                         sync_ip();
@@ -526,11 +539,11 @@ bool VM::values_equal(const Value& a, const Value& b) {
 
                     std::string method_name = std::get<std::string>(heap[name_val.as_ref].data);
 
-                    const Value *args_ptr = arg_count > 0 ? &eval_stack[eval_stack.size() - arg_count] : nullptr;
+                    const Value *args_ptr = arg_count > 0 ? (sp - arg_count) : nullptr;
                     ArgView args_view{args_ptr, static_cast<size_t>(arg_count)};
 
+                    sync_ip();
                     Value result;
-
                     if (callee.tag == Value::Tag::ArrayRef) {
                         result = ArrayMethods::dispatch(*this, callee.as_ref, method_name, args_view);
                     } else if (callee.tag == Value::Tag::StringRef) {
@@ -543,7 +556,7 @@ bool VM::values_equal(const Value& a, const Value& b) {
 
                     if (panicked) return;
 
-                    eval_stack.resize(eval_stack.size() - arg_count - 2);
+                    sp -= (arg_count + 2);
                     push(result);
                     break;
                 }
@@ -560,7 +573,7 @@ bool VM::values_equal(const Value& a, const Value& b) {
                     break;
                 }
                 case OpCode::GET_INDEX: {
-                    if (eval_stack.size() < 2) {
+                    if (stack_size() < 2) {
                         sync_ip();
                         runtime_error(RuntimeError::StackUnderflow, "Stack underflow in GET_INDEX.");
                         return;
@@ -608,7 +621,7 @@ bool VM::values_equal(const Value& a, const Value& b) {
                     break;
                 }
                 case OpCode::SET_INDEX: {
-                    if (eval_stack.size() < 3) {
+                    if (stack_size() < 3) {
                         sync_ip();
                         runtime_error(RuntimeError::StackUnderflow, "Stack underflow in SET_INDEX.");
                         return;
@@ -642,13 +655,13 @@ bool VM::values_equal(const Value& a, const Value& b) {
                     break;
                 }
                 case OpCode::JUMP_IF_FALSE: {
-                    if (!is_truthy(eval_stack.back())) {
+                    if (!is_truthy(*(sp - 1))) {
                         ip += arg;
                     }
                     break;
                 }
                 case OpCode::JUMP_IF_TRUE: {
-                    if (is_truthy(eval_stack.back())) {
+                    if (is_truthy(*(sp - 1)))  {
                         ip += arg;
                     }
                     break;
@@ -659,7 +672,7 @@ bool VM::values_equal(const Value& a, const Value& b) {
                     break;
                 }
                 case OpCode::NEG: {
-                    if (eval_stack.empty()) {
+                    if (sp == stack) {
                         sync_ip();
                         runtime_error(RuntimeError::StackUnderflow, "Stack underflow in unary minus.");
                         return;
