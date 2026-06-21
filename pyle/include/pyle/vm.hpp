@@ -34,14 +34,15 @@ namespace pyle {
             size_t stack_base;
         };
 
-        // std::vector<Value> eval_stack;
         Value* stack = nullptr;
         Value* sp = nullptr;
         Value* stack_end = nullptr;
         size_t stack_capacity = 0;
         void grow_stack();
 
-        std::vector<CallFrame> frames;
+        CallFrame* frames = nullptr;
+        size_t frame_count = 0;
+        size_t frame_capacity = 0;
 
         std::vector<Value> global_slots;
         ankerl::unordered_dense::map<std::string, int> global_slot_map;
@@ -74,10 +75,13 @@ namespace pyle {
             sp = stack;
             stack_end = stack + stack_capacity;
 
-            frames.reserve(1024);
+            frame_capacity = 2048;
+            frames = new CallFrame[frame_capacity];
+            frame_count = 0;
         }
         ~VM() {
             delete[] stack;
+            delete [] frames;
         }
 
     private:

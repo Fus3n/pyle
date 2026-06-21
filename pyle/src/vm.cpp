@@ -124,7 +124,8 @@ namespace pyle {
             mark_value(val);
         }
 
-        for (const auto& frame: frames) {
+        for (size_t i = 0; i < frame_count; ++i) {
+            const auto& frame = frames[i];
             mark_value(Value(Value::Tag::FuncRef, frame.function));
             for (const Value &val: get_function(frame).chunk.const_pool) {
                 mark_value(val);
@@ -221,7 +222,7 @@ namespace pyle {
     void VM::runtime_error(const RuntimeError &type, const std::string &msg) {
         panicked = true;
         size_t line = 0;
-        CallFrame& frame = frames.back();
+        CallFrame& frame = frames[frame_count - 1];
         Function& func = get_function(frame);
         if (frame.ip > 0 && frame.ip <= func.chunk.lines.size()) {
             line = func.chunk.lines[frame.ip - 1];
@@ -304,6 +305,10 @@ bool VM::values_equal(const Value& a, const Value& b) {
 
 
     void VM::execute(Chunk in_chunk) {
+        frame_count = 0;
+        sp = stack;
+        panicked = false;
+
         Function main_fn;
         main_fn.name = "main";
         main_fn.chunk = std::move(in_chunk);
@@ -314,11 +319,10 @@ bool VM::values_equal(const Value& a, const Value& b) {
         root_frame.function = main_idx;  
         root_frame.ip = 0;
         root_frame.stack_base = 0;
-        frames.push_back(root_frame);
 
-        panicked = false;
+        frames[frame_count++] = root_frame;
 
-        CallFrame* frame = &frames.back();
+        CallFrame* frame = &frames[frame_count - 1];
         
         const uint32_t* instr_data = get_function(*frame).chunk.instr.data();
         const uint32_t* ip = instr_data + frame->ip;
@@ -480,10 +484,15 @@ bool VM::values_equal(const Value& a, const Value& b) {
                         CallFrame new_frame;
                         new_frame.function = callee.as_ref;
                         new_frame.ip = 0;
-
                         new_frame.stack_base = stack_size() - arg_count;
-                        frames.push_back(new_frame);
-                        frame = &frames.back();
+                        
+                        if (frame_count == frame_capacity) [[unlikely]] {
+                            runtime_error(RuntimeError::Runtime, "Stack overflow (maximum recursion depth exceeded).");
+                            return;
+                        }
+
+                        frames[frame_count++] = new_frame;
+                        frame = &frames[frame_count - 1];
 
                         // Resync local cache for new frame
                         instr_data = get_function(*frame).chunk.instr.data();
@@ -504,12 +513,14 @@ bool VM::values_equal(const Value& a, const Value& b) {
                 case OpCode::RETURN: {
                     Value ret_val = pop();
                     size_t stack_base = frame->stack_base; 
-                    frames.pop_back();
-                    if (frames.empty()) return;
+                    
+                    frame_count--;
+                    if (frame_count == 0) return;
 
                     stack[stack_base - 1] = ret_val;
                     sp = stack + stack_base; 
-                    frame = &frames.back();  
+
+                    frame = &frames[frame_count - 1];
 
                     // Resync local cache for restored frame
                     instr_data = get_function(*frame).chunk.instr.data();
@@ -655,13 +666,13 @@ bool VM::values_equal(const Value& a, const Value& b) {
                     break;
                 }
                 case OpCode::JUMP_IF_FALSE: {
-                    if (!is_truthy(*(sp - 1))) {
+                    if (!is_truthy(peek())) {
                         ip += arg;
                     }
                     break;
                 }
                 case OpCode::JUMP_IF_TRUE: {
-                    if (is_truthy(*(sp - 1)))  {
+                    if (is_truthy(peek()))  {
                         ip += arg;
                     }
                     break;
