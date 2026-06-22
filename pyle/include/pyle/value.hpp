@@ -17,7 +17,7 @@ namespace pyle {
     struct Value {
         enum class Tag {
             Int, Float, Bool, None, StringRef, ArrayRef, StructRef,
-            NativeFuncRef, FuncRef, IteratorRef, RangeRef
+            NativeFuncRef, FuncRef, IteratorRef, RangeRef, ClosureRef, UpvalueRef 
         } tag;
         union {
             int64_t as_int;
@@ -41,7 +41,8 @@ namespace pyle {
                    t == Tag::NativeFuncRef ||
                    t == Tag::FuncRef ||
                    t == Tag::IteratorRef ||
-                   t == Tag::RangeRef);
+                   t == Tag::RangeRef ||
+                   t == Tag::ClosureRef);
         }
 
         std::string tag_to_string() const {
@@ -97,10 +98,22 @@ namespace pyle {
     using ArrayType = std::vector<Value>;
     using NativeFn = Value (*)(VM& vm, ArgView args);
 
+    struct Upvalue {
+        Value* location = nullptr; 
+        Value closed;              
+    };
+
     struct Function {
         std::string name;
         int arity = 0;
         Chunk chunk;
+
+        struct UpvalueInfo {
+            uint8_t index;
+            bool is_local;
+        };
+
+        std::vector<UpvalueInfo> upvalues;
     };
 
     struct Iterator {
@@ -112,6 +125,12 @@ namespace pyle {
         int64_t start;
         int64_t end;
     };
+
+    struct Closure {
+        HeapIdx function; 
+        std::vector<HeapIdx> upvalues; 
+    };
+    
     
     struct Object {
         bool gc_marked = false;
@@ -123,7 +142,9 @@ namespace pyle {
             NativeFn,
             Function,
             Iterator,
-            Range
+            Range,
+            Closure,
+            Upvalue
         > data;
 
         Object() = default;
@@ -134,6 +155,8 @@ namespace pyle {
         explicit Object(Function func): data(std::move(func)) {}
         explicit Object(Iterator iter): data(iter) {}
         explicit Object(Range r): data(r) {}
+        explicit Object(Closure clos) : data(clos) {} 
+        explicit Object(Upvalue uv)   : data(uv) {}
     };
 
 }

@@ -29,7 +29,7 @@ namespace pyle {
     class VM {
     public:
         struct CallFrame {
-            HeapIdx function;
+            HeapIdx closure;
             size_t ip;
             size_t stack_base;
         };
@@ -43,6 +43,11 @@ namespace pyle {
         CallFrame* frames = nullptr;
         size_t frame_count = 0;
         size_t frame_capacity = 0;
+
+        std::vector<HeapIdx> open_upvalues; 
+
+        HeapIdx capture_upvalue(size_t stack_index);
+        void close_upvalues(Value* limit);
 
         std::vector<Value> global_slots;
         ankerl::unordered_dense::map<std::string, int> global_slot_map;
@@ -121,8 +126,10 @@ namespace pyle {
         PYLE_FORCEINLINE void set_top(Value val) { *(sp - 1) = val;}
 
         void value_to_string_helper(const Value& val, std::unordered_set<HeapIdx>& visited, std::stringstream& ss);
+        
         Function& get_function(const CallFrame& frame) {
-            return std::get<Function>(heap[frame.function].data);
+            Closure& closure = std::get<Closure>(heap[frame.closure].data);
+            return std::get<Function>(heap[closure.function].data);
         }
     };
 }

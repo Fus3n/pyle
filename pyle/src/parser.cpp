@@ -433,11 +433,43 @@ namespace pyle {
         Token paren = consume(TokenType::RIGHT_PAREN, "Expected ')' after arguments.");
         return std::make_unique<CallExpr>(std::move(callee), paren, std::move(arguments));
     }
+    
+    std::unique_ptr<Expr> Parser::fun_expression() {
+        consume(TokenType::LEFT_PAREN, "Expected '(' after 'fn' inside expression.");
+        std::vector<Token> params;
+        if (!check(TokenType::RIGHT_PAREN)) {
+            do {
+                if (params.size() >= 255) {
+                    reporter.report(peek().selection, ErrorType::Syntax, "Cannot have more than 255 parameters");
+                    throw ParserError();
+                }
+                params.push_back(consume(TokenType::IDENTIFIER, "Expected parameter name."));
+            } while (match({TokenType::COMMA}));
+        }
+        consume(TokenType::RIGHT_PAREN, "Expected ')' after parameters.");
+        
+        std::unique_ptr<BlockStmt> body;
+        if (match({TokenType::ARROW})) {
+            auto expr = expression();
+            std::vector<std::unique_ptr<Stmt>> statements;
+            statements.push_back(std::make_unique<ReturnStmt>(std::move(expr)));
+            body = std::make_unique<BlockStmt>(std::move(statements));
+        } else {
+            consume(TokenType::LEFT_BRACE, "Expected '{' before function body.");
+            body = block();
+        }
+        
+        return std::make_unique<FuncExpr>(std::move(params), std::move(body));
+    }
 
     std::unique_ptr<Expr> Parser::primary() {
         if (match({TokenType::INT, TokenType::FLOAT, TokenType::STRING, 
                 TokenType::TRUE, TokenType::FALSE, TokenType::NONE})) {
             return std::make_unique<LiteralExpr>(previous());
+        }
+
+        if (match({TokenType::FN})) { 
+            return fun_expression();
         }
 
         if (match({TokenType::IDENTIFIER})) {

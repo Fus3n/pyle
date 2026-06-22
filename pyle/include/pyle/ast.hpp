@@ -216,6 +216,15 @@ namespace pyle {
         void accept(Visitor* visitor) override;
     };
 
+    struct FuncExpr : public Expr {
+        std::vector<Token> params;
+        std::unique_ptr<BlockStmt> body;
+        FuncExpr(std::vector<Token> params, std::unique_ptr<BlockStmt> body)
+            : params(std::move(params)), body(std::move(body)) {}
+        void accept(Visitor* visitor) override;
+    };
+
+
     struct Visitor {
         virtual ~Visitor() = default;
 
@@ -240,6 +249,7 @@ namespace pyle {
         virtual void visit_func_decl(FuncDeclStmt* stmt) = 0;
         virtual void visit_for(ForStmt* stmt) = 0;
         virtual void visit_break(BreakStmt* stmt) = 0; 
+        virtual void visit_func_expr(FuncExpr* expr) = 0; 
     };  
 
     inline void LiteralExpr::accept(Visitor* visitor)  { visitor->visit_literal(this); }
@@ -263,4 +273,5 @@ namespace pyle {
     inline void FuncDeclStmt::accept(Visitor *visitor) { visitor->visit_func_decl(this); }
     inline void ForStmt::accept(Visitor* visitor) { visitor->visit_for(this); }
     inline void BreakStmt::accept(Visitor* visitor) { visitor->visit_break(this); }
+    inline void FuncExpr::accept(Visitor* visitor) { visitor->visit_func_expr(this); }
 }

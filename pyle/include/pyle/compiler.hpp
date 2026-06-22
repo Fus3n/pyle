@@ -3,6 +3,7 @@
 #include "pyle/ast.hpp"
 #include "pyle/bytecode.hpp"
 #include "pyle/error_reporter.hpp"
+#include "pyle/value.hpp"
 #include <cstddef>
 
 namespace pyle {
@@ -14,11 +15,25 @@ namespace pyle {
         int depth = 0;
     };
 
+    struct CompileState {
+        CompileState* enclosing = nullptr;
+        std::vector<Local> locals;
+        int scope_depth = 0;
+
+        struct Upvalue {
+            uint8_t index;
+            bool is_local;
+        };
+        std::vector<Upvalue> upvalues;
+    };
+
     class Compiler: public Visitor {
         Chunk chunk;
         Chunk* current_chunk;
         ErrorReporter& reporter;
         VM& vm;
+
+        CompileState* current_state = nullptr; 
 
         std::vector<Local> locals;
         int scope_depth = 0;
@@ -34,8 +49,14 @@ namespace pyle {
         int resolve_local(const Token& name) const;
         int resolve_global_slot(const Token& name);
 
+        int resolve_upvalue(CompileState* state, const Token& name);
+        int add_upvalue(CompileState* state, uint8_t index, bool is_local);
+        int resolve_local_in_state(CompileState* state, const Token& name);
+
         std::vector<std::vector<size_t>> loop_breaks;
         std::vector<size_t> loop_locals_start;
+
+        HeapIdx compile_function(const std::vector<Token>& params, BlockStmt* body, std::string_view name);
 
     public:
         Compiler(VM& vm, ErrorReporter& reporter): reporter(reporter), vm(vm) {};
@@ -63,6 +84,7 @@ namespace pyle {
         void visit_func_decl(FuncDeclStmt* stmt) override;
         void visit_for(ForStmt* stmt) override;
         void visit_break(BreakStmt* stmt) override;
+        void visit_func_expr(FuncExpr* expr) override;
     };
 
 

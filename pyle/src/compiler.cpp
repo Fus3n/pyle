@@ -66,21 +66,21 @@ namespace pyle {
     }
 
     void Compiler::begin_scope() {
-        scope_depth++;
+        current_state->scope_depth++;
     }
 
-    void Compiler::end_scope() {
-        scope_depth--;
 
-        while (!locals.empty() && locals.back().depth > scope_depth) {
+    void Compiler::end_scope() {
+        current_state->scope_depth--;
+        while (!current_state->locals.empty() && current_state->locals.back().depth > current_state->scope_depth) {
             emit_instruction(OpCode::POP, 0, 0);
-            locals.pop_back();
+            current_state->locals.pop_back();
         }
     }
 
     int Compiler::resolve_local(const Token &name) const {
-        for (int i = static_cast<int>(locals.size()) - 1; i >= 0; i--) {
-            if (locals[i].name.lexeme == name.lexeme) {
+        for (int i = static_cast<int>(current_state->locals.size()) - 1; i >= 0; i--) {
+            if (current_state->locals[i].name.lexeme == name.lexeme) {
                 return i;
             }
         }
@@ -97,9 +97,94 @@ namespace pyle {
         return it->second;
     }
 
+    int Compiler::resolve_local_in_state(CompileState* state, const Token& name) {
+        for (int i = static_cast<int>(state->locals.size()) - 1; i >= 0; i--) {
+            if (state->locals[i].name.lexeme == name.lexeme) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    int Compiler::resolve_upvalue(CompileState* state, const Token& name) {
+        if (state->enclosing == nullptr) return -1; // Reached global scope! [cite: 1.2.1]
+
+        int local = resolve_local_in_state(state->enclosing, name);
+        if (local != -1) {
+            return add_upvalue(state, static_cast<uint8_t>(local), true);
+        }
+
+        int upvalue = resolve_upvalue(state->enclosing, name);
+        if (upvalue != -1) {
+            return add_upvalue(state, static_cast<uint8_t>(upvalue), false);
+        }
+
+        return -1; 
+    }
+
+    int Compiler::add_upvalue(CompileState* state, uint8_t index, bool is_local) {
+        for (size_t i = 0; i < state->upvalues.size(); ++i) {
+            if (state->upvalues[i].index == index && state->upvalues[i].is_local == is_local) {
+                return static_cast<int>(i);
+            }
+        }
+
+        state->upvalues.push_back({index, is_local});
+        return static_cast<int>(state->upvalues.size() - 1);
+    }
+
+
+    HeapIdx Compiler::compile_function(const std::vector<Token>& params, BlockStmt* body, std::string_view name) {
+        Function fn;
+        fn.name = name;
+        fn.arity = params.size();
+        
+        Chunk* enclosing_chunk = current_chunk;
+        int enclosing_scope = current_state->scope_depth;
+
+        // Push the nested compiler state
+        CompileState state;
+        state.enclosing = current_state;
+        current_state = &state;
+
+        current_chunk = &fn.chunk;
+        current_state->scope_depth = 0;
+        
+        begin_scope();
+        for (const auto& param : params) {
+            current_state->locals.push_back(Local{param, current_state->scope_depth});
+        }
+        
+        for (const auto& s : body->statements) {
+            if (s) s->accept(this);
+        }
+        
+        uint32_t none_idx = make_constant(Value());
+        emit_instruction(OpCode::LOAD_CONST, none_idx, 0);
+        emit_instruction(OpCode::RETURN, 0, 0);
+        
+        end_scope();
+
+        for (const auto& uv : current_state->upvalues) {
+            fn.upvalues.push_back(Function::UpvalueInfo{uv.index, uv.is_local});
+        }
+        
+        // Restore parent state
+        current_chunk = enclosing_chunk;
+        current_state = state.enclosing;
+        current_state->scope_depth = enclosing_scope;
+        
+        return vm.alloc(Object(std::move(fn)));
+    }
+
+
     Chunk Compiler::compile(const std::vector<std::unique_ptr<Stmt>>& statements) {
         Chunk main_chunk;
         current_chunk = &main_chunk;
+
+        CompileState state;
+        current_state = &state;
+
         vm.set_gc_enabled(false);
         for (const auto& stmt : statements) {
             if (stmt) {
@@ -168,12 +253,13 @@ namespace pyle {
     }
 
     void Compiler::visit_expression(ExpressionStmt *stmt) {
-        
         if (auto* assign = dynamic_cast<AssignExpr*>(stmt->expression.get())) {
             assign->value->accept(this);
             int arg = resolve_local(assign->name);
             if (arg != -1) {
                 emit_instruction(OpCode::SET_LOCAL_POP, arg, assign->name.selection.line);
+            } else if ((arg = resolve_upvalue(current_state, assign->name)) != -1) {
+                emit_instruction(OpCode::SET_UPVALUE_POP, arg, assign->name.selection.line); // <-- ADD THIS
             } else {
                 int slot = resolve_global_slot(assign->name);
                 if (slot >= 0) {
@@ -190,12 +276,10 @@ namespace pyle {
         if (stmt->initializer) {
             stmt->initializer->accept(this);
         } else {
-            uint32_t nil_idx = make_constant(Value());
-            emit_instruction(OpCode::LOAD_CONST, nil_idx, 0);
+            emit_instruction(OpCode::LOAD_CONST,  make_constant(Value()), 0);
         }
-
-        if (scope_depth > 0) {
-            locals.push_back(Local{stmt->name, scope_depth});
+        if (current_state->scope_depth > 0) {
+            current_state->locals.push_back(Local{stmt->name, current_state->scope_depth});
         } else {
             int slot = vm.declare_global(std::string(stmt->name.lexeme));
             emit_instruction(OpCode::DEFINE_GLOBAL_SLOT, slot, stmt->name.selection.line);
@@ -204,23 +288,24 @@ namespace pyle {
 
     void Compiler::visit_variable(VariableExpr *expr) {
         int arg = resolve_local(expr->name);
-
         if (arg != -1) {
             emit_instruction(OpCode::LOAD_LOCAL, arg, expr->name.selection.line);
+        } else if ((arg = resolve_upvalue(current_state, expr->name)) != -1) {
+            emit_instruction(OpCode::LOAD_UPVALUE, arg, expr->name.selection.line); // <-- ADD THIS
         } else {
             int slot = resolve_global_slot(expr->name);
-            if (slot < 0) return;   // error already reported
+            if (slot < 0) return;
             emit_instruction(OpCode::LOAD_GLOBAL_SLOT, slot, expr->name.selection.line);
         }
     }
 
     void Compiler::visit_assign(AssignExpr *expr) {
         expr->value->accept(this);
-
         int arg = resolve_local(expr->name);
-
         if (arg != -1) {
             emit_instruction(OpCode::SET_LOCAL, arg, expr->name.selection.line);
+        } else if ((arg = resolve_upvalue(current_state, expr->name)) != -1) {
+            emit_instruction(OpCode::SET_UPVALUE, arg, expr->name.selection.line); // <-- ADD THIS
         } else {
             int slot = resolve_global_slot(expr->name);
             if (slot < 0) return;
@@ -346,7 +431,7 @@ namespace pyle {
         for (size_t break_jump : loop_breaks.back()) {
             patch_jump(break_jump);
         }
-        
+
         loop_breaks.pop_back();
         loop_locals_start.pop_back();
     }
@@ -422,45 +507,24 @@ namespace pyle {
     }
 
     void Compiler::visit_func_decl(FuncDeclStmt* stmt) {
-        Function fn;
-        fn.name = stmt->name.lexeme;
-        fn.arity = stmt->params.size();
-
-        int slot = vm.declare_global(std::string(stmt->name.lexeme));
-
-        Chunk* enclosing_chunk = current_chunk;
-        std::vector<Local> enclosing_locals = std::move(locals);
-        int enclosing_scope = scope_depth;
-        
-        current_chunk = &fn.chunk;
-        locals.clear();
-        scope_depth = 0;
-        
-        begin_scope();
-        for (const auto& param : stmt->params) {
-            locals.push_back(Local{param, scope_depth});
-        }
-        
-        for (const auto& s : stmt->body->statements) {
-            if (s) s->accept(this);
-        }
-        
-        uint32_t nil_idx = make_constant(Value());
-        emit_instruction(OpCode::LOAD_CONST, nil_idx, 0);
-        emit_instruction(OpCode::RETURN, 0, 0);
-        end_scope();
-        
-        current_chunk = enclosing_chunk;
-        locals = std::move(enclosing_locals);
-        scope_depth = enclosing_scope;
-        
-        HeapIdx fn_idx = vm.alloc(Object(std::move(fn)));
-        
+        HeapIdx fn_idx = compile_function(stmt->params, stmt->body.get(), stmt->name.lexeme);
         Value fn_val(Value::Tag::FuncRef, fn_idx);
         uint32_t fn_const_idx = make_constant(fn_val);
-        emit_instruction(OpCode::LOAD_CONST, fn_const_idx, stmt->name.selection.line);
         
+        int slot = vm.declare_global(std::string(stmt->name.lexeme));
+        
+        emit_instruction(OpCode::LOAD_CONST, fn_const_idx, stmt->name.selection.line);
+        emit_instruction(OpCode::CLOSURE, 0, stmt->name.selection.line);
         emit_instruction(OpCode::DEFINE_GLOBAL_SLOT, slot, stmt->name.selection.line);
+    }
+
+    void Compiler::visit_func_expr(FuncExpr* expr) {
+        HeapIdx fn_idx = compile_function(expr->params, expr->body.get(), "lambda");
+        Value fn_val(Value::Tag::FuncRef, fn_idx);
+        uint32_t fn_const_idx = make_constant(fn_val);
+        
+        emit_instruction(OpCode::LOAD_CONST, fn_const_idx, 0);
+        emit_instruction(OpCode::CLOSURE, 0, 0);
     }
 
     void Compiler::visit_return(ReturnStmt* stmt) {

@@ -115,7 +115,9 @@ namespace pyle {
                 case Value::Tag::NativeFuncRef:
                 case Value::Tag::FuncRef:
                 case Value::Tag::IteratorRef: 
-                case Value::Tag::RangeRef: {
+                case Value::Tag::RangeRef: 
+                case Value::Tag::ClosureRef: 
+                case Value::Tag::UpvalueRef: {
                     HeapIdx idx = val.as_ref;
                     if (!heap[idx].gc_marked) {
                         heap[idx].gc_marked = true;
@@ -137,7 +139,7 @@ namespace pyle {
 
         for (size_t i = 0; i < frame_count; ++i) {
             const auto& frame = frames[i];
-            mark_value(Value(Value::Tag::FuncRef, frame.function));
+            mark_value(Value(Value::Tag::ClosureRef, frame.closure)); 
             for (const Value &val: get_function(frame).chunk.const_pool) {
                 mark_value(val);
             }
@@ -157,6 +159,15 @@ namespace pyle {
                 }
             } else if (const auto *iter_ptr = std::get_if<Iterator>(&heap[current].data)) {
                 mark_value(iter_ptr->container);
+            } else if (const auto *closure_ptr = std::get_if<Closure>(&heap[current].data)) { 
+                mark_value(Value(Value::Tag::FuncRef, closure_ptr->function));
+                for (HeapIdx uv_idx : closure_ptr->upvalues) { 
+                    mark_value(Value(Value::Tag::UpvalueRef, uv_idx));
+                }
+            } else if (const auto *uv_ptr = std::get_if<Upvalue>(&heap[current].data)) { 
+                if (uv_ptr->location == &uv_ptr->closed) {
+                    mark_value(uv_ptr->closed); 
+                }
             }
         }
     }
@@ -249,6 +260,38 @@ namespace pyle {
         fmt::print(stderr, "{}: {}\n", err_to_string(type), msg);
         if (line > 0) {
             fmt::print(stderr, " at line {}\n", line + 1);
+        }
+    }
+
+    HeapIdx VM::capture_upvalue(size_t stack_index) {
+        Value* local_ptr = &stack[stack_index];
+        
+        // if an upvalue exists for this variable, share it
+        for (HeapIdx uv_idx : open_upvalues) {
+            Upvalue& uv = std::get<Upvalue>(heap[uv_idx].data);
+            if (uv.location == local_ptr) {
+                return uv_idx;
+            }
+        }
+        
+        // new upvalue
+        Upvalue uv;
+        uv.location = local_ptr;
+        HeapIdx idx = alloc(Object(uv));
+        open_upvalues.push_back(idx);
+        return idx;
+    }
+
+    void VM::close_upvalues(Value* limit) {
+        for (auto it = open_upvalues.begin(); it != open_upvalues.end(); ) {
+            Upvalue& uv = std::get<Upvalue>(heap[*it].data);
+            if (uv.location >= limit) {
+                uv.closed = *(uv.location);
+                uv.location = &uv.closed;
+                it = open_upvalues.erase(it);
+            } else {
+                ++it;
+            }
         }
     }
 
@@ -351,10 +394,11 @@ bool VM::values_equal(const Value& a, const Value& b) {
         main_fn.name = "main";
         main_fn.chunk = std::move(in_chunk);
         
-        HeapIdx main_idx = alloc(Object(std::move(main_fn)));
+        HeapIdx main_func_idx = alloc(Object(std::move(main_fn)));
+        HeapIdx main_closure_idx = alloc(Object(Closure{main_func_idx}));
 
         CallFrame root_frame;
-        root_frame.function = main_idx;  
+        root_frame.closure = main_closure_idx;  
         root_frame.ip = 0;
         root_frame.stack_base = 0;
 
@@ -392,6 +436,10 @@ bool VM::values_equal(const Value& a, const Value& b) {
             &&op_GET_ITER,
             &&op_FOR_ITER,
             &&op_NEW_RANGE,
+            &&op_CLOSURE,
+            &&op_LOAD_UPVALUE,
+            &&op_SET_UPVALUE,
+            &&op_SET_UPVALUE_POP,
             &&op_ADD,
             &&op_SUB,
             &&op_MUL,
@@ -617,8 +665,9 @@ bool VM::values_equal(const Value& a, const Value& b) {
                         Value result = native(*this, args_view);
                         sp -= arg_count; 
                         set_top(result);
-                    } else if (callee.tag == Value::Tag::FuncRef) {
-                        Function& fn = std::get<Function>(heap[callee.as_ref].data);
+                    } else if (callee.tag == Value::Tag::ClosureRef) {
+                        Closure& closure = std::get<Closure>(heap[callee.as_ref].data);
+                        Function& fn = std::get<Function>(heap[closure.function].data);
                         
                         if (fn.arity != arg_count) {
                             runtime_error(RuntimeError::ArgumentError, fmt::format("Expected {} arguments, got {}.", fn.arity, arg_count));
@@ -627,7 +676,7 @@ bool VM::values_equal(const Value& a, const Value& b) {
 
                         sync_ip(); 
                         CallFrame new_frame;
-                        new_frame.function = callee.as_ref;
+                        new_frame.closure = callee.as_ref;
                         new_frame.ip = 0;
                         new_frame.stack_base = stack_size() - arg_count;
                         
@@ -652,6 +701,9 @@ bool VM::values_equal(const Value& a, const Value& b) {
                 OP(RETURN) {
                     Value ret_val = peek();
                     size_t stack_base = frame->stack_base; 
+                    
+                    close_upvalues(&stack[stack_base]);
+
                     frame_count--;
                     if (frame_count == 0) return;
 
@@ -662,6 +714,48 @@ bool VM::values_equal(const Value& a, const Value& b) {
 
                     Function& fn = get_function(*frame);
                     sync_frame_cache(frame, fn, instr_data, ip, ip_end, const_pool, const_pool_size);
+                }
+                DISPATCH();
+
+                OP(CLOSURE) {
+                    Value fn_val = pop(); 
+                    Function& fn = std::get<Function>(heap[fn_val.as_ref].data);
+                    
+                    Closure closure;
+                    closure.function = fn_val.as_ref;
+                    
+                    for (const auto& uv : fn.upvalues) {
+                        if (uv.is_local) {
+                            closure.upvalues.push_back(capture_upvalue(frame->stack_base + uv.index));
+                        } else {
+                            Closure& parent_closure = std::get<Closure>(heap[frame->closure].data);
+                            closure.upvalues.push_back(parent_closure.upvalues[uv.index]);
+                        }
+                    }
+                    
+                    HeapIdx idx = alloc(Object(closure));
+                    push(Value(Value::Tag::ClosureRef, idx));
+                }
+                DISPATCH();
+
+                OP(LOAD_UPVALUE) {
+                    Closure& closure = std::get<Closure>(heap[frame->closure].data);
+                    Upvalue& uv = std::get<Upvalue>(heap[closure.upvalues[ARG]].data);
+                    push(*(uv.location)); 
+                }
+                DISPATCH();
+
+                OP(SET_UPVALUE) {
+                    Closure& closure = std::get<Closure>(heap[frame->closure].data);
+                    Upvalue& uv = std::get<Upvalue>(heap[closure.upvalues[ARG]].data);
+                    *(uv.location) = peek();
+                }
+                DISPATCH();
+
+                OP(SET_UPVALUE_POP) {
+                    Closure& closure = std::get<Closure>(heap[frame->closure].data);
+                    Upvalue& uv = std::get<Upvalue>(heap[closure.upvalues[ARG]].data);
+                    *(uv.location) = pop();
                 }
                 DISPATCH();
 

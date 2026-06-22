@@ -1,3 +1,6 @@
 # Pyle
 
-The scripting langauge
+A fast, lightweight, embeddable scripting language for C++.
+
+
+
