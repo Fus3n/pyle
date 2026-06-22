@@ -90,6 +90,7 @@ namespace pyle {
                 return Token(TokenType::BANG, "!", token_start_span);
             case '=':
                 if (match('=')) return Token(TokenType::EQUAL_EQUAL, "==", token_start_span);
+                if (match('>')) return Token(TokenType::ARROW, "=>", token_start_span);
                 return Token(TokenType::EQUAL, "=", token_start_span);
             case '<':
                 if (match('=')) return Token(TokenType::LESS_EQUAL, "<=", token_start_span);

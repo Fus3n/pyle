@@ -16,7 +16,7 @@ namespace pyle {
 
     struct Value {
         enum class Tag {
-            Int, Float, Bool, Null, StringRef, ArrayRef, StructRef,
+            Int, Float, Bool, None, StringRef, ArrayRef, StructRef,
             NativeFuncRef, FuncRef, IteratorRef, RangeRef
         } tag;
         union {
@@ -26,7 +26,7 @@ namespace pyle {
             HeapIdx as_ref;
         };
 
-        Value() : tag(Tag::Null), as_ref(0) {}
+        Value() : tag(Tag::None), as_ref(0) {}
 
         explicit Value(int64_t val) : tag(Tag::Int), as_int(val) {}
 
@@ -52,8 +52,8 @@ namespace pyle {
                     return "float";
                 case Tag::Bool:
                     return "bool";
-                case Tag::Null:
-                    return "null";
+                case Tag::None:
+                    return "nil";
                 case Tag::StringRef:
                     return "string";
                 case Tag::ArrayRef:

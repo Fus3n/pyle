@@ -34,6 +34,9 @@ namespace pyle {
         int resolve_local(const Token& name) const;
         int resolve_global_slot(const Token& name);
 
+        std::vector<std::vector<size_t>> loop_breaks;
+        std::vector<size_t> loop_locals_start;
+
     public:
         Compiler(VM& vm, ErrorReporter& reporter): reporter(reporter), vm(vm) {};
 
@@ -59,6 +62,7 @@ namespace pyle {
         void visit_return(ReturnStmt* stmt) override;
         void visit_func_decl(FuncDeclStmt* stmt) override;
         void visit_for(ForStmt* stmt) override;
+        void visit_break(BreakStmt* stmt) override;
     };
 
 

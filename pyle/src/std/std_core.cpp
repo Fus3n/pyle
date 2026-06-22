@@ -33,7 +33,7 @@ namespace pyle {
                 case Value::Tag::Bool:
                     store.push_back(arg.as_bool);
                     break;
-                case Value::Tag::Null:
+                case Value::Tag::None:
                     store.push_back("null");
                     break;
                 default:

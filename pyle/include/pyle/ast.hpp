@@ -210,6 +210,11 @@ namespace pyle {
         void accept(Visitor *visitor) override;
     };
 
+    struct BreakStmt : public Stmt {
+        Token token;
+        explicit BreakStmt(Token token) : token(token) {}
+        void accept(Visitor* visitor) override;
+    };
 
     struct Visitor {
         virtual ~Visitor() = default;
@@ -233,7 +238,8 @@ namespace pyle {
         virtual void visit_index_assign(IndexAssignExpr* expr) = 0;
         virtual void visit_return(ReturnStmt* stmt) = 0;
         virtual void visit_func_decl(FuncDeclStmt* stmt) = 0;
-        virtual void visit_for(ForStmt* stmt) = 0; 
+        virtual void visit_for(ForStmt* stmt) = 0;
+        virtual void visit_break(BreakStmt* stmt) = 0; 
     };  
 
     inline void LiteralExpr::accept(Visitor* visitor)  { visitor->visit_literal(this); }
@@ -256,4 +262,5 @@ namespace pyle {
     inline void ReturnStmt::accept(Visitor *visitor) { visitor->visit_return(this); }
     inline void FuncDeclStmt::accept(Visitor *visitor) { visitor->visit_func_decl(this); }
     inline void ForStmt::accept(Visitor* visitor) { visitor->visit_for(this); }
+    inline void BreakStmt::accept(Visitor* visitor) { visitor->visit_break(this); }
 }

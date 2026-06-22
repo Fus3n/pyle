@@ -16,7 +16,8 @@
         "extensions": [
           ".pyl",
           ".pyle"
-        ]
+        ],
+        "configuration": "./language-configuration.json"
       }
     ],
     "grammars": [

@@ -42,7 +42,7 @@ namespace pyle {
 
     bool VM::is_truthy(const Value& v) {
         switch (v.tag) {
-            case Value::Tag::Null:  return false;
+            case Value::Tag::None:  return false;
             case Value::Tag::Bool:  return v.as_bool;
             case Value::Tag::Int:   return v.as_int != 0;
             case Value::Tag::Float: return v.as_float != 0.0;
@@ -179,7 +179,7 @@ namespace pyle {
             case Value::Tag::Int: ss << val.as_int; break;
             case Value::Tag::Float: ss << val.as_float; break;
             case Value::Tag::Bool: ss << (val.as_bool ? "true": "false"); break;
-            case Value::Tag::Null: ss << "null"; break;
+            case Value::Tag::None: ss << "null"; break;
             case Value::Tag::NativeFuncRef: ss << "<native_function>"; break;
             case Value::Tag::StringRef: {
                 ss << std::get<std::string>(heap[val.as_ref].data);
@@ -286,7 +286,7 @@ bool VM::values_equal(const Value& a, const Value& b) {
     }
     if (a.tag != b.tag) return false;
     switch (a.tag) {
-        case Value::Tag::Null: return true;
+        case Value::Tag::None: return true;
         case Value::Tag::Bool: return a.as_bool == b.as_bool;
         case Value::Tag::StringRef:
         case Value::Tag::ArrayRef:

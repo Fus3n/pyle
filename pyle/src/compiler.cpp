@@ -131,7 +131,7 @@ namespace pyle {
             v = Value(true);
         } else if (tok.type == TokenType::FALSE) {
             v = Value(false);
-        } else if (tok.type == TokenType::NIL) {
+        } else if (tok.type == TokenType::NONE) {
             v = Value();
         }
 
@@ -289,28 +289,39 @@ namespace pyle {
     }
 
     void Compiler::visit_while(WhileStmt* stmt) {
-        size_t loop_start = current_chunk->instr.size();
-        
-        stmt->condition->accept(this);
+        loop_breaks.push_back(std::vector<size_t>());
+        loop_locals_start.push_back(locals.size());
 
+        size_t loop_start = current_chunk->instr.size();
+        stmt->condition->accept(this);
+        
         size_t exit_jump = emit_jump(OpCode::JUMP_IF_FALSE, 0);
         emit_instruction(OpCode::POP, 0, 0);
 
         stmt->body->accept(this);
-
+        
         emit_loop(loop_start, 0);
+        
+        patch_jump(exit_jump);               
+        emit_instruction(OpCode::POP, 0, 0); 
 
-        patch_jump(exit_jump);
+        for (size_t break_jump : loop_breaks.back()) {
+            patch_jump(break_jump);
+        }
 
-        emit_instruction(OpCode::POP, 0, 0);
+        loop_breaks.pop_back();
+        loop_locals_start.pop_back();
     }
 
     void Compiler::visit_for(ForStmt* stmt) {
-         stmt->iterable->accept(this);
-    
+        loop_breaks.push_back(std::vector<size_t>());
+        loop_locals_start.push_back(locals.size());
+
+        stmt->iterable->accept(this);
+
         emit_instruction(OpCode::GET_ITER, 0, stmt->var_name.selection.line);
         
-        begin_scope();
+        begin_scope(); 
         Token dummy_token(TokenType::IDENTIFIER, "@iterator", stmt->var_name.selection);
         locals.push_back(Local{dummy_token, scope_depth});
 
@@ -318,18 +329,43 @@ namespace pyle {
         
         size_t exit_jump = emit_jump(OpCode::FOR_ITER, stmt->var_name.selection.line);
         
-        begin_scope();
+        begin_scope(); 
         locals.push_back(Local{stmt->var_name, scope_depth});
         
         for (const auto& s : stmt->body->statements) {
             if (s) s->accept(this);
         }
         
-        end_scope();
+        end_scope(); 
         
         emit_loop(loop_start, stmt->var_name.selection.line);
-        patch_jump(exit_jump);
-        end_scope();
+        
+        patch_jump(exit_jump); 
+        end_scope();           
+
+        for (size_t break_jump : loop_breaks.back()) {
+            patch_jump(break_jump);
+        }
+        
+        loop_breaks.pop_back();
+        loop_locals_start.pop_back();
+    }
+
+    void Compiler::visit_break(BreakStmt* stmt) {
+        if (loop_breaks.empty()) {
+            reporter.report(stmt->token.selection, ErrorType::Compile, 
+                        "Cannot use 'break' outside of a loop.");
+            return;
+        }
+
+        size_t locals_to_pop = locals.size() - loop_locals_start.back();
+        for (size_t i = 0; i < locals_to_pop; ++i) {
+            emit_instruction(OpCode::POP, 0, stmt->token.selection.line);
+        }
+
+        // temporary jump we will patch this in loop later
+        size_t break_jump = emit_jump(OpCode::JUMP, stmt->token.selection.line);
+        loop_breaks.back().push_back(break_jump);
     }
 
     void Compiler::visit_logical(LogicalExpr* expr) {

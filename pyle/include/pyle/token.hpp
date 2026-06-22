@@ -16,7 +16,7 @@ namespace pyle {
         BANG, BANG_EQUAL,         
         EQUAL, EQUAL_EQUAL,        
         GREATER, GREATER_EQUAL,    
-        LESS, LESS_EQUAL,          
+        LESS, LESS_EQUAL, ARROW,      
 
         IDENTIFIER,                
         STRING,                  
@@ -25,11 +25,11 @@ namespace pyle {
 
         AND, OR, NOT,         
         IF, ELSE, ELIF,            
-        FOR, WHILE, IN,            
-        FUNC, RETURN,             
+        FOR, WHILE, IN, LOOP, BREAK,        
+        FN, RETURN,             
         LET, GLOBAL,              
         STRUCT,                     
-        NIL, TRUE, FALSE,          
+        NONE, TRUE, FALSE,       
 
         // Special
         ERROR,
@@ -59,12 +59,15 @@ namespace pyle {
         {"for",    TokenType::FOR},
         {"in",     TokenType::IN},
         {"while",  TokenType::WHILE},
-        {"func",   TokenType::FUNC},
+        {"while",  TokenType::WHILE},
+        {"loop", TokenType::LOOP},
+        {"break", TokenType::BREAK},
+        {"fn",   TokenType::FN},
         {"return", TokenType::RETURN},
         {"let",    TokenType::LET},
         {"global", TokenType::GLOBAL},
         {"struct", TokenType::STRUCT},
-        {"nil",    TokenType::NIL},
+        {"none",    TokenType::NONE},
         {"true",   TokenType::TRUE},
         {"false",  TokenType::FALSE},
     };

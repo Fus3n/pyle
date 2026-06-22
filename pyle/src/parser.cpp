@@ -82,7 +82,7 @@ namespace pyle {
                 case TokenType::IF:
                 case TokenType::FOR:
                 case TokenType::WHILE:
-                case TokenType::FUNC:
+                case TokenType::FN:
                 case TokenType::LET:
                 case TokenType::GLOBAL:
                 case TokenType::STRUCT:
@@ -101,9 +101,11 @@ namespace pyle {
             if (match({TokenType::LEFT_BRACE})) return block();
             if (match({TokenType::IF})) return if_statement();
             if (match({TokenType::WHILE})) return while_statement();
+            if (match({TokenType::LOOP})) return loop_statement();
             if (match({TokenType::FOR})) return for_statement();
-            if (match({TokenType::FUNC})) return function_declaration();
+            if (match({TokenType::FN})) return function_declaration();
             if (match({TokenType::RETURN})) return return_statement();
+            if (match({TokenType::BREAK})) return break_statement();
 
             return expression_statement();
         } catch (ParserError& err) {
@@ -115,7 +117,6 @@ namespace pyle {
     std::unique_ptr<Stmt> Parser::function_declaration() {
         Token name = consume(TokenType::IDENTIFIER, "Expected function name.");
         consume(TokenType::LEFT_PAREN, "Expected '(' after function name.");
-        
         std::vector<Token> params;
         if (!check(TokenType::RIGHT_PAREN)) {
             do {
@@ -127,10 +128,21 @@ namespace pyle {
             } while (match({TokenType::COMMA}));
         }
         consume(TokenType::RIGHT_PAREN, "Expected ')' after parameters.");
+        
+        std::unique_ptr<BlockStmt> body;
 
-        consume(TokenType::LEFT_BRACE, "Expected '{' before function body.");
-        std::unique_ptr<BlockStmt> body = block();
-
+        if (match({TokenType::ARROW})) {
+            std::unique_ptr<Expr> expr = expression();
+            consume_statement_end();
+            
+            std::vector<std::unique_ptr<Stmt>> statements;
+            statements.push_back(std::make_unique<ReturnStmt>(std::move(expr)));
+            body = std::make_unique<BlockStmt>(std::move(statements));
+        } else {
+            consume(TokenType::LEFT_BRACE, "Expected '{' before function body.");
+            body = block();
+        }
+        
         return std::make_unique<FuncDeclStmt>(std::move(name), std::move(params), std::move(body));
     }
 
@@ -166,6 +178,20 @@ namespace pyle {
         std::unique_ptr<Expr> condition = expression();
         std::unique_ptr<Stmt> body = statement();
         return std::make_unique<WhileStmt>(std::move(condition), std::move(body));
+    }
+
+    std::unique_ptr<Stmt> Parser::loop_statement() {
+        Token true_token(TokenType::TRUE, "true", previous().selection);
+        auto condition = std::make_unique<LiteralExpr>(true_token);
+        
+        std::unique_ptr<Stmt> body = statement();
+        return std::make_unique<WhileStmt>(std::move(condition), std::move(body));
+    }
+
+    std::unique_ptr<Stmt> Parser::break_statement() {
+        Token token = previous();
+        consume_statement_end();
+        return std::make_unique<BreakStmt>(token);
     }
 
     std::unique_ptr<Stmt> Parser::for_statement() {
@@ -410,7 +436,7 @@ namespace pyle {
 
     std::unique_ptr<Expr> Parser::primary() {
         if (match({TokenType::INT, TokenType::FLOAT, TokenType::STRING, 
-                TokenType::TRUE, TokenType::FALSE, TokenType::NIL})) {
+                TokenType::TRUE, TokenType::FALSE, TokenType::NONE})) {
             return std::make_unique<LiteralExpr>(previous());
         }
 

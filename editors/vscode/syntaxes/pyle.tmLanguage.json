@@ -2,25 +2,64 @@
   "scopeName": "source.pyle",
   "patterns": [
     {
-      "name": "keyword.control.pyle",
-      "match": "\\b(if|else|elif|for|while|return|func|let|struct)\\b"
-    },
-    {
-      "name": "constant.language.pyle",
-      "match": "\\b(true|false|nil)\\b"
-    },
-    {
       "name": "comment.line.number-sign.pyle",
       "match": "#.*$"
     },
     {
       "name": "string.quoted.double.pyle",
       "begin": "\"",
-      "end": "\""
+      "end": "\"",
+      "patterns": [
+        {
+          "name": "constant.character.escape.pyle",
+          "match": "\\\\[ntr\\\\\"'0]"
+        }
+      ]
+    },
+    {
+      "comment": "Function declarations: fn my_func()",
+      "match": "\\b(fn)\\s+([a-zA-Z_][a-zA-Z0-9_]*)",
+      "captures": {
+        "1": {
+          "name": "keyword.declaration.pyle"
+        },
+        "2": {
+          "name": "entity.name.function.pyle"
+        }
+      }
+    },
+    {
+      "name": "keyword.declaration.pyle",
+      "match": "\\b(let|struct)\\b"
+    },
+    {
+      "name": "keyword.control.pyle",
+      "match": "\\b(if|else|elif|for|in|while|loop|return|break)\\b"
+    },
+    {
+      "name": "constant.language.pyle",
+      "match": "\\b(true|false|none)\\b"
+    },
+    {
+      "name": "support.function.builtin.pyle",
+      "match": "\\b(print|printf|clock|format)\\b"
+    },
+    {
+      "comment": "Function & Method calls: my_func() or object.method()",
+      "match": "\\b([a-zA-Z_][a-zA-Z0-9_]*)\\s*(?=\\()",
+      "captures": {
+        "1": {
+          "name": "entity.name.function.call.pyle"
+        }
+      }
+    },
+    {
+      "name": "keyword.operator.pyle",
+      "match": "(\\+|\\-|\\*|/|%|==|!=|<=|>=|=|<|>|\\+=|\\-=|\\*=|/=|\\.\\.|=>)"
     },
     {
       "name": "constant.numeric.pyle",
-      "match": "\\b\\d+(\\.\\d+)?\\b"
+      "match": "\\b(0x[0-9a-fA-F]+|\\d+(\\.\\d+)?)\\b"
     }
   ]
 }
