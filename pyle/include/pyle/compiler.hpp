@@ -58,6 +58,7 @@ namespace pyle {
         void visit_index_assign(IndexAssignExpr* expr) override;
         void visit_return(ReturnStmt* stmt) override;
         void visit_func_decl(FuncDeclStmt* stmt) override;
+        void visit_for(ForStmt* stmt) override;
     };
 
 

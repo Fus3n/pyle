@@ -160,6 +160,7 @@ namespace pyle {
             case TokenType::LESS_EQUAL: emit_instruction(OpCode::LTE, 0, line); break;
             case TokenType::GREATER: emit_instruction(OpCode::GT, 0, line); break;
             case TokenType::GREATER_EQUAL: emit_instruction(OpCode::GTE, 0, line); break;
+            case TokenType::DOT_DOT: emit_instruction(OpCode::NEW_RANGE, 0, line); break;
             default:
                 reporter.report(expr->op.selection, ErrorType::Compile, "Unknown binary operator.");
                 break;
@@ -304,6 +305,33 @@ namespace pyle {
         emit_instruction(OpCode::POP, 0, 0);
     }
 
+    void Compiler::visit_for(ForStmt* stmt) {
+         stmt->iterable->accept(this);
+    
+        emit_instruction(OpCode::GET_ITER, 0, stmt->var_name.selection.line);
+        
+        begin_scope();
+        Token dummy_token(TokenType::IDENTIFIER, "@iterator", stmt->var_name.selection);
+        locals.push_back(Local{dummy_token, scope_depth});
+
+        size_t loop_start = current_chunk->instr.size();
+        
+        size_t exit_jump = emit_jump(OpCode::FOR_ITER, stmt->var_name.selection.line);
+        
+        begin_scope();
+        locals.push_back(Local{stmt->var_name, scope_depth});
+        
+        for (const auto& s : stmt->body->statements) {
+            if (s) s->accept(this);
+        }
+        
+        end_scope();
+        
+        emit_loop(loop_start, stmt->var_name.selection.line);
+        patch_jump(exit_jump);
+        end_scope();
+    }
+
     void Compiler::visit_logical(LogicalExpr* expr) {
         expr->left->accept(this);
 
@@ -408,5 +436,5 @@ namespace pyle {
         }
         emit_instruction(OpCode::RETURN, 0, 0);
     }
-    
+
 }

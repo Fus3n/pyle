@@ -2,6 +2,7 @@
 #include "pyle/value.hpp"
 #include <chrono>
 #include <iostream>
+#include <fmt/args.h> 
 
 namespace pyle {
 
@@ -10,32 +11,43 @@ namespace pyle {
             vm.runtime_error(RuntimeError::ArgumentError, "format/printf expects at least 1 argument.");
             return "";
         }
-        
+
         const Value& fmt_val = args[0];
         if (fmt_val.tag != Value::Tag::StringRef) {
             vm.runtime_error(RuntimeError::Type, "Format string must be a string.");
             return "";
         }
-        
-        const std::string& fmt = std::get<std::string>(vm.get_heap_object(fmt_val.as_ref).data);
-        std::string result;
-        
-        size_t arg_idx = 1;
-        for (size_t i = 0; i < fmt.size(); ++i) {
-            char c = fmt[i];
-            if (c == '{' && i + 1 < fmt.size() && fmt[i+1] == '}') {
-                if (arg_idx >= args.size()) {
-                    vm.runtime_error(RuntimeError::ArgumentError, "Not enough arguments for format string.");
-                    return "";
-                }
-                result += vm.value_to_string(args[arg_idx]);
-                arg_idx++;
-                i++; 
-            } else {
-                result += c;
+
+        const std::string& fmt_str = std::get<std::string>(vm.get_heap_object(fmt_val.as_ref).data);
+
+        fmt::dynamic_format_arg_store<fmt::format_context> store; 
+        for (size_t i = 1; i < args.size(); ++i) {
+            const Value& arg = args[i];
+            switch (arg.tag) {
+                case Value::Tag::Int:
+                    store.push_back(arg.as_int);
+                    break;
+                case Value::Tag::Float:
+                    store.push_back(arg.as_float); 
+                    break;
+                case Value::Tag::Bool:
+                    store.push_back(arg.as_bool);
+                    break;
+                case Value::Tag::Null:
+                    store.push_back("null");
+                    break;
+                default:
+                    store.push_back(vm.value_to_string(arg));
+                    break;
             }
         }
-        return result;
+
+        try {
+            return fmt::vformat(fmt_str, store); 
+        } catch (const fmt::format_error& err) {
+            vm.runtime_error(RuntimeError::ArgumentError, std::string("Format error: ") + err.what());
+            return "";
+        }
     }
 
     Value native_print(VM& vm, ArgView args) {

@@ -17,7 +17,7 @@ namespace pyle {
     struct Value {
         enum class Tag {
             Int, Float, Bool, Null, StringRef, ArrayRef, StructRef,
-            NativeFuncRef, FuncRef
+            NativeFuncRef, FuncRef, IteratorRef, RangeRef
         } tag;
         union {
             int64_t as_int;
@@ -39,7 +39,9 @@ namespace pyle {
                    t == Tag::ArrayRef ||
                    t == Tag::StructRef ||
                    t == Tag::NativeFuncRef ||
-                   t == Tag::FuncRef);
+                   t == Tag::FuncRef ||
+                   t == Tag::IteratorRef ||
+                   t == Tag::RangeRef);
         }
 
         std::string tag_to_string() const {
@@ -62,6 +64,10 @@ namespace pyle {
                     return "native_function";
                 case Tag::FuncRef:
                     return "function";
+                case Tag::IteratorRef:
+                    return "iterator";
+                case Tag::RangeRef:
+                    return "range";
                 default:
                     return fmt::format("HeapRef({})", as_ref);
             }
@@ -96,6 +102,16 @@ namespace pyle {
         int arity = 0;
         Chunk chunk;
     };
+
+    struct Iterator {
+        Value container; 
+        size_t index = 0;
+    };
+
+    struct Range {
+        int64_t start;
+        int64_t end;
+    };
     
     struct Object {
         bool gc_marked = false;
@@ -105,7 +121,9 @@ namespace pyle {
             ArrayType,
             StructType,
             NativeFn,
-            Function
+            Function,
+            Iterator,
+            Range
         > data;
 
         Object() = default;
@@ -114,6 +132,8 @@ namespace pyle {
         explicit Object(StructType strc) : data(std::move(strc)) {}
         explicit Object(NativeFn fn)   : data(fn) {}
         explicit Object(Function func): data(std::move(func)) {}
+        explicit Object(Iterator iter): data(iter) {}
+        explicit Object(Range r): data(r) {}
     };
 
 }

@@ -199,6 +199,18 @@ namespace pyle {
         void accept(Visitor* visitor) override;
     };
 
+    struct ForStmt: public Stmt {
+        Token var_name;
+        std::unique_ptr<Expr> iterable;
+        std::unique_ptr<BlockStmt> body;
+        
+        ForStmt(Token name, std::unique_ptr<Expr> iterable, std::unique_ptr<BlockStmt> body)
+            : var_name(name), iterable(std::move(iterable)), body(std::move(body)) {}
+        
+        void accept(Visitor *visitor) override;
+    };
+
+
     struct Visitor {
         virtual ~Visitor() = default;
 
@@ -221,6 +233,7 @@ namespace pyle {
         virtual void visit_index_assign(IndexAssignExpr* expr) = 0;
         virtual void visit_return(ReturnStmt* stmt) = 0;
         virtual void visit_func_decl(FuncDeclStmt* stmt) = 0;
+        virtual void visit_for(ForStmt* stmt) = 0; 
     };  
 
     inline void LiteralExpr::accept(Visitor* visitor)  { visitor->visit_literal(this); }
@@ -242,4 +255,5 @@ namespace pyle {
     inline void IndexAssignExpr::accept(Visitor *visitor) { visitor->visit_index_assign(this); }
     inline void ReturnStmt::accept(Visitor *visitor) { visitor->visit_return(this); }
     inline void FuncDeclStmt::accept(Visitor *visitor) { visitor->visit_func_decl(this); }
+    inline void ForStmt::accept(Visitor* visitor) { visitor->visit_for(this); }
 }

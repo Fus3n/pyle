@@ -113,7 +113,9 @@ namespace pyle {
                 case Value::Tag::ArrayRef:
                 case Value::Tag::StructRef:
                 case Value::Tag::NativeFuncRef:
-                case Value::Tag::FuncRef: {
+                case Value::Tag::FuncRef:
+                case Value::Tag::IteratorRef: 
+                case Value::Tag::RangeRef: {
                     HeapIdx idx = val.as_ref;
                     if (!heap[idx].gc_marked) {
                         heap[idx].gc_marked = true;
@@ -153,6 +155,8 @@ namespace pyle {
                 for (const auto& [key, val] : *struct_ptr) {
                     mark_value(val);
                 }
+            } else if (const auto *iter_ptr = std::get_if<Iterator>(&heap[current].data)) {
+                mark_value(iter_ptr->container);
             }
         }
     }
@@ -222,6 +226,12 @@ namespace pyle {
                     visited.erase(idx);
                     break;
                 }
+            }
+            case Value::Tag::RangeRef: {
+                HeapIdx idx = val.as_ref;
+                const auto& r = std::get<Range>(heap[idx].data);
+                ss << r.start << ".." << r.end;
+                break;
             }
             default:
                 ss << "HeapRef(" << val.as_ref << ")";
@@ -379,6 +389,9 @@ bool VM::values_equal(const Value& a, const Value& b) {
             &&op_DEFINE_GLOBAL_SLOT,
             &&op_SET_LOCAL_POP,
             &&op_SET_GLOBAL_SLOT_POP,
+            &&op_GET_ITER,
+            &&op_FOR_ITER,
+            &&op_NEW_RANGE,
             &&op_ADD,
             &&op_SUB,
             &&op_MUL,
@@ -824,6 +837,66 @@ bool VM::values_equal(const Value& a, const Value& b) {
 
                 OP(LOOP) {
                     ip -= ARG;
+                }
+                DISPATCH();
+
+                OP(NEW_RANGE) {
+                    Value end = pop();
+                    Value start = peek();
+
+                    if (start.tag != Value::Tag::Int || end.tag != Value::Tag::Int) {
+                        sync_ip();
+                        runtime_error(RuntimeError::Type, "Range boundaries must be integers.");
+                        return;
+                    }
+
+                    HeapIdx idx = alloc(Object(Range{start.as_int, end.as_int}));
+                    set_top(Value(Value::Tag::RangeRef, idx));
+                }
+                DISPATCH(); 
+
+                OP(GET_ITER) {
+                    Value container = pop();
+                    if (container.tag != Value::Tag::ArrayRef && 
+                        container.tag != Value::Tag::StringRef &&
+                        container.tag != Value::Tag::RangeRef 
+                    ) {
+                        runtime_error(RuntimeError::Type, "Object is not iterable");
+                        return;
+                    }
+                    HeapIdx idx = alloc(Object(Iterator{container, 0}));
+                    push(Value(Value::Tag::IteratorRef, idx));
+                }
+                DISPATCH();
+                
+                OP(FOR_ITER) {
+                    Value iter_val = peek(); 
+                    Iterator& iter = std::get<Iterator>(get_heap_object(iter_val.as_ref).data);
+                    Object& container_obj = get_heap_object(iter.container.as_ref);
+                    
+                    if (auto* array_ptr = std::get_if<ArrayType>(&container_obj.data)) {
+                        if (iter.index < array_ptr->size()) {
+                            push((*array_ptr)[iter.index++]); 
+                        } else {
+                            ip += ARG; 
+                        }
+                    } else if (auto* string_ptr = std::get_if<std::string>(&container_obj.data)) {
+                        if (iter.index < string_ptr->size()) {
+                            std::string char_str(1, (*string_ptr)[iter.index++]);
+                            HeapIdx char_idx = intern_string(char_str);
+                            push(Value(Value::Tag::StringRef, char_idx));
+                        } else {
+                            ip += ARG; 
+                        }
+                    } else if (auto* range_ptr = std::get_if<Range>(&container_obj.data)) {
+                        int64_t current = range_ptr->start + iter.index;
+                        if (current < range_ptr->end) {
+                            push(Value(current));
+                            iter.index++;
+                        } else {
+                            ip += ARG;
+                        }
+                    }
                 }
                 DISPATCH();
 

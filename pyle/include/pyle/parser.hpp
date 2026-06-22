@@ -30,6 +30,7 @@ namespace pyle {
         std::unique_ptr<Stmt> statement();
         std::unique_ptr<Stmt> if_statement();
         std::unique_ptr<Stmt> while_statement();
+        std::unique_ptr<Stmt> for_statement();
         std::unique_ptr<Stmt> var_declaration();
         std::unique_ptr<Stmt> expression_statement();
         std::unique_ptr<Stmt> function_declaration();
@@ -43,6 +44,7 @@ namespace pyle {
         std::unique_ptr<Expr> logical_and();
         std::unique_ptr<Expr> equality();
         std::unique_ptr<Expr> comparison();
+        std::unique_ptr<Expr> range();
         std::unique_ptr<Expr> term(); // + and -
         std::unique_ptr<Expr> factor(); // * and /
         

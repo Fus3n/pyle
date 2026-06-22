@@ -10,6 +10,7 @@ build/
 compile_commands.json
 print_tree.ps1
 test.pyl
+test.py
 PROGRESS.md
 
 examples

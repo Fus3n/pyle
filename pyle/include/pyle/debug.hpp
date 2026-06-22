@@ -60,6 +60,8 @@ namespace pyle {
                 case OpCode::DEFINE_GLOBAL_SLOT: fmt::print("{:16} {:4}\n", "DEFINE_GLOBAL_SLOT", operand); break;
                 case OpCode::SET_LOCAL_POP:  fmt::print("{:16} {:4}\n", "SET_LOCAL_POP", operand); break;
                 case OpCode::SET_GLOBAL_SLOT_POP:  fmt::print("{:16} {:4}\n", "SET_GLOBAL_SLOT_POP", operand); break;
+                case OpCode::GET_ITER: fmt::print("{:16} {:4}\n", "GET_ITER", operand); break;
+                case OpCode::FOR_ITER: fmt::print("{:16} {:4}\n", "FOR_ITER", operand); break;
                 default: fmt::print("UNKNOWN OPCODE\n"); break;
             }
         }

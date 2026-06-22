@@ -5,6 +5,8 @@
 #include "pyle/error_reporter.hpp"
 #include "pyle/token.hpp"
 #include <memory>
+#include <utility>
+#include <vector>
 
 namespace pyle {
 
@@ -99,6 +101,7 @@ namespace pyle {
             if (match({TokenType::LEFT_BRACE})) return block();
             if (match({TokenType::IF})) return if_statement();
             if (match({TokenType::WHILE})) return while_statement();
+            if (match({TokenType::FOR})) return for_statement();
             if (match({TokenType::FUNC})) return function_declaration();
             if (match({TokenType::RETURN})) return return_statement();
 
@@ -163,6 +166,18 @@ namespace pyle {
         std::unique_ptr<Expr> condition = expression();
         std::unique_ptr<Stmt> body = statement();
         return std::make_unique<WhileStmt>(std::move(condition), std::move(body));
+    }
+
+    std::unique_ptr<Stmt> Parser::for_statement() {
+        Token loop_var = consume(TokenType::IDENTIFIER, "Expected variable name after 'for'.");
+        consume(TokenType::IN, "Expected 'in' after variable.");
+        
+        std::unique_ptr<Expr> iterable = expression();
+        
+        consume(TokenType::LEFT_BRACE, "Expected '{' before body.");
+        std::unique_ptr<BlockStmt> body = block();
+        
+        return std::make_unique<ForStmt>(loop_var, std::move(iterable), std::move(body));
     }
 
     std::unique_ptr<Stmt> Parser::var_declaration() {
@@ -288,7 +303,7 @@ namespace pyle {
     }
 
     std::unique_ptr<Expr> Parser::comparison() {
-        std::unique_ptr<Expr> expr = term();
+        std::unique_ptr<Expr> expr = range();
 
         while (match({TokenType::GREATER, TokenType::GREATER_EQUAL, TokenType::LESS, TokenType::LESS_EQUAL})) {
             Token op = previous();
@@ -296,6 +311,16 @@ namespace pyle {
             expr = std::make_unique<BinaryExpr>(std::move(expr), op, std::move(right));
         }
 
+        return expr;
+    }
+
+    std::unique_ptr<Expr> Parser::range() {
+        std::unique_ptr<Expr> expr = term(); 
+        if (match({TokenType::DOT_DOT})) {
+            Token op = previous();
+            std::unique_ptr<Expr> right = term();
+            expr = std::make_unique<BinaryExpr>(std::move(expr), op, std::move(right));
+        }
         return expr;
     }
 
