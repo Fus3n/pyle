@@ -1,8 +1,8 @@
 #include "pyle/std/std_array.hpp"
-
+#include "pyle/vm.hpp"
+#include <algorithm>
 #include <fmt/format.h>
 
-#include "pyle/vm.hpp"
 
 namespace pyle::ArrayMethods {
 

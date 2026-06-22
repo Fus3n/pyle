@@ -364,11 +364,13 @@ bool VM::values_equal(const Value& a, const Value& b) {
 
             switch (op) {
                 case OpCode::LOAD_CONST: {
+                    #ifndef NDEBUG
                     if (arg >= const_pool_size) {
                         sync_ip();
                         runtime_error(RuntimeError::OutOfBounds, "Load constant index out of bounds.");
                         return;
                     }
+                    #endif
                     push(const_pool[arg]);
                     break;
                 }
@@ -450,7 +452,13 @@ bool VM::values_equal(const Value& a, const Value& b) {
                     break;
                 }
                 case OpCode::LOAD_GLOBAL_SLOT: {
-                    if (arg >= global_slots.size()) {sync_ip(); runtime_error(RuntimeError::OutOfBounds, "Global slot out of bounds.");return;}
+                    #ifndef NDEBUG
+                    if (arg >= global_slots.size()) {
+                        sync_ip(); 
+                        runtime_error(RuntimeError::OutOfBounds, "Global slot out of bounds.");
+                        return;
+                    }
+                    #endif
                     push(global_slots[arg]);
                     break;
                 } 

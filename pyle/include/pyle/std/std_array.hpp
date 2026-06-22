@@ -2,7 +2,6 @@
 #include <string>
 #include "pyle/value.hpp"
 
-
 namespace pyle {
     class VM;
 
