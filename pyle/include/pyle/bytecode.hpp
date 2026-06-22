@@ -10,60 +10,38 @@ namespace pyle {
         LOAD_CONST,
         LOAD_LOCAL,
         SET_LOCAL,
-        SET_LOCAL_POP,
-        DEFINE_GLOBAL,
-        SET_GLOBAL,
-        LOAD_GLOBAL,
-
         LOAD_GLOBAL_SLOT,
         SET_GLOBAL_SLOT,
-        SET_GLOBAL_SLOT_POP,
         DEFINE_GLOBAL_SLOT,
-
-        // arithmetic
+        SET_LOCAL_POP,        
+        SET_GLOBAL_SLOT_POP,  
         ADD,
         SUB,
         MUL,
         DIV,
         MOD,
         NEG,
-
-        // comparison
         EQ,
         NEQ,
         LT,
         LTE,
         GT,
         GTE,
-
-        // logical
         NOT,
-        AND,
-
-        // control
         JUMP,
         JUMP_IF_FALSE,
         JUMP_IF_TRUE,
         LOOP,
-
-        // functions
         CALL,
         CALL_METHOD,
         RETURN,
-
-        // stack
         POP,
-
-        // structs
         NEW_STRUCT,
         GET_FIELD,
         SET_FIELD,
-
-        // arrays
         NEW_ARRAY,
         GET_INDEX,
         SET_INDEX,
-
         HALT
     };
 

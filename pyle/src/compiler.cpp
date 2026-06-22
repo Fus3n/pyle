@@ -315,7 +315,7 @@ namespace pyle {
 
             patch_jump(else_jump);
         } else if(expr->op.type == TokenType::AND) {
-            size_t end_jump = emit_jump(OpCode::JUMP_IF_TRUE, expr->op.selection.line);
+            size_t end_jump = emit_jump(OpCode::JUMP_IF_FALSE, expr->op.selection.line);
             
             emit_instruction(OpCode::POP, 0, expr->op.selection.line);
             expr->right->accept(this);

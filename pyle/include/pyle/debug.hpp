@@ -35,27 +35,12 @@ namespace pyle {
                 case OpCode::DIV:  fmt::print("DIV\n"); break;
                 case OpCode::HALT: fmt::print("HALT\n"); break;
                 case OpCode::POP:   fmt::print("POP\n"); break;
-                case OpCode::SET_GLOBAL: {
-                    std::string val_str = vm.value_to_string(chunk.const_pool[operand]);
-                    fmt::print("{:16} {:4} '{}'\n", "SET_GLOBAL", operand, val_str);
-                    break;
-                }
-                case OpCode::LOAD_GLOBAL: {
-                    std::string val_str = vm.value_to_string(chunk.const_pool[operand]);
-                    fmt::print("{:16} {:4} '{}'\n", "LOAD_GLOBAL", operand, val_str);
-                    break;
-                }
                 case OpCode::CALL: {
                     fmt::print("{:16} {:4} (args)\n", "CALL", operand);
                     break;
                 }
                 case OpCode::LOAD_LOCAL: fmt::print("{:16} {:4}\n", "LOAD_LOCAL", operand); break;
                 case OpCode::SET_LOCAL:  fmt::print("{:16} {:4}\n", "SET_LOCAL", operand); break;
-                case OpCode::DEFINE_GLOBAL: {
-                    std::string val_str = vm.value_to_string(chunk.const_pool[operand]);
-                    fmt::print("{:16} {:4} '{}'\n", "DEFINE_GLOBAL", operand, val_str);
-                    break;
-                }
                 case OpCode::EQ: fmt::print("EQ\n"); break;
                 case OpCode::NEQ: fmt::print("NEQ\n"); break;
                 case OpCode::LT: fmt::print("LT\n"); break;
