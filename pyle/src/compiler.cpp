@@ -259,7 +259,7 @@ namespace pyle {
             if (arg != -1) {
                 emit_instruction(OpCode::SET_LOCAL_POP, arg, assign->name.selection.line);
             } else if ((arg = resolve_upvalue(current_state, assign->name)) != -1) {
-                emit_instruction(OpCode::SET_UPVALUE_POP, arg, assign->name.selection.line); // <-- ADD THIS
+                emit_instruction(OpCode::SET_UPVALUE_POP, arg, assign->name.selection.line); 
             } else {
                 int slot = resolve_global_slot(assign->name);
                 if (slot >= 0) {
@@ -291,7 +291,7 @@ namespace pyle {
         if (arg != -1) {
             emit_instruction(OpCode::LOAD_LOCAL, arg, expr->name.selection.line);
         } else if ((arg = resolve_upvalue(current_state, expr->name)) != -1) {
-            emit_instruction(OpCode::LOAD_UPVALUE, arg, expr->name.selection.line); // <-- ADD THIS
+            emit_instruction(OpCode::LOAD_UPVALUE, arg, expr->name.selection.line); 
         } else {
             int slot = resolve_global_slot(expr->name);
             if (slot < 0) return;
@@ -305,7 +305,7 @@ namespace pyle {
         if (arg != -1) {
             emit_instruction(OpCode::SET_LOCAL, arg, expr->name.selection.line);
         } else if ((arg = resolve_upvalue(current_state, expr->name)) != -1) {
-            emit_instruction(OpCode::SET_UPVALUE, arg, expr->name.selection.line); // <-- ADD THIS
+            emit_instruction(OpCode::SET_UPVALUE, arg, expr->name.selection.line); 
         } else {
             int slot = resolve_global_slot(expr->name);
             if (slot < 0) return;
@@ -539,29 +539,21 @@ namespace pyle {
 
     void Compiler::visit_struct_decl(StructDeclStmt* stmt) {
         StructType type;
-        
         for (size_t i = 0; i < stmt->fields.size(); ++i) {
             HeapIdx field_id = vm.intern_string(stmt->fields[i].lexeme);
             type.field_names.push_back(field_id);
-            type.field_to_offset[field_id] = i;
+            if (stmt->fields.size() > 8) {
+                type.field_map[field_id] = i;
+            }
         }
-
         for (auto& method : stmt->methods) {
             HeapIdx fn_idx = compile_function(method->params, method->body.get(), method->name.lexeme);
-            
-            Closure closure;
-            closure.function = fn_idx;
-            HeapIdx closure_idx = vm.alloc(Object(closure));
-            Value closure_val(Value::Tag::ClosureRef, closure_idx);
-
             HeapIdx method_name_id = vm.intern_string(method->name.lexeme);
-            type.methods[method_name_id] = closure_val;
+            type.methods[method_name_id] = fn_idx;
         }
-        
         HeapIdx type_idx = vm.alloc(Object(type));
         Value type_val(Value::Tag::StructTypeRef, type_idx);
         uint32_t const_idx = make_constant(type_val);
-        
         int slot = vm.declare_global(std::string(stmt->name.lexeme));
         emit_instruction(OpCode::LOAD_CONST, const_idx, stmt->name.selection.line);
         emit_instruction(OpCode::DEFINE_GLOBAL_SLOT, slot, stmt->name.selection.line);

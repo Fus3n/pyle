@@ -119,9 +119,8 @@ namespace pyle {
         }
     }
 
-    std::unique_ptr<Stmt> Parser::function_declaration() {
-        Token name = consume(TokenType::IDENTIFIER, "Expected function name.");
-        consume(TokenType::LEFT_PAREN, "Expected '(' after function name.");
+    std::vector<Token> Parser::parse_params() {
+        consume(TokenType::LEFT_PAREN, "Expected '(' for parameters.");
         std::vector<Token> params;
         if (!check(TokenType::RIGHT_PAREN)) {
             do {
@@ -133,7 +132,12 @@ namespace pyle {
             } while (match({TokenType::COMMA}));
         }
         consume(TokenType::RIGHT_PAREN, "Expected ')' after parameters.");
-        
+        return params;
+    }
+
+    std::unique_ptr<Stmt> Parser::function_declaration() {
+        Token name = consume(TokenType::IDENTIFIER, "Expected function name.");
+        std::vector<Token> params = parse_params();
         std::unique_ptr<BlockStmt> body;
 
         if (match({TokenType::ARROW})) {
@@ -511,21 +515,10 @@ std::unique_ptr<Stmt> Parser::struct_declaration() {
         return std::make_unique<CallExpr>(std::move(callee), paren, std::move(arguments));
     }
     
-    std::unique_ptr<Expr> Parser::fun_expression() {
-        consume(TokenType::LEFT_PAREN, "Expected '(' after 'fn' inside expression.");
-        std::vector<Token> params;
-        if (!check(TokenType::RIGHT_PAREN)) {
-            do {
-                if (params.size() >= 255) {
-                    reporter.report(peek().selection, ErrorType::Syntax, "Cannot have more than 255 parameters");
-                    throw ParserError();
-                }
-                params.push_back(consume(TokenType::IDENTIFIER, "Expected parameter name."));
-            } while (match({TokenType::COMMA}));
-        }
-        consume(TokenType::RIGHT_PAREN, "Expected ')' after parameters.");
-        
+    std::unique_ptr<Expr> Parser::func_expression() {
+        std::vector<Token> params = parse_params();
         std::unique_ptr<BlockStmt> body;
+
         if (match({TokenType::ARROW})) {
             auto expr = expression();
             std::vector<std::unique_ptr<Stmt>> statements;
@@ -546,7 +539,7 @@ std::unique_ptr<Stmt> Parser::struct_declaration() {
         }
 
         if (match({TokenType::FN})) { 
-            return fun_expression();
+            return func_expression();
         }
 
         if (match({TokenType::IDENTIFIER})) {

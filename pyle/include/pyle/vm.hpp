@@ -32,6 +32,7 @@ namespace pyle {
             HeapIdx closure;
             size_t ip;
             size_t stack_base;
+            Function* fn_cache = nullptr; 
         };
 
         Value* stack = nullptr;
@@ -136,5 +137,8 @@ namespace pyle {
             Closure& closure = std::get<Closure>(heap[frame.closure].data);
             return std::get<Function>(heap[closure.function].data);
         }
+        // Function& fn = get_function(*frame); 
+
+        HeapIdx build_closure_for_call(HeapIdx fn_idx, CallFrame* caller_frame);
     };
 }

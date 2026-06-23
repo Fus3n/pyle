@@ -21,6 +21,7 @@ namespace pyle {
         ip_end = instr_data + fn.chunk.instr.size();
         const_pool = fn.chunk.const_pool.data();
         const_pool_size = fn.chunk.const_pool.size();
+        f->fn_cache = &fn;
     }
 
     void VM::grow_stack() {
@@ -60,6 +61,21 @@ namespace pyle {
         auto& stored = std::get<std::string>(heap[idx].data);
         interned_strings[stored] = idx;
         return idx;
+    }
+
+    HeapIdx VM::build_closure_for_call(HeapIdx fn_idx, CallFrame* caller_frame) {
+        Function& fn = std::get<Function>(heap[fn_idx].data);
+        Closure closure;
+        closure.function = fn_idx;
+        for (const auto& uv : fn.upvalues) {
+            if (uv.is_local) {
+                closure.upvalues.push_back(capture_upvalue(caller_frame->stack_base + uv.index));
+            } else {
+                Closure& parent_closure = std::get<Closure>(heap[caller_frame->closure].data);
+                closure.upvalues.push_back(parent_closure.upvalues[uv.index]);
+            }
+        }
+        return alloc(Object(closure));
     }
 
     HeapIdx VM::alloc(Object obj) {
@@ -178,6 +194,10 @@ namespace pyle {
             } else if (const auto *map_ptr = std::get_if<MapType>(&heap[current].data)) {
                 for (const auto& [key, val] : *map_ptr) {
                     mark_value(key);
+                    mark_value(val);
+                }
+            } else if (const auto *fn_ptr = std::get_if<Function>(&heap[current].data)) {
+                for (const Value &val: fn_ptr->chunk.const_pool) {
                     mark_value(val);
                 }
             }
@@ -404,6 +424,11 @@ namespace pyle {
     #define DISPATCH() \
         do { \
             if (panicked) return; \
+            if (ip >= ip_end) { \
+                frame->ip = ip - instr_data; \
+                this->runtime_error(RuntimeError::OutOfBounds, "Instruction pointer out of bounds."); \
+                return; \
+            } \
             uint32_t instruction = *ip++; \
             goto *dispatch_table[static_cast<uint8_t>(get_op(instruction))]; \
         } while (false)
@@ -498,7 +523,11 @@ namespace pyle {
             &&op_SET_INDEX,
             &&op_HALT
         };
-        DISPATCH(); // Kick off the computed goto execution!
+        if (ip >= ip_end) {
+            runtime_error(RuntimeError::OutOfBounds, "Instruction pointer out of bounds.");
+            return;
+        }
+        DISPATCH(); 
 #else
         while (true) {
             if (panicked) return;
@@ -680,9 +709,7 @@ namespace pyle {
                     if (stack_size() < arg_count + 1) {
                         runtime_error(RuntimeError::StackUnderflow, "Not enough values for call."); return;
                     }
-
                     Value callee = peek(arg_count + 1);
-
                     switch (callee.tag) {
                         case Value::Tag::ClosureRef: {
                             Closure& closure = std::get<Closure>(heap[callee.as_ref].data);
@@ -712,48 +739,39 @@ namespace pyle {
                         }
                         case Value::Tag::StructTypeRef: {
                             StructType& type = std::get<StructType>(heap[callee.as_ref].data);
-                            
                             if (arg_count > type.field_names.size()) {
                                 runtime_error(RuntimeError::ArgumentError, fmt::format("Too many arguments. Expected at most {}.", type.field_names.size())); return;
                             }
-
                             Struct instance;
                             instance.type_idx = callee.as_ref;
                             instance.fields.resize(type.field_names.size());
-                            
-                            // 1. PEEK arguments to populate fields (Do NOT pop them yet!)
                             for (int i = 0; i < arg_count; i++) {
                                 instance.fields[i] = peek(arg_count - i);
                             }
                             for (size_t i = arg_count; i < type.field_names.size(); i++) {
-                                instance.fields[i] = Value(); // Default to 'none'
+                                instance.fields[i] = Value();
                             }
-                            
                             HeapIdx idx = alloc(Object(instance));
                             Value instance_val(Value::Tag::StructRef, idx);
-                            
                             HeapIdx init_id = intern_string("_init");
                             auto it = type.methods.find(init_id);
-                            
                             if (it != type.methods.end()) {
-                                Value init_clos = it->second;
-                                Closure& closure = std::get<Closure>(heap[init_clos.as_ref].data);
-                                Function& fn = std::get<Function>(heap[closure.function].data);
-                                
+                                HeapIdx fn_idx = it->second;
+                                Function& fn = std::get<Function>(heap[fn_idx].data);
                                 if (fn.arity != arg_count + 1) {
                                     runtime_error(RuntimeError::ArgumentError, fmt::format("_init expects {} args, got {}.", fn.arity - 1, arg_count)); return;
                                 }
-                            
+                                HeapIdx closure_idx = build_closure_for_call(fn_idx, frame);
+                                Value init_clos(Value::Tag::ClosureRef, closure_idx);
                                 push(Value()); 
                                 for (int i = 0; i < arg_count; i++) {
                                     *(sp - 1 - i) = *(sp - 2 - i); 
                                 }
                                 *(sp - 1 - arg_count) = instance_val; 
                                 *(sp - 2 - arg_count) = init_clos;  
-                                
                                 sync_ip();
                                 CallFrame new_frame;
-                                new_frame.closure = init_clos.as_ref;
+                                new_frame.closure = closure_idx;
                                 new_frame.ip = 0;
                                 new_frame.stack_base = stack_size() - arg_count - 1; 
                                 frames[frame_count++] = new_frame;
@@ -784,9 +802,8 @@ namespace pyle {
                     sp = stack + stack_base; 
 
                     frame = &frames[frame_count - 1];
-
-                    Function& fn = get_function(*frame);
-                    sync_frame_cache(frame, fn, instr_data, ip, ip_end, const_pool, const_pool_size);
+                    sync_frame_cache(frame, *frame->fn_cache, instr_data, ip, ip_end, const_pool, const_pool_size);
+                    
                 }
                 DISPATCH();
 
@@ -838,45 +855,36 @@ namespace pyle {
                         runtime_error(RuntimeError::StackUnderflow, "Not enough values on stack for method call.");
                         return;
                     }
-
                     Value name_val = peek(arg_count + 1);
                     Value callee = peek(arg_count + 2);
-
                     if (name_val.tag != Value::Tag::StringRef) {
                         runtime_error(RuntimeError::Type, "Expected string for method name.");
                         return;
                     }
-
                     if (callee.tag == Value::Tag::StructRef) {
-                        // --- SCENARIO A: CUSTOM STRUCT METHOD ---
                         Struct& s = std::get<Struct>(heap[callee.as_ref].data);
                         StructType& type = std::get<StructType>(heap[s.type_idx].data);
-                        
-                        auto it = type.methods.find(name_val.as_ref); // True O(1) lookup!
+                        auto it = type.methods.find(name_val.as_ref);
                         if (it != type.methods.end()) {
-                            Value method_closure = it->second;
-
-                            // Magic Stack Swap: Replace the method string with 'self' (the object)
-                            // and replace the object slot with the method closure!
-                            stack[stack_size() - arg_count - 1] = callee; // 'self'
+                            HeapIdx fn_idx = it->second;
+                            Function& fn = std::get<Function>(heap[fn_idx].data);
+                            
+                            HeapIdx closure_idx = build_closure_for_call(fn_idx, frame);
+                            Value method_closure(Value::Tag::ClosureRef, closure_idx);
+                            
+                            stack[stack_size() - arg_count - 1] = callee;
                             stack[stack_size() - arg_count - 2] = method_closure;
-
-                            Closure& closure = std::get<Closure>(heap[method_closure.as_ref].data);
-                            Function& fn = std::get<Function>(heap[closure.function].data);
-
-                            int total_args = arg_count + 1; // +1 for the injected 'self'
-
+                            
+                            int total_args = arg_count + 1;
                             if (fn.arity != total_args) {
                                 runtime_error(RuntimeError::ArgumentError, fmt::format("Expected {} arguments, got {}.", fn.arity, total_args));
                                 return;
                             }
-
                             sync_ip();
                             CallFrame new_frame;
-                            new_frame.closure = method_closure.as_ref;
+                            new_frame.closure = closure_idx;
                             new_frame.ip = 0;
                             new_frame.stack_base = stack_size() - total_args;
-
                             if (frame_count == frame_capacity) [[unlikely]] {
                                 runtime_error(RuntimeError::Runtime, "Stack overflow."); 
                                 return;
@@ -884,20 +892,15 @@ namespace pyle {
                             frames[frame_count++] = new_frame;
                             frame = &frames[frame_count - 1];
                             sync_frame_cache(frame, fn, instr_data, ip, ip_end, const_pool, const_pool_size);
-                            
-                            // Let it safely fall through to the dispatch below!
                         } else {
                             std::string method_name = std::get<std::string>(heap[name_val.as_ref].data);
                             runtime_error(RuntimeError::Name, fmt::format("Method '{}' not found.", method_name));
                             return;
                         }
-
                     } else {
-                        // --- SCENARIO B: NATIVE ARRAY OR STRING METHOD ---
                         std::string method_name = std::get<std::string>(heap[name_val.as_ref].data);
                         const Value *args_ptr = arg_count > 0 ? (sp - arg_count) : nullptr;
                         ArgView args_view{args_ptr, static_cast<size_t>(arg_count)};
-
                         sync_ip();
                         Value result;
                         if (callee.tag == Value::Tag::ArrayRef) {
@@ -908,13 +911,12 @@ namespace pyle {
                             runtime_error(RuntimeError::Type, fmt::format("Expected object with method, got {} instead", callee.tag_to_string()));
                             return;
                         }
-
                         if (panicked) return;
                         sp -= (arg_count + 1);
                         set_top(result);
                     }
                 }
-                DISPATCH(); 
+                DISPATCH();
 
                 OP(NEW_ARRAY) {
                     int element_count = static_cast<int>(ARG);
@@ -970,7 +972,7 @@ namespace pyle {
                             break;
                         }
                         case Value::Tag::MapRef: { 
-                            if (!is_hashable(index)) { // <-- ADD THIS CHECK
+                            if (!is_hashable(index)) { 
                                 runtime_error(RuntimeError::Type, fmt::format("Unhashable type '{}' cannot be used as a map key.", index.tag_to_string()));
                                 return;
                             }
@@ -1140,7 +1142,7 @@ namespace pyle {
                 }
                 DISPATCH();
 
-               OP(GET_FIELD) {
+                OP(GET_FIELD) {
                     HeapIdx field_id = ARG; 
                     Value obj_val = pop();
                     if (obj_val.tag != Value::Tag::StructRef) {
@@ -1150,15 +1152,13 @@ namespace pyle {
                     }
                     Struct& s = std::get<Struct>(heap[obj_val.as_ref].data);
                     StructType& type = std::get<StructType>(heap[s.type_idx].data);
-                    
-                    auto it = type.field_to_offset.find(field_id);
-                    if (it == type.field_to_offset.end()) {
+                    size_t offset = type.get_offset(field_id);
+                    if (offset == size_t(-1)) {
                         sync_ip();
                         runtime_error(RuntimeError::Name, "Struct has no field with that name.");
                         return;
                     }
-                    
-                    push(s.fields[it->second]);
+                    push(s.fields[offset]);
                 }
                 DISPATCH();
 
@@ -1173,15 +1173,13 @@ namespace pyle {
                     }
                     Struct& s = std::get<Struct>(heap[obj_val.as_ref].data);
                     StructType& type = std::get<StructType>(heap[s.type_idx].data);
-                    
-                    auto it = type.field_to_offset.find(field_id);
-                    if (it == type.field_to_offset.end()) {
+                    size_t offset = type.get_offset(field_id);
+                    if (offset == size_t(-1)) {
                         sync_ip();
                         runtime_error(RuntimeError::Name, "Struct has no field with that name.");
                         return;
                     }
-                    
-                    s.fields[it->second] = val;
+                    s.fields[offset] = val;
                     push(val); 
                 }
                 DISPATCH();
@@ -1207,53 +1205,47 @@ namespace pyle {
 
                 OP(CALL_KW) {
                     int pair_count = ARG;
-                    Value callee = peek(pair_count * 2 + 1);
-                    
                     if (stack_size() < pair_count * 2 + 1) { 
-                        runtime_error(RuntimeError::StackUnderflow, "Stack underflow in CALL_KW."); return;
+                        runtime_error(RuntimeError::StackUnderflow, "Stack underflow in CALL_KW."); 
+                        return;
                     }
-
-
+                    Value callee = peek(pair_count * 2 + 1);
                     if (callee.tag != Value::Tag::StructTypeRef) {
-                        runtime_error(RuntimeError::Type, "Keyword arguments only supported for struct instantiation."); return;
+                        runtime_error(RuntimeError::Type, "Keyword arguments only supported for struct instantiation."); 
+                        return;
                     }
-
                     StructType& type = std::get<StructType>(heap[callee.as_ref].data);
                     Struct instance;
                     instance.type_idx = callee.as_ref;
-                    instance.fields.resize(type.field_names.size(), Value()); // Default 'none'
-
+                    instance.fields.resize(type.field_names.size(), Value());
                     for (int i = 0; i < pair_count; i++) {
                         Value val = pop();
                         Value key = pop();
-                        auto it = type.field_to_offset.find(key.as_ref);
-                        if (it == type.field_to_offset.end()) {
-                            runtime_error(RuntimeError::Name, "Invalid field name passed in named constructor."); return;
+                        size_t offset = type.get_offset(key.as_ref);
+                        if (offset == size_t(-1)) {
+                            runtime_error(RuntimeError::Name, "Invalid field name passed in named constructor."); 
+                            return;
                         }
-                        instance.fields[it->second] = val;
+                        instance.fields[offset] = val;
                     }
-
                     HeapIdx idx = alloc(Object(instance));
                     Value instance_val(Value::Tag::StructRef, idx);
-                    
                     set_top(instance_val);
-
                     HeapIdx init_id = intern_string("_init");
                     auto it = type.methods.find(init_id);
                     if (it != type.methods.end()) {
-                        Value init_clos = it->second;
-                        Closure& closure = std::get<Closure>(heap[init_clos.as_ref].data);
-                        Function& fn = std::get<Function>(heap[closure.function].data);
-                        
+                        HeapIdx fn_idx = it->second;
+                        Function& fn = std::get<Function>(heap[fn_idx].data);
                         if (fn.arity != 1) { 
-                            runtime_error(RuntimeError::ArgumentError, "_init must take 0 arguments when using named initialization."); return;
+                            runtime_error(RuntimeError::ArgumentError, "_init must take 0 arguments when using named initialization."); 
+                            return;
                         }
-                        
+                        HeapIdx closure_idx = build_closure_for_call(fn_idx, frame);
+                        Value init_clos(Value::Tag::ClosureRef, closure_idx);
                         push(instance_val); 
-                        
                         sync_ip();
                         CallFrame new_frame;
-                        new_frame.closure = init_clos.as_ref;
+                        new_frame.closure = closure_idx;
                         new_frame.ip = 0;
                         new_frame.stack_base = stack_size() - 1;
                         frames[frame_count++] = new_frame;

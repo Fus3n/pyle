@@ -227,7 +227,7 @@ namespace pyle {
     struct StructDeclStmt : public Stmt {
         Token name;
         std::vector<Token> fields;
-        std::vector<std::unique_ptr<FuncDeclStmt>> methods; // <-- ADD THIS
+        std::vector<std::unique_ptr<FuncDeclStmt>> methods; 
         StructDeclStmt(Token name, std::vector<Token> fields, std::vector<std::unique_ptr<FuncDeclStmt>> methods)
             : name(name), fields(std::move(fields)), methods(std::move(methods)) {}
         void accept(Visitor* visitor) override;

@@ -148,8 +148,20 @@ namespace pyle {
 
     struct StructType {
         std::vector<HeapIdx> field_names; 
-        ankerl::unordered_dense::map<HeapIdx, size_t> field_to_offset;
-        ankerl::unordered_dense::map<HeapIdx, Value> methods; 
+        ankerl::unordered_dense::map<HeapIdx, size_t> field_map; 
+        ankerl::unordered_dense::map<HeapIdx, HeapIdx> methods; 
+        
+        size_t get_offset(HeapIdx field_id) const {
+            if (field_names.size() <= 8) {
+                for (size_t i = 0; i < field_names.size(); ++i) {
+                    if (field_names[i] == field_id) return i;
+                }
+                return size_t(-1);
+            }
+            auto it = field_map.find(field_id);
+            if (it != field_map.end()) return it->second;
+            return size_t(-1);
+        }
     };
 
     struct Struct {
