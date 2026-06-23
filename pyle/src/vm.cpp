@@ -16,16 +16,11 @@ namespace pyle {
                                 const uint32_t*& instr_data, const uint32_t*& ip,
                                 const uint32_t*& ip_end, const Value*& const_pool,
                                 size_t& const_pool_size) {
-        f->instr_data = fn.chunk.instr.data();
-        f->ip_end = f->instr_data + fn.chunk.instr.size();
-        f->const_pool = fn.chunk.const_pool.data();
-        f->const_pool_size = fn.chunk.const_pool.size();
-
-        instr_data = f->instr_data;
+        instr_data = fn.chunk.instr.data();
         ip = instr_data + f->ip;
-        ip_end = f->ip_end;
-        const_pool = f->const_pool;
-        const_pool_size = f->const_pool_size;
+        ip_end = instr_data + fn.chunk.instr.size();
+        const_pool = fn.chunk.const_pool.data();
+        const_pool_size = fn.chunk.const_pool.size();
     }
 
     void VM::grow_stack() {
@@ -162,7 +157,7 @@ namespace pyle {
         for (size_t i = 0; i < frame_count; ++i) {
             const auto& frame = frames[i];
             mark_value(Value(Value::Tag::ClosureRef, frame.closure)); 
-            for (const Value &val: get_function(frame).chunk.const_pool) {
+            for (const Value &val: get_func_from_frame(frame).chunk.const_pool) {
                 mark_value(val);
             }
         }
@@ -325,7 +320,7 @@ namespace pyle {
         panicked = true;
         size_t line = 0;
         CallFrame& frame = frames[frame_count - 1];
-        Function& func = get_function(frame);
+        Function& func = get_func_from_frame(frame);
         if (frame.ip > 0 && frame.ip <= func.chunk.lines.size()) {
             line = func.chunk.lines[frame.ip - 1];
         }
@@ -463,7 +458,7 @@ namespace pyle {
 
         CallFrame* frame = &frames[frame_count - 1];
         
-        Function& fn = get_function(*frame);
+        Function& fn = get_func_from_frame(*frame);
         const uint32_t* instr_data;
         const uint32_t* ip;
         const uint32_t* ip_end;
@@ -810,13 +805,8 @@ namespace pyle {
                     stack[stack_base - 1] = ret_val;
                     sp = stack + stack_base; 
                     frame = &frames[frame_count - 1];
-                    
-                    // directly restore execution state pointers from the callers frame
-                    instr_data = frame->instr_data;
-                    ip = instr_data + frame->ip;
-                    ip_end = frame->ip_end;
-                    const_pool = frame->const_pool;
-                    const_pool_size = frame->const_pool_size;
+                    Function& fn = get_func_from_frame(*frame);
+                    sync_frame_cache(frame, fn, instr_data, ip, ip_end, const_pool, const_pool_size);
                 }
                 DISPATCH();
 

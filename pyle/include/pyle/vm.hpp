@@ -21,11 +21,6 @@ namespace pyle {
             HeapIdx closure;
             size_t ip;
             size_t stack_base;
-
-            const uint32_t* instr_data = nullptr;
-            const uint32_t* ip_end = nullptr;
-            const Value* const_pool = nullptr;
-            size_t const_pool_size = 0;
         };
 
         Value* stack = nullptr;
@@ -129,11 +124,12 @@ namespace pyle {
 
         void value_to_string_helper(const Value& val, std::unordered_set<HeapIdx>& visited, std::stringstream& ss);
         
-        Function& get_function(const CallFrame& frame) {
+        PYLE_FORCEINLINE Function& get_func_from_frame(const CallFrame& frame) {
             Closure& closure = std::get<Closure>(heap[frame.closure].data);
-            return std::get<Function>(heap[closure.function].data);
+            return std::get<Function>(
+                heap[closure.function].data
+            );
         }
-        // Function& fn = get_function(*frame); 
 
         HeapIdx build_closure_for_call(HeapIdx fn_idx, CallFrame* caller_frame);
     };
