@@ -17,24 +17,56 @@
       ]
     },
     {
-      "comment": "Function declarations: fn my_func()",
-      "match": "\\b(fn)\\s+([a-zA-Z_][a-zA-Z0-9_]*)",
-      "captures": {
+      "comment": "Function declarations with parameter highlighting: fn my_func(a, b)",
+      "begin": "\\b(fn)\\s+([a-zA-Z_][a-zA-Z0-9_]*)\\s*\\(",
+      "beginCaptures": {
         "1": {
-          "name": "keyword.declaration.pyle"
+          "name": "storage.type.function.pyle"
         },
         "2": {
           "name": "entity.name.function.pyle"
         }
+      },
+      "end": "\\)",
+      "endCaptures": {
+        "0": {
+          "name": "punctuation.definition.parameters.end.pyle"
+        }
+      },
+      "patterns": [
+        {
+          "name": "variable.parameter.function.pyle",
+          "match": "\\b[a-zA-Z_][a-zA-Z0-9_]*\\b"
+        },
+        {
+          "name": "punctuation.separator.parameters.pyle",
+          "match": ","
+        }
+      ]
+    },
+    {
+      "comment": "Struct declarations: struct Player",
+      "match": "\\b(struct)\\s+([a-zA-Z_][a-zA-Z0-9_]*)",
+      "captures": {
+        "1": {
+          "name": "storage.type.pyle"
+        },
+        "2": {
+          "name": "entity.name.type.struct.pyle"
+        }
       }
     },
     {
-      "name": "keyword.declaration.pyle",
-      "match": "\\b(let|struct)\\b"
+      "name": "storage.type.pyle",
+      "match": "\\b(let)\\b"
     },
     {
       "name": "keyword.control.pyle",
       "match": "\\b(if|else|elif|for|in|while|loop|return|break)\\b"
+    },
+    {
+      "name": "variable.language.self.pyle",
+      "match": "\\bself\\b"
     },
     {
       "name": "constant.language.pyle",
@@ -43,6 +75,11 @@
     {
       "name": "support.function.builtin.pyle",
       "match": "\\b(print|printf|clock|format)\\b"
+    },
+    {
+      "comment": "Method/Property access: self.health (highlights 'health')",
+      "match": "(?<=\\.)[a-zA-Z_][a-zA-Z0-9_]*\\b",
+      "name": "variable.other.property.pyle"
     },
     {
       "comment": "Function & Method calls: my_func() or object.method()",
