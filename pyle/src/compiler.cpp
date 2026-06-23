@@ -375,7 +375,7 @@ namespace pyle {
 
     void Compiler::visit_while(WhileStmt* stmt) {
         loop_breaks.push_back(std::vector<size_t>());
-        loop_locals_start.push_back(locals.size());
+        loop_locals_start.push_back(current_state->locals.size());
 
         size_t loop_start = current_chunk->instr.size();
         stmt->condition->accept(this);
@@ -400,7 +400,7 @@ namespace pyle {
 
     void Compiler::visit_for(ForStmt* stmt) {
         loop_breaks.push_back(std::vector<size_t>());
-        loop_locals_start.push_back(locals.size());
+        loop_locals_start.push_back(current_state->locals.size());
 
         stmt->iterable->accept(this);
 
@@ -408,14 +408,14 @@ namespace pyle {
         
         begin_scope(); 
         Token dummy_token(TokenType::IDENTIFIER, "@iterator", stmt->var_name.selection);
-        locals.push_back(Local{dummy_token, scope_depth});
+        current_state->locals.push_back(Local{dummy_token, current_state->scope_depth});
 
         size_t loop_start = current_chunk->instr.size();
         
         size_t exit_jump = emit_jump(OpCode::FOR_ITER, stmt->var_name.selection.line);
         
         begin_scope(); 
-        locals.push_back(Local{stmt->var_name, scope_depth});
+        current_state->locals.push_back(Local{stmt->var_name, current_state->scope_depth});
         
         for (const auto& s : stmt->body->statements) {
             if (s) s->accept(this);
@@ -443,7 +443,7 @@ namespace pyle {
             return;
         }
 
-        size_t locals_to_pop = locals.size() - loop_locals_start.back();
+        size_t locals_to_pop = current_state->locals.size() - loop_locals_start.back();
         for (size_t i = 0; i < locals_to_pop; ++i) {
             emit_instruction(OpCode::POP, 0, stmt->token.selection.line);
         }

@@ -149,8 +149,6 @@ namespace pyle {
     struct StructType {
         std::vector<HeapIdx> field_names; 
         ankerl::unordered_dense::map<HeapIdx, size_t> field_to_offset;
-        std::vector<Value> default_values;
-
         ankerl::unordered_dense::map<HeapIdx, Value> methods; 
     };
 

@@ -59,7 +59,6 @@ namespace pyle {
         {"for",    TokenType::FOR},
         {"in",     TokenType::IN},
         {"while",  TokenType::WHILE},
-        {"while",  TokenType::WHILE},
         {"loop", TokenType::LOOP},
         {"break", TokenType::BREAK},
         {"fn",   TokenType::FN},

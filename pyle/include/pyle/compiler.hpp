@@ -35,8 +35,8 @@ namespace pyle {
 
         CompileState* current_state = nullptr; 
 
-        std::vector<Local> locals;
-        int scope_depth = 0;
+        // std::vector<Local> locals;
+        // int scope_depth = 0;
 
         void emit_instruction(OpCode op, uint32_t operand, size_t line);
         size_t emit_jump(OpCode op, size_t line);

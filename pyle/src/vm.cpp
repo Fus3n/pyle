@@ -1208,6 +1208,11 @@ namespace pyle {
                 OP(CALL_KW) {
                     int pair_count = ARG;
                     Value callee = peek(pair_count * 2 + 1);
+                    
+                    if (stack_size() < pair_count * 2 + 1) { 
+                        runtime_error(RuntimeError::StackUnderflow, "Stack underflow in CALL_KW."); return;
+                    }
+
 
                     if (callee.tag != Value::Tag::StructTypeRef) {
                         runtime_error(RuntimeError::Type, "Keyword arguments only supported for struct instantiation."); return;
