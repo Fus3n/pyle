@@ -111,13 +111,14 @@ namespace pyle {
             switch (val.tag) {
                 case Value::Tag::StringRef:
                 case Value::Tag::ArrayRef:
-                case Value::Tag::StructRef:
                 case Value::Tag::NativeFuncRef:
                 case Value::Tag::FuncRef:
                 case Value::Tag::IteratorRef: 
                 case Value::Tag::RangeRef: 
                 case Value::Tag::ClosureRef: 
-                case Value::Tag::UpvalueRef: {
+                case Value::Tag::UpvalueRef: 
+                case Value::Tag::StructRef:
+                case Value::Tag::StructTypeRef: {
                     HeapIdx idx = val.as_ref;
                     if (!heap[idx].gc_marked) {
                         heap[idx].gc_marked = true;
@@ -153,9 +154,14 @@ namespace pyle {
                 for (const Value &val: *array_ptr) {
                     mark_value(val);
                 }
-            } else if (const auto *struct_ptr = std::get_if<StructType>(&heap[current].data)) {
-                for (const auto& [key, val] : *struct_ptr) {
+            } else if (const auto *struct_ptr = std::get_if<Struct>(&heap[current].data)) { 
+                mark_value(Value(Value::Tag::StructTypeRef, struct_ptr->type_idx)); 
+                for (const Value &val: struct_ptr->fields) {
                     mark_value(val);
+                }
+            } else if (const auto *type_ptr = std::get_if<StructType>(&heap[current].data)) {
+                for (HeapIdx str_idx : type_ptr->field_names) {
+                    mark_value(Value(Value::Tag::StringRef, str_idx)); 
                 }
             } else if (const auto *iter_ptr = std::get_if<Iterator>(&heap[current].data)) {
                 mark_value(iter_ptr->container);
@@ -166,7 +172,7 @@ namespace pyle {
                 }
             } else if (const auto *uv_ptr = std::get_if<Upvalue>(&heap[current].data)) { 
                 if (uv_ptr->location == &uv_ptr->closed) {
-                    mark_value(uv_ptr->closed); 
+                   mark_value(uv_ptr->closed); 
                 }
             }
         }
@@ -215,6 +221,17 @@ namespace pyle {
                 visited.erase(idx);
                 break;
             }
+            case Value::Tag::StructTypeRef: {
+                HeapIdx idx = val.as_ref;
+                const auto& type = std::get<StructType>(heap[idx].data);
+                ss << "struct {";
+                for (size_t i = 0; i < type.field_names.size(); ++i) {
+                    ss << std::get<std::string>(heap[type.field_names[i]].data);
+                    if (i < type.field_names.size() - 1) ss << ", ";
+                }
+                ss << "}";
+                break;
+            }
             case Value::Tag::StructRef: {
                 HeapIdx idx = val.as_ref;
                 if (visited.count(idx)) {
@@ -223,21 +240,23 @@ namespace pyle {
                 }
                 visited.insert(idx);
 
-                const auto& fields = std::get<StructType>(heap[idx].data);
+                const auto& s = std::get<Struct>(heap[idx].data);
+                const auto& type = std::get<StructType>(heap[s.type_idx].data);
+                
                 ss << "{";
-                size_t i = 0;
-
-                for (const auto& [key, field_val]: fields) {
-                    ss << key << ": ";
-                    value_to_string_helper(field_val, visited, ss);
-                    if (++i < fields.size()) {
+                for (size_t i = 0; i < s.fields.size(); ++i) {
+                    std::string field_name = std::get<std::string>(heap[type.field_names[i]].data);
+                    ss << field_name << ": ";
+                    value_to_string_helper(s.fields[i], visited, ss);
+                    if (i < s.fields.size() - 1) {
                         ss << ", ";
                     }
-                    ss << "}";
-                    visited.erase(idx);
-                    break;
                 }
+                ss << "}";
+                visited.erase(idx);
+                break;
             }
+
             case Value::Tag::RangeRef: {
                 HeapIdx idx = val.as_ref;
                 const auto& r = std::get<Range>(heap[idx].data);
@@ -440,6 +459,8 @@ bool VM::values_equal(const Value& a, const Value& b) {
             &&op_LOAD_UPVALUE,
             &&op_SET_UPVALUE,
             &&op_SET_UPVALUE_POP,
+            &&op_GET_FIELD,
+            &&op_SET_FIELD,
             &&op_ADD,
             &&op_SUB,
             &&op_MUL,
@@ -461,9 +482,6 @@ bool VM::values_equal(const Value& a, const Value& b) {
             &&op_CALL_METHOD,
             &&op_RETURN,
             &&op_POP,
-            &&op_NEW_STRUCT,
-            &&op_GET_FIELD,
-            &&op_SET_FIELD,
             &&op_NEW_ARRAY,
             &&op_GET_INDEX,
             &&op_SET_INDEX,
@@ -689,8 +707,60 @@ bool VM::values_equal(const Value& a, const Value& b) {
                         frame = &frames[frame_count - 1];
 
                         sync_frame_cache(frame, fn, instr_data, ip, ip_end, const_pool, const_pool_size);
-                    } 
-                    else {
+                    } else if (callee.tag == Value::Tag::StructTypeRef) {
+                        StructType& type = std::get<StructType>(heap[callee.as_ref].data);
+                        
+                        if (arg_count > type.field_names.size()) {
+                            runtime_error(RuntimeError::ArgumentError, fmt::format("Too many arguments for struct constructor. Expected at most {}, got {}.", type.field_names.size(), arg_count));
+                            return;
+                        }
+
+                        Struct instance;
+                        instance.type_idx = callee.as_ref;
+                        instance.fields.resize(type.field_names.size());
+                        
+                        // 1. Pop received arguments (right to left)
+                        for (int i = arg_count - 1; i >= 0; i--) {
+                            instance.fields[i] = pop();
+                        }
+                        
+                        // 2. Default missing fields to 'none' [cite: 3]
+                        for (size_t i = arg_count; i < type.field_names.size(); i++) {
+                            instance.fields[i] = Value(); 
+                        }
+                        
+                        HeapIdx idx = alloc(Object(instance));
+                        Value instance_val(Value::Tag::StructRef, idx);
+                        
+                        // Check if _init exists using O(1) lookup
+                        HeapIdx init_name_id = intern_string("_init");
+                        auto it = type.methods.find(init_name_id);
+                        
+                        if (it != type.methods.end()) {
+                            Value init_closure = it->second;
+                            set_top(init_closure);
+                            push(instance_val);   
+
+                            Closure& closure = std::get<Closure>(heap[init_closure.as_ref].data);
+                            Function& fn = std::get<Function>(heap[closure.function].data);
+
+                            sync_ip();
+                            CallFrame new_frame;
+                            new_frame.closure = init_closure.as_ref;
+                            new_frame.ip = 0;
+                            new_frame.stack_base = stack_size() - 1;
+
+                            if (frame_count == frame_capacity) [[unlikely]] {
+                                runtime_error(RuntimeError::Runtime, "Stack overflow.");
+                                return;
+                            }
+                            frames[frame_count++] = new_frame;
+                            frame = &frames[frame_count - 1];
+                            sync_frame_cache(frame, fn, instr_data, ip, ip_end, const_pool, const_pool_size);
+                        } else {
+                            set_top(instance_val);
+                        }
+                    } else {
                         runtime_error(RuntimeError::Type, fmt::format("Can only call functions. Grabbed Tag={}, StackSize={}",
                                       static_cast<int>(callee.tag), stack_size()));
                         return;
@@ -761,7 +831,6 @@ bool VM::values_equal(const Value& a, const Value& b) {
 
                 OP(CALL_METHOD) {
                     int arg_count = ARG;
-
                     if (stack_size() < arg_count + 1) {
                         runtime_error(RuntimeError::StackUnderflow, "Not enough values on stack for method call.");
                         return;
@@ -775,28 +844,74 @@ bool VM::values_equal(const Value& a, const Value& b) {
                         return;
                     }
 
-                    std::string method_name = std::get<std::string>(heap[name_val.as_ref].data);
+                    if (callee.tag == Value::Tag::StructRef) {
+                        // --- SCENARIO A: CUSTOM STRUCT METHOD ---
+                        Struct& s = std::get<Struct>(heap[callee.as_ref].data);
+                        StructType& type = std::get<StructType>(heap[s.type_idx].data);
+                        
+                        auto it = type.methods.find(name_val.as_ref); // True O(1) lookup!
+                        if (it != type.methods.end()) {
+                            Value method_closure = it->second;
 
-                    const Value *args_ptr = arg_count > 0 ? (sp - arg_count) : nullptr;
-                    ArgView args_view{args_ptr, static_cast<size_t>(arg_count)};
+                            // Magic Stack Swap: Replace the method string with 'self' (the object)
+                            // and replace the object slot with the method closure!
+                            stack[stack_size() - arg_count - 1] = callee; // 'self'
+                            stack[stack_size() - arg_count - 2] = method_closure;
 
-                    sync_ip();
-                    Value result;
-                    if (callee.tag == Value::Tag::ArrayRef) {
-                        result = ArrayMethods::dispatch(*this, callee.as_ref, method_name, args_view);
-                    } else if (callee.tag == Value::Tag::StringRef) {
-                        result = StringMethods::dispatch(*this, callee.as_ref, method_name, args_view);
+                            Closure& closure = std::get<Closure>(heap[method_closure.as_ref].data);
+                            Function& fn = std::get<Function>(heap[closure.function].data);
+
+                            int total_args = arg_count + 1; // +1 for the injected 'self'
+
+                            if (fn.arity != total_args) {
+                                runtime_error(RuntimeError::ArgumentError, fmt::format("Expected {} arguments, got {}.", fn.arity, total_args));
+                                return;
+                            }
+
+                            sync_ip();
+                            CallFrame new_frame;
+                            new_frame.closure = method_closure.as_ref;
+                            new_frame.ip = 0;
+                            new_frame.stack_base = stack_size() - total_args;
+
+                            if (frame_count == frame_capacity) [[unlikely]] {
+                                runtime_error(RuntimeError::Runtime, "Stack overflow."); 
+                                return;
+                            }
+                            frames[frame_count++] = new_frame;
+                            frame = &frames[frame_count - 1];
+                            sync_frame_cache(frame, fn, instr_data, ip, ip_end, const_pool, const_pool_size);
+                            
+                            // Let it safely fall through to the dispatch below!
+                        } else {
+                            std::string method_name = std::get<std::string>(heap[name_val.as_ref].data);
+                            runtime_error(RuntimeError::Name, fmt::format("Method '{}' not found.", method_name));
+                            return;
+                        }
+
                     } else {
-                        runtime_error(RuntimeError::Type, fmt::format("Expected object with method, got {} instead", callee.tag_to_string()));
-                        return;
+                        // --- SCENARIO B: NATIVE ARRAY OR STRING METHOD ---
+                        std::string method_name = std::get<std::string>(heap[name_val.as_ref].data);
+                        const Value *args_ptr = arg_count > 0 ? (sp - arg_count) : nullptr;
+                        ArgView args_view{args_ptr, static_cast<size_t>(arg_count)};
+
+                        sync_ip();
+                        Value result;
+                        if (callee.tag == Value::Tag::ArrayRef) {
+                            result = ArrayMethods::dispatch(*this, callee.as_ref, method_name, args_view);
+                        } else if (callee.tag == Value::Tag::StringRef) {
+                            result = StringMethods::dispatch(*this, callee.as_ref, method_name, args_view);
+                        } else {
+                            runtime_error(RuntimeError::Type, fmt::format("Expected object with method, got {} instead", callee.tag_to_string()));
+                            return;
+                        }
+
+                        if (panicked) return;
+                        sp -= (arg_count + 1);
+                        set_top(result);
                     }
-
-                    if (panicked) return;
-
-                    sp -= (arg_count + 1);
-                    set_top(result);
                 }
-                DISPATCH();
+                DISPATCH(); 
 
                 OP(NEW_ARRAY) {
                     int element_count = static_cast<int>(ARG);
@@ -994,12 +1109,51 @@ bool VM::values_equal(const Value& a, const Value& b) {
                 }
                 DISPATCH();
 
-                OP(NEW_STRUCT)
-                OP(GET_FIELD)
-                OP(SET_FIELD) {
-                    runtime_error(RuntimeError::Runtime, "Unimplemented opcode called.");
-                    return;
+               OP(GET_FIELD) {
+                    HeapIdx field_id = ARG; 
+                    Value obj_val = pop();
+                    if (obj_val.tag != Value::Tag::StructRef) {
+                        sync_ip();
+                        runtime_error(RuntimeError::Type, "Only structs have fields.");
+                        return;
+                    }
+                    Struct& s = std::get<Struct>(heap[obj_val.as_ref].data);
+                    StructType& type = std::get<StructType>(heap[s.type_idx].data);
+                    
+                    auto it = type.field_to_offset.find(field_id);
+                    if (it == type.field_to_offset.end()) {
+                        sync_ip();
+                        runtime_error(RuntimeError::Name, "Struct has no field with that name.");
+                        return;
+                    }
+                    
+                    push(s.fields[it->second]);
                 }
+                DISPATCH();
+
+                OP(SET_FIELD) {
+                    HeapIdx field_id = ARG;
+                    Value val = pop();
+                    Value obj_val = pop();
+                    if (obj_val.tag != Value::Tag::StructRef) {
+                        sync_ip();
+                        runtime_error(RuntimeError::Type, "Only structs have fields.");
+                        return;
+                    }
+                    Struct& s = std::get<Struct>(heap[obj_val.as_ref].data);
+                    StructType& type = std::get<StructType>(heap[s.type_idx].data);
+                    
+                    auto it = type.field_to_offset.find(field_id);
+                    if (it == type.field_to_offset.end()) {
+                        sync_ip();
+                        runtime_error(RuntimeError::Name, "Struct has no field with that name.");
+                        return;
+                    }
+                    
+                    s.fields[it->second] = val;
+                    push(val); 
+                }
+                DISPATCH();
 
                 OP(HALT) {
                     return;

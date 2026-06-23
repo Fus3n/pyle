@@ -224,6 +224,30 @@ namespace pyle {
         void accept(Visitor* visitor) override;
     };
 
+    struct StructDeclStmt : public Stmt {
+        Token name;
+        std::vector<Token> fields;
+        std::vector<std::unique_ptr<FuncDeclStmt>> methods; // <-- ADD THIS
+        StructDeclStmt(Token name, std::vector<Token> fields, std::vector<std::unique_ptr<FuncDeclStmt>> methods)
+            : name(name), fields(std::move(fields)), methods(std::move(methods)) {}
+        void accept(Visitor* visitor) override;
+    };
+
+    struct GetFieldExpr : public Expr {
+        std::unique_ptr<Expr> obj;
+        Token name;
+        GetFieldExpr(std::unique_ptr<Expr> obj, Token name) : obj(std::move(obj)), name(name) {}
+        void accept(Visitor* visitor) override;
+    };
+
+    struct SetFieldExpr : public Expr {
+        std::unique_ptr<Expr> obj;
+        Token name;
+        std::unique_ptr<Expr> value;
+        SetFieldExpr(std::unique_ptr<Expr> obj, Token name, std::unique_ptr<Expr> value)
+            : obj(std::move(obj)), name(name), value(std::move(value)) {}
+        void accept(Visitor* visitor) override;
+    };
 
     struct Visitor {
         virtual ~Visitor() = default;
@@ -250,6 +274,9 @@ namespace pyle {
         virtual void visit_for(ForStmt* stmt) = 0;
         virtual void visit_break(BreakStmt* stmt) = 0; 
         virtual void visit_func_expr(FuncExpr* expr) = 0; 
+        virtual void visit_struct_decl(StructDeclStmt* stmt) = 0;
+        virtual void visit_get_field(GetFieldExpr* expr) = 0;
+        virtual void visit_set_field(SetFieldExpr* expr) = 0;
     };  
 
     inline void LiteralExpr::accept(Visitor* visitor)  { visitor->visit_literal(this); }
@@ -274,4 +301,7 @@ namespace pyle {
     inline void ForStmt::accept(Visitor* visitor) { visitor->visit_for(this); }
     inline void BreakStmt::accept(Visitor* visitor) { visitor->visit_break(this); }
     inline void FuncExpr::accept(Visitor* visitor) { visitor->visit_func_expr(this); }
+    inline void StructDeclStmt::accept(Visitor* visitor) { visitor->visit_struct_decl(this); }
+    inline void GetFieldExpr::accept(Visitor* visitor) { visitor->visit_get_field(this); }
+    inline void SetFieldExpr::accept(Visitor* visitor) { visitor->visit_set_field(this); }
 }

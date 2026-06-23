@@ -106,6 +106,7 @@ namespace pyle {
             if (match({TokenType::FN})) return function_declaration();
             if (match({TokenType::RETURN})) return return_statement();
             if (match({TokenType::BREAK})) return break_statement();
+            if (match({TokenType::STRUCT})) return struct_declaration();
 
             return expression_statement();
         } catch (ParserError& err) {
@@ -144,6 +145,52 @@ namespace pyle {
         }
         
         return std::make_unique<FuncDeclStmt>(std::move(name), std::move(params), std::move(body));
+    }
+
+    // In pyle/src/parser.cpp
+std::unique_ptr<Stmt> Parser::struct_declaration() {
+    Token name = consume(TokenType::IDENTIFIER, "Expected struct name.");
+
+    consume(TokenType::LEFT_PAREN, "Expected '(' after struct name for fields.");
+        std::vector<Token> fields;
+        if (!check(TokenType::RIGHT_PAREN)) {
+            do {
+                fields.push_back(consume(TokenType::IDENTIFIER, "Expected field name."));
+            } while (match({TokenType::COMMA}));
+        }
+        consume(TokenType::RIGHT_PAREN, "Expected ')' after struct fields.");
+
+        consume(TokenType::LEFT_BRACE, "Expected '{' before struct body.");
+        std::vector<std::unique_ptr<FuncDeclStmt>> methods;
+        
+        while (!check(TokenType::RIGHT_BRACE) && !is_at_end()) {
+            consume(TokenType::FN, "Expected 'fn' for method declaration inside struct.");
+            Token method_name = consume(TokenType::IDENTIFIER, "Expected method name.");
+            consume(TokenType::LEFT_PAREN, "Expected '(' after method name.");
+            
+            std::vector<Token> params;
+            Token self_tok(TokenType::IDENTIFIER, "self", method_name.selection);
+            params.push_back(self_tok);
+
+            if (!check(TokenType::RIGHT_PAREN)) {
+                do {
+                    params.push_back(consume(TokenType::IDENTIFIER, "Expected parameter name."));
+                } while (match({TokenType::COMMA}));
+            }
+            consume(TokenType::RIGHT_PAREN, "Expected ')' after parameters.");
+            
+            consume(TokenType::LEFT_BRACE, "Expected '{' before method body.");
+            std::unique_ptr<BlockStmt> body = block();
+
+            if (method_name.lexeme == "_init") {
+                auto return_self = std::make_unique<ReturnStmt>(std::make_unique<VariableExpr>(self_tok));
+                body->statements.push_back(std::move(return_self));
+            }
+
+            methods.push_back(std::make_unique<FuncDeclStmt>(method_name, std::move(params), std::move(body)));
+        }
+        consume(TokenType::RIGHT_BRACE, "Expected '}' after struct body.");
+        return std::make_unique<StructDeclStmt>(name, std::move(fields), std::move(methods));
     }
 
     std::unique_ptr<Stmt> Parser::return_statement() {
@@ -251,7 +298,9 @@ namespace pyle {
                 Token name = var_expr->name;
                 return std::make_unique<AssignExpr>(name, std::move(value));
             }
-
+            if (auto* get_field = dynamic_cast<GetFieldExpr*>(expr.get())) {
+                return std::make_unique<SetFieldExpr>(std::move(get_field->obj), get_field->name, std::move(value));
+            }
             if (auto* index_expr = dynamic_cast<IndexExpr*>(expr.get())) {
                 return std::make_unique<IndexAssignExpr>(
                     std::move(index_expr->callee),
@@ -393,19 +442,22 @@ namespace pyle {
             if (match({TokenType::LEFT_PAREN})) {
                 expr = finish_call(std::move(expr));
             } else if (match({TokenType::DOT})) {
-                Token method_name = consume(TokenType::IDENTIFIER, "Expected method name '.'.");
-                consume(TokenType::LEFT_PAREN, "Expected '(' after method name.");
+                Token field_name = consume(TokenType::IDENTIFIER, "Expected field or method name.");
+                
+                if (match({TokenType::LEFT_PAREN})) {
+                    std::vector<std::unique_ptr<Expr>> arguments;
+                    if (!check(TokenType::RIGHT_PAREN)) {
+                        do {
+                            arguments.push_back(expression());
+                        } while (match({TokenType::COMMA}));
+                    }
 
-                std::vector<std::unique_ptr<Expr>> arguments;
-
-                if (!check(TokenType::RIGHT_PAREN)) {
-                    do {
-                        arguments.push_back(expression());
-                    } while (match({TokenType::COMMA}));
+                    Token paren = consume(TokenType::RIGHT_PAREN, "Expected ')' after arguments.");
+                    expr = std::make_unique<MethodCallExpr>(std::move(expr), field_name, paren, std::move(arguments));
+                } else {
+                    expr = std::make_unique<GetFieldExpr>(std::move(expr), field_name);
                 }
 
-                Token paren = consume(TokenType::RIGHT_PAREN, "Expected ')' after arguments.");
-                expr = std::make_unique<MethodCallExpr>(std::move(expr), method_name, paren, std::move(arguments));
             } else if(match({TokenType::LEFT_BRACKET})) {
                 std::unique_ptr<Expr> index = expression();
                 consume(TokenType::RIGHT_BRACKET, "Expected ']' after index.");

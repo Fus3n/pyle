@@ -37,6 +37,7 @@ namespace pyle {
         std::unique_ptr<Stmt> expression_statement();
         std::unique_ptr<Stmt> function_declaration();
         std::unique_ptr<Stmt> return_statement();
+        std::unique_ptr<Stmt> struct_declaration();
 
         std::unique_ptr<BlockStmt> block();
 

@@ -85,6 +85,9 @@ namespace pyle {
         void visit_for(ForStmt* stmt) override;
         void visit_break(BreakStmt* stmt) override;
         void visit_func_expr(FuncExpr* expr) override;
+        void visit_struct_decl(StructDeclStmt* stmt) override;
+        void visit_get_field(GetFieldExpr* expr) override;
+        void visit_set_field(SetFieldExpr* expr) override;
     };
 
 

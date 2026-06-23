@@ -17,7 +17,8 @@ namespace pyle {
     struct Value {
         enum class Tag {
             Int, Float, Bool, None, StringRef, ArrayRef, StructRef,
-            NativeFuncRef, FuncRef, IteratorRef, RangeRef, ClosureRef, UpvalueRef 
+            NativeFuncRef, FuncRef, IteratorRef, RangeRef, ClosureRef, UpvalueRef,
+            StructTypeRef,
         } tag;
         union {
             int64_t as_int;
@@ -94,9 +95,21 @@ namespace pyle {
         }
     };
 
-    using StructType = ankerl::unordered_dense::map<std::string, Value>;
     using ArrayType = std::vector<Value>;
     using NativeFn = Value (*)(VM& vm, ArgView args);
+
+    struct StructType {
+        std::vector<HeapIdx> field_names; 
+        ankerl::unordered_dense::map<HeapIdx, size_t> field_to_offset;
+        std::vector<Value> default_values;
+
+        ankerl::unordered_dense::map<HeapIdx, Value> methods; 
+    };
+
+    struct Struct {
+        HeapIdx type_idx;         
+        std::vector<Value> fields; 
+    };
 
     struct Upvalue {
         Value* location = nullptr; 
@@ -139,6 +152,7 @@ namespace pyle {
             std::string,
             ArrayType,
             StructType,
+            Struct,
             NativeFn,
             Function,
             Iterator,
@@ -150,13 +164,14 @@ namespace pyle {
         Object() = default;
         explicit Object(std::string str) : data(std::move(str)) {}
         explicit Object(ArrayType arr)   : data(std::move(arr)) {}
-        explicit Object(StructType strc) : data(std::move(strc)) {}
         explicit Object(NativeFn fn)   : data(fn) {}
         explicit Object(Function func): data(std::move(func)) {}
         explicit Object(Iterator iter): data(iter) {}
         explicit Object(Range r): data(r) {}
         explicit Object(Closure clos) : data(clos) {} 
         explicit Object(Upvalue uv)   : data(uv) {}
+        explicit Object(StructType strt) : data(std::move(strt)) {} // <-- ADD THIS
+        explicit Object(Struct strc)     : data(std::move(strc)) {}
     };
 
 }

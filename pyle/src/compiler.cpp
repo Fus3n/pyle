@@ -537,4 +537,46 @@ namespace pyle {
         emit_instruction(OpCode::RETURN, 0, 0);
     }
 
+    void Compiler::visit_struct_decl(StructDeclStmt* stmt) {
+        StructType type;
+        
+        for (size_t i = 0; i < stmt->fields.size(); ++i) {
+            HeapIdx field_id = vm.intern_string(stmt->fields[i].lexeme);
+            type.field_names.push_back(field_id);
+            type.field_to_offset[field_id] = i;
+        }
+
+        for (auto& method : stmt->methods) {
+            HeapIdx fn_idx = compile_function(method->params, method->body.get(), method->name.lexeme);
+            
+            Closure closure;
+            closure.function = fn_idx;
+            HeapIdx closure_idx = vm.alloc(Object(closure));
+            Value closure_val(Value::Tag::ClosureRef, closure_idx);
+
+            HeapIdx method_name_id = vm.intern_string(method->name.lexeme);
+            type.methods[method_name_id] = closure_val;
+        }
+        
+        HeapIdx type_idx = vm.alloc(Object(type));
+        Value type_val(Value::Tag::StructTypeRef, type_idx);
+        uint32_t const_idx = make_constant(type_val);
+        
+        int slot = vm.declare_global(std::string(stmt->name.lexeme));
+        emit_instruction(OpCode::LOAD_CONST, const_idx, stmt->name.selection.line);
+        emit_instruction(OpCode::DEFINE_GLOBAL_SLOT, slot, stmt->name.selection.line);
+    }
+
+    void Compiler::visit_get_field(GetFieldExpr* expr) {
+        expr->obj->accept(this);
+        HeapIdx field_id = vm.intern_string(expr->name.lexeme);
+        emit_instruction(OpCode::GET_FIELD, field_id, expr->name.selection.line);
+    }
+
+    void Compiler::visit_set_field(SetFieldExpr* expr) {
+        expr->obj->accept(this);
+        expr->value->accept(this);
+        HeapIdx field_id = vm.intern_string(expr->name.lexeme);
+        emit_instruction(OpCode::SET_FIELD, field_id, expr->name.selection.line);
+    }
 }
