@@ -5,26 +5,15 @@
 #include <vector>
 #include "unordered_set"
 #include "pyle/platform.hpp"
+#include "pyle/error_reporter.hpp"
 
 namespace pyle {
 
-    enum class RuntimeError {
-        Type, Name, Index, ZeroDivision, StackUnderflow, OutOfBounds, ArgumentError, Runtime
+    struct VMConfig {
+        size_t stack_capacity = 8192;
+        size_t frame_capacity = 2048;
+        bool gc_enabled = true;
     };
-
-    inline std::string_view err_to_string(const RuntimeError& err) {
-        switch (err) {
-            case RuntimeError::Type: return "TypeError";
-            case RuntimeError::Name: return "NameError";
-            case RuntimeError::Index: return "IndexError";
-            case RuntimeError::StackUnderflow: return "StackUnderFlowError";
-            case RuntimeError::ArgumentError: return "ArgumentError";
-            case RuntimeError::OutOfBounds: return "OutOfBoundsError";
-            default: return "RuntimeError";
-        }
-    }
-
-    using MethodFn = Value (*)(VM& vm, HeapIdx obj_idx, ArgView args);
 
     class VM {
     public:
@@ -32,7 +21,11 @@ namespace pyle {
             HeapIdx closure;
             size_t ip;
             size_t stack_base;
-            Function* fn_cache = nullptr; 
+
+            const uint32_t* instr_data = nullptr;
+            const uint32_t* ip_end = nullptr;
+            const Value* const_pool = nullptr;
+            size_t const_pool_size = 0;
         };
 
         Value* stack = nullptr;
@@ -80,16 +73,19 @@ namespace pyle {
                 v.tag != Value::Tag::StructRef;
         }
 
-        VM() {
-            stack_capacity = 8192;
+        explicit VM(const VMConfig& config = VMConfig()) {
+            stack_capacity = config.stack_capacity;
             stack = new Value[stack_capacity];
             sp = stack;
             stack_end = stack + stack_capacity;
 
-            frame_capacity = 2048;
+            frame_capacity = config.frame_capacity;
             frames = new CallFrame[frame_capacity];
             frame_count = 0;
+            
+            set_gc_enabled(config.gc_enabled);
         }
+
         ~VM() {
             delete[] stack;
             delete [] frames;

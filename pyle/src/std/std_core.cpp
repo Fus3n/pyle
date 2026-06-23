@@ -3,6 +3,7 @@
 #include <chrono>
 #include <iostream>
 #include <fmt/args.h> 
+#include <pyle/vm.hpp>
 
 namespace pyle {
 

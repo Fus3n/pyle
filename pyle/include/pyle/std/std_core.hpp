@@ -1,6 +1,6 @@
 
 #pragma once
-#include "pyle/vm.hpp"
+#include "pyle/value.hpp"
 
 namespace pyle {
     void register_core_natives(VM& vm);

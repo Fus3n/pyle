@@ -144,6 +144,7 @@ namespace pyle {
 
     using ArrayType = std::vector<Value>;
     using NativeFn = Value (*)(VM& vm, ArgView args);
+    using NativeMethodFn = Value (*)(VM& vm, HeapIdx obj_idx, ArgView args); // native function definition signature
     using MapType = ankerl::unordered_dense::map<Value, Value, ValueHash, ValueEqual>;
 
     struct StructType {

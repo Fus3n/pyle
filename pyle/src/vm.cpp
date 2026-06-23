@@ -16,12 +16,16 @@ namespace pyle {
                                 const uint32_t*& instr_data, const uint32_t*& ip,
                                 const uint32_t*& ip_end, const Value*& const_pool,
                                 size_t& const_pool_size) {
-        instr_data = fn.chunk.instr.data();
+        f->instr_data = fn.chunk.instr.data();
+        f->ip_end = f->instr_data + fn.chunk.instr.size();
+        f->const_pool = fn.chunk.const_pool.data();
+        f->const_pool_size = fn.chunk.const_pool.size();
+
+        instr_data = f->instr_data;
         ip = instr_data + f->ip;
-        ip_end = instr_data + fn.chunk.instr.size();
-        const_pool = fn.chunk.const_pool.data();
-        const_pool_size = fn.chunk.const_pool.size();
-        f->fn_cache = &fn;
+        ip_end = f->ip_end;
+        const_pool = f->const_pool;
+        const_pool_size = f->const_pool_size;
     }
 
     void VM::grow_stack() {
@@ -742,6 +746,12 @@ namespace pyle {
                             if (arg_count > type.field_names.size()) {
                                 runtime_error(RuntimeError::ArgumentError, fmt::format("Too many arguments. Expected at most {}.", type.field_names.size())); return;
                             }
+
+                            HeapIdx init_id = intern_string("_init");
+                            auto it = type.methods.find(init_id);
+                            bool has_init = (it != type.methods.end());
+                            HeapIdx fn_idx = has_init ? it->second : 0;
+
                             Struct instance;
                             instance.type_idx = callee.as_ref;
                             instance.fields.resize(type.field_names.size());
@@ -751,18 +761,20 @@ namespace pyle {
                             for (size_t i = arg_count; i < type.field_names.size(); i++) {
                                 instance.fields[i] = Value();
                             }
+
                             HeapIdx idx = alloc(Object(instance));
                             Value instance_val(Value::Tag::StructRef, idx);
-                            HeapIdx init_id = intern_string("_init");
-                            auto it = type.methods.find(init_id);
-                            if (it != type.methods.end()) {
-                                HeapIdx fn_idx = it->second;
+
+                            if (has_init) {
                                 Function& fn = std::get<Function>(heap[fn_idx].data);
                                 if (fn.arity != arg_count + 1) {
                                     runtime_error(RuntimeError::ArgumentError, fmt::format("_init expects {} args, got {}.", fn.arity - 1, arg_count)); return;
                                 }
                                 HeapIdx closure_idx = build_closure_for_call(fn_idx, frame);
                                 Value init_clos(Value::Tag::ClosureRef, closure_idx);
+
+                                Function& fn_post_clos = std::get<Function>(heap[fn_idx].data);
+
                                 push(Value()); 
                                 for (int i = 0; i < arg_count; i++) {
                                     *(sp - 1 - i) = *(sp - 2 - i); 
@@ -776,7 +788,7 @@ namespace pyle {
                                 new_frame.stack_base = stack_size() - arg_count - 1; 
                                 frames[frame_count++] = new_frame;
                                 frame = &frames[frame_count - 1];
-                                sync_frame_cache(frame, fn, instr_data, ip, ip_end, const_pool, const_pool_size);
+                                sync_frame_cache(frame, fn_post_clos, instr_data, ip, ip_end, const_pool, const_pool_size);
                             } else {
                                 sp -= arg_count;
                                 set_top(instance_val);
@@ -792,18 +804,19 @@ namespace pyle {
                 OP(RETURN) {
                     Value ret_val = peek();
                     size_t stack_base = frame->stack_base; 
-                    
                     close_upvalues(&stack[stack_base]);
-
                     frame_count--;
                     if (frame_count == 0) return;
-
                     stack[stack_base - 1] = ret_val;
                     sp = stack + stack_base; 
-
                     frame = &frames[frame_count - 1];
-                    sync_frame_cache(frame, *frame->fn_cache, instr_data, ip, ip_end, const_pool, const_pool_size);
                     
+                    // directly restore execution state pointers from the callers frame
+                    instr_data = frame->instr_data;
+                    ip = instr_data + frame->ip;
+                    ip_end = frame->ip_end;
+                    const_pool = frame->const_pool;
+                    const_pool_size = frame->const_pool_size;
                 }
                 DISPATCH();
 
@@ -867,14 +880,14 @@ namespace pyle {
                         auto it = type.methods.find(name_val.as_ref);
                         if (it != type.methods.end()) {
                             HeapIdx fn_idx = it->second;
-                            Function& fn = std::get<Function>(heap[fn_idx].data);
-                            
+
                             HeapIdx closure_idx = build_closure_for_call(fn_idx, frame);
                             Value method_closure(Value::Tag::ClosureRef, closure_idx);
-                            
+
+                            Function& fn = std::get<Function>(heap[fn_idx].data);
+
                             stack[stack_size() - arg_count - 1] = callee;
                             stack[stack_size() - arg_count - 2] = method_closure;
-                            
                             int total_args = arg_count + 1;
                             if (fn.arity != total_args) {
                                 runtime_error(RuntimeError::ArgumentError, fmt::format("Expected {} arguments, got {}.", fn.arity, total_args));
@@ -1215,6 +1228,12 @@ namespace pyle {
                         return;
                     }
                     StructType& type = std::get<StructType>(heap[callee.as_ref].data);
+
+                    HeapIdx init_id = intern_string("_init");
+                    auto it = type.methods.find(init_id);
+                    bool has_init = (it != type.methods.end());
+                    HeapIdx fn_idx = has_init ? it->second : 0;
+
                     Struct instance;
                     instance.type_idx = callee.as_ref;
                     instance.fields.resize(type.field_names.size(), Value());
@@ -1228,13 +1247,12 @@ namespace pyle {
                         }
                         instance.fields[offset] = val;
                     }
+
                     HeapIdx idx = alloc(Object(instance));
                     Value instance_val(Value::Tag::StructRef, idx);
                     set_top(instance_val);
-                    HeapIdx init_id = intern_string("_init");
-                    auto it = type.methods.find(init_id);
-                    if (it != type.methods.end()) {
-                        HeapIdx fn_idx = it->second;
+
+                    if (has_init) {
                         Function& fn = std::get<Function>(heap[fn_idx].data);
                         if (fn.arity != 1) { 
                             runtime_error(RuntimeError::ArgumentError, "_init must take 0 arguments when using named initialization."); 
@@ -1242,6 +1260,9 @@ namespace pyle {
                         }
                         HeapIdx closure_idx = build_closure_for_call(fn_idx, frame);
                         Value init_clos(Value::Tag::ClosureRef, closure_idx);
+
+                        Function& fn_post_clos = std::get<Function>(heap[fn_idx].data);
+
                         push(instance_val); 
                         sync_ip();
                         CallFrame new_frame;
@@ -1250,7 +1271,7 @@ namespace pyle {
                         new_frame.stack_base = stack_size() - 1;
                         frames[frame_count++] = new_frame;
                         frame = &frames[frame_count - 1];
-                        sync_frame_cache(frame, fn, instr_data, ip, ip_end, const_pool, const_pool_size);
+                        sync_frame_cache(frame, fn_post_clos, instr_data, ip, ip_end, const_pool, const_pool_size);
                     }
                 }
                 DISPATCH();

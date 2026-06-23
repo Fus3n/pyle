@@ -1,5 +1,4 @@
 #include "pyle/std/std_string.hpp"
-
 #include "pyle/vm.hpp"
 
 namespace  pyle::StringMethods {
@@ -15,7 +14,7 @@ namespace  pyle::StringMethods {
         return Value(static_cast<int64_t>(str.size()));
     }
 
-    static const ankerl::unordered_dense::map<std::string, MethodFn> methods = {
+    static const ankerl::unordered_dense::map<std::string, NativeMethodFn> methods = {
         {"size", size}
     };
 

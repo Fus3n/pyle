@@ -3,7 +3,6 @@
 #include <algorithm>
 #include <fmt/format.h>
 
-
 namespace pyle::ArrayMethods {
 
     Value append(VM& vm, HeapIdx obj_idx, ArgView args) {
@@ -65,7 +64,7 @@ namespace pyle::ArrayMethods {
     }
 
 
-    static const ankerl::unordered_dense::map<std::string, MethodFn> methods = {
+    static const ankerl::unordered_dense::map<std::string, NativeMethodFn> methods = {
         {"append", append},
         {"size", size},
         {"pop", pop},

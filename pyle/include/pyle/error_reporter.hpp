@@ -33,4 +33,22 @@ namespace pyle {
         void clear();
     };
 
+
+    enum class RuntimeError {
+        Type, Name, Index, ZeroDivision, StackUnderflow, OutOfBounds, ArgumentError, Runtime
+    };
+
+    inline std::string_view err_to_string(const RuntimeError& err) {
+        switch (err) {
+            case RuntimeError::Type: return "TypeError";
+            case RuntimeError::Name: return "NameError";
+            case RuntimeError::Index: return "IndexError";
+            case RuntimeError::StackUnderflow: return "StackUnderFlowError";
+            case RuntimeError::ArgumentError: return "ArgumentError";
+            case RuntimeError::OutOfBounds: return "OutOfBoundsError";
+            default: return "RuntimeError";
+        }
+    }
+
+
 }
