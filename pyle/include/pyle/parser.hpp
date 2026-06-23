@@ -17,10 +17,21 @@ namespace pyle {
         size_t current = 0;
         ErrorReporter& reporter;
 
-        bool is_at_end() const;
+        bool is_at_end() const {
+            return peek().type == TokenType::EOF_TOKEN;
+        }
 
-        Token peek() const;
-        Token previous() const;
+        Token peek() const {
+            return tokens[current];
+        }
+        TokenType peek_next() const {
+            if (current + 1 >= tokens.size()) return TokenType::EOF_TOKEN;
+            return tokens[current + 1].type;
+        }
+        Token previous() const {
+            return tokens[current - 1];
+        }
+
         Token advance();
         bool check(TokenType type) const;
         bool match(std::initializer_list<TokenType> types);

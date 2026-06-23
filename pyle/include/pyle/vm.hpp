@@ -63,7 +63,6 @@ namespace pyle {
         Object& get_heap_object(const HeapIdx idx) { return heap[idx]; }
 
         void execute(Chunk in_chunk);
-        bool values_equal(const Value& a, const Value& b);
         std::string value_to_string(const Value& val);
         void define_native(const std::string& name, NativeFn function);
         void runtime_error(const RuntimeError& err, const std::string& msg);
@@ -73,6 +72,12 @@ namespace pyle {
         int declare_global(const std::string& name);
 
         bool is_truthy(const Value& v);
+
+        inline bool is_hashable(const Value& v) const {
+            return v.tag != Value::Tag::ArrayRef &&
+                v.tag != Value::Tag::MapRef &&
+                v.tag != Value::Tag::StructRef;
+        }
 
         VM() {
             stack_capacity = 8192;

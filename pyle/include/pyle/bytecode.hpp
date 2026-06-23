@@ -46,6 +46,8 @@ namespace pyle {
         RETURN,
         POP,
         NEW_ARRAY,
+        NEW_MAP,     
+        CALL_KW,
         GET_INDEX,
         SET_INDEX,
         HALT

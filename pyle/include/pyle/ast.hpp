@@ -249,6 +249,28 @@ namespace pyle {
         void accept(Visitor* visitor) override;
     };
 
+    struct ImplicitStringExpr : public Expr {
+        Token token;
+        explicit ImplicitStringExpr(Token token) : token(token) {}
+        void accept(Visitor* visitor) override;
+    };
+
+    struct MapExpr : public Expr {
+        std::vector<std::pair<std::unique_ptr<Expr>, std::unique_ptr<Expr>>> entries;
+        explicit MapExpr(std::vector<std::pair<std::unique_ptr<Expr>, std::unique_ptr<Expr>>> entries)
+            : entries(std::move(entries)) {}
+        void accept(Visitor* visitor) override;
+    };
+
+    struct CallKwExpr : public Expr {
+        std::unique_ptr<Expr> callee;
+        Token paren;
+        std::vector<std::pair<Token, std::unique_ptr<Expr>>> kwargs;
+        CallKwExpr(std::unique_ptr<Expr> callee, Token paren, std::vector<std::pair<Token, std::unique_ptr<Expr>>> kwargs)
+            : callee(std::move(callee)), paren(paren), kwargs(std::move(kwargs)) {}
+        void accept(Visitor* visitor) override;
+    };
+
     struct Visitor {
         virtual ~Visitor() = default;
 
@@ -277,6 +299,9 @@ namespace pyle {
         virtual void visit_struct_decl(StructDeclStmt* stmt) = 0;
         virtual void visit_get_field(GetFieldExpr* expr) = 0;
         virtual void visit_set_field(SetFieldExpr* expr) = 0;
+        virtual void visit_implicit_string(ImplicitStringExpr* expr) = 0; 
+        virtual void visit_map_expr(MapExpr* expr) = 0;                  
+        virtual void visit_call_kw_expr(CallKwExpr* expr) = 0;           
     };  
 
     inline void LiteralExpr::accept(Visitor* visitor)  { visitor->visit_literal(this); }
@@ -304,4 +329,7 @@ namespace pyle {
     inline void StructDeclStmt::accept(Visitor* visitor) { visitor->visit_struct_decl(this); }
     inline void GetFieldExpr::accept(Visitor* visitor) { visitor->visit_get_field(this); }
     inline void SetFieldExpr::accept(Visitor* visitor) { visitor->visit_set_field(this); }
+    inline void ImplicitStringExpr::accept(Visitor* visitor) { visitor->visit_implicit_string(this); }
+    inline void MapExpr::accept(Visitor* visitor) { visitor->visit_map_expr(this); }
+    inline void CallKwExpr::accept(Visitor* visitor) { visitor->visit_call_kw_expr(this); }
 }

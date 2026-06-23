@@ -88,6 +88,9 @@ namespace pyle {
         void visit_struct_decl(StructDeclStmt* stmt) override;
         void visit_get_field(GetFieldExpr* expr) override;
         void visit_set_field(SetFieldExpr* expr) override;
+        void visit_implicit_string(ImplicitStringExpr* expr) override;
+        void visit_map_expr(MapExpr* expr) override;
+        void visit_call_kw_expr(CallKwExpr* expr) override;
     };
 
 

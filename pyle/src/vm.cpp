@@ -118,7 +118,8 @@ namespace pyle {
                 case Value::Tag::ClosureRef: 
                 case Value::Tag::UpvalueRef: 
                 case Value::Tag::StructRef:
-                case Value::Tag::StructTypeRef: {
+                case Value::Tag::StructTypeRef: 
+                case Value::Tag::MapRef: {
                     HeapIdx idx = val.as_ref;
                     if (!heap[idx].gc_marked) {
                         heap[idx].gc_marked = true;
@@ -173,6 +174,11 @@ namespace pyle {
             } else if (const auto *uv_ptr = std::get_if<Upvalue>(&heap[current].data)) { 
                 if (uv_ptr->location == &uv_ptr->closed) {
                    mark_value(uv_ptr->closed); 
+                }
+            } else if (const auto *map_ptr = std::get_if<MapType>(&heap[current].data)) {
+                for (const auto& [key, val] : *map_ptr) {
+                    mark_value(key);
+                    mark_value(val);
                 }
             }
         }
@@ -256,11 +262,34 @@ namespace pyle {
                 visited.erase(idx);
                 break;
             }
-
             case Value::Tag::RangeRef: {
                 HeapIdx idx = val.as_ref;
                 const auto& r = std::get<Range>(heap[idx].data);
                 ss << r.start << ".." << r.end;
+                break;
+            }
+            case Value::Tag::MapRef: {
+                HeapIdx idx = val.as_ref;
+                if (visited.count(idx)) {
+                    ss << "{...}";
+                    return;
+                }
+                visited.insert(idx);
+
+                const auto& map = std::get<MapType>(heap[idx].data);
+                ss << "{";
+                size_t i = 0;
+
+                for (const auto& [key, map_val] : map) {
+                    value_to_string_helper(key, visited, ss);
+                    ss << ": ";
+                    value_to_string_helper(map_val, visited, ss);
+                    if (++i < map.size()) {
+                        ss << ", ";
+                    }
+                }
+                ss << "}";
+                visited.erase(idx);
                 break;
             }
             default:
@@ -338,26 +367,6 @@ namespace pyle {
             return; \
         } \
     } while (false)
-
-bool VM::values_equal(const Value& a, const Value& b) {
-    if ((a.tag == Value::Tag::Int || a.tag == Value::Tag::Float) &&
-        (b.tag == Value::Tag::Int || b.tag == Value::Tag::Float)) {
-        double da = (a.tag == Value::Tag::Int) ? static_cast<double>(a.as_int) : a.as_float;
-        double db = (b.tag == Value::Tag::Int) ? static_cast<double>(b.as_int) : b.as_float;
-        return da == db;
-    }
-    if (a.tag != b.tag) return false;
-    switch (a.tag) {
-        case Value::Tag::None: return true;
-        case Value::Tag::Bool: return a.as_bool == b.as_bool;
-        case Value::Tag::StringRef:
-        case Value::Tag::ArrayRef:
-        case Value::Tag::StructRef:
-        case Value::Tag::NativeFuncRef:
-            return a.as_ref == b.as_ref;
-        default: return false;
-    }
-}
 
 #define COMPARISON_OP(op, sync_expr) \
     do { \
@@ -483,6 +492,8 @@ bool VM::values_equal(const Value& a, const Value& b) {
             &&op_RETURN,
             &&op_POP,
             &&op_NEW_ARRAY,
+            &&op_NEW_MAP,
+            &&op_CALL_KW,
             &&op_GET_INDEX,
             &&op_SET_INDEX,
             &&op_HALT
@@ -585,14 +596,14 @@ bool VM::values_equal(const Value& a, const Value& b) {
                 OP(EQ) {
                     Value b = pop();
                     Value a = peek();
-                    set_top(Value(values_equal(a, b)));
+                    set_top(Value(a == b));
                 }   
                 DISPATCH();
 
                 OP(NEQ) {
                     Value b = pop();
                     Value a = peek();
-                    set_top(Value(!values_equal(a, b)));
+                    set_top(Value(a != b));
                 }
                 DISPATCH();
 
@@ -666,104 +677,96 @@ bool VM::values_equal(const Value& a, const Value& b) {
 
                 OP(CALL) {
                     int arg_count = ARG;
-                    if (static_cast<size_t>(sp - stack) < static_cast<size_t>(arg_count + 1)) {
-                        runtime_error(RuntimeError::StackUnderflow, "Not enough values on stack for function call.");
-                        return;
+                    if (stack_size() < arg_count + 1) {
+                        runtime_error(RuntimeError::StackUnderflow, "Not enough values for call."); return;
                     }
 
                     Value callee = peek(arg_count + 1);
 
-                    if (callee.tag == Value::Tag::NativeFuncRef) {
-                        NativeFn native = std::get<NativeFn>(heap[callee.as_ref].data);
-
-                        const Value* args_ptr = arg_count > 0 ? (sp - arg_count) : nullptr;
-                        ArgView args_view{args_ptr, static_cast<size_t>(arg_count)};
-
-                        sync_ip();
-                        Value result = native(*this, args_view);
-                        sp -= arg_count; 
-                        set_top(result);
-                    } else if (callee.tag == Value::Tag::ClosureRef) {
-                        Closure& closure = std::get<Closure>(heap[callee.as_ref].data);
-                        Function& fn = std::get<Function>(heap[closure.function].data);
-                        
-                        if (fn.arity != arg_count) {
-                            runtime_error(RuntimeError::ArgumentError, fmt::format("Expected {} arguments, got {}.", fn.arity, arg_count));
-                            return;
-                        }
-
-                        sync_ip(); 
-                        CallFrame new_frame;
-                        new_frame.closure = callee.as_ref;
-                        new_frame.ip = 0;
-                        new_frame.stack_base = stack_size() - arg_count;
-                        
-                        if (frame_count == frame_capacity) [[unlikely]] {
-                            runtime_error(RuntimeError::Runtime, "Stack overflow (maximum recursion depth exceeded).");
-                            return;
-                        }
-
-                        frames[frame_count++] = new_frame;
-                        frame = &frames[frame_count - 1];
-
-                        sync_frame_cache(frame, fn, instr_data, ip, ip_end, const_pool, const_pool_size);
-                    } else if (callee.tag == Value::Tag::StructTypeRef) {
-                        StructType& type = std::get<StructType>(heap[callee.as_ref].data);
-                        
-                        if (arg_count > type.field_names.size()) {
-                            runtime_error(RuntimeError::ArgumentError, fmt::format("Too many arguments for struct constructor. Expected at most {}, got {}.", type.field_names.size(), arg_count));
-                            return;
-                        }
-
-                        Struct instance;
-                        instance.type_idx = callee.as_ref;
-                        instance.fields.resize(type.field_names.size());
-                        
-                        // 1. Pop received arguments (right to left)
-                        for (int i = arg_count - 1; i >= 0; i--) {
-                            instance.fields[i] = pop();
-                        }
-                        
-                        // 2. Default missing fields to 'none' [cite: 3]
-                        for (size_t i = arg_count; i < type.field_names.size(); i++) {
-                            instance.fields[i] = Value(); 
-                        }
-                        
-                        HeapIdx idx = alloc(Object(instance));
-                        Value instance_val(Value::Tag::StructRef, idx);
-                        
-                        // Check if _init exists using O(1) lookup
-                        HeapIdx init_name_id = intern_string("_init");
-                        auto it = type.methods.find(init_name_id);
-                        
-                        if (it != type.methods.end()) {
-                            Value init_closure = it->second;
-                            set_top(init_closure);
-                            push(instance_val);   
-
-                            Closure& closure = std::get<Closure>(heap[init_closure.as_ref].data);
+                    switch (callee.tag) {
+                        case Value::Tag::ClosureRef: {
+                            Closure& closure = std::get<Closure>(heap[callee.as_ref].data);
                             Function& fn = std::get<Function>(heap[closure.function].data);
-
+                            if (fn.arity != arg_count) {
+                                runtime_error(RuntimeError::ArgumentError, fmt::format("Expected {} args, got {}.", fn.arity, arg_count)); return;
+                            }
                             sync_ip();
                             CallFrame new_frame;
-                            new_frame.closure = init_closure.as_ref;
+                            new_frame.closure = callee.as_ref;
                             new_frame.ip = 0;
-                            new_frame.stack_base = stack_size() - 1;
-
-                            if (frame_count == frame_capacity) [[unlikely]] {
-                                runtime_error(RuntimeError::Runtime, "Stack overflow.");
-                                return;
-                            }
+                            new_frame.stack_base = stack_size() - arg_count;
                             frames[frame_count++] = new_frame;
                             frame = &frames[frame_count - 1];
                             sync_frame_cache(frame, fn, instr_data, ip, ip_end, const_pool, const_pool_size);
-                        } else {
-                            set_top(instance_val);
+                            break;
                         }
-                    } else {
-                        runtime_error(RuntimeError::Type, fmt::format("Can only call functions. Grabbed Tag={}, StackSize={}",
-                                      static_cast<int>(callee.tag), stack_size()));
-                        return;
+                        case Value::Tag::NativeFuncRef: {
+                            NativeFn native = std::get<NativeFn>(heap[callee.as_ref].data);
+                            const Value* args_ptr = arg_count > 0 ? (sp - arg_count) : nullptr;
+                            ArgView args_view{args_ptr, static_cast<size_t>(arg_count)};
+                            sync_ip();
+                            Value result = native(*this, args_view);
+                            sp -= arg_count; 
+                            set_top(result);
+                            break;
+                        }
+                        case Value::Tag::StructTypeRef: {
+                            StructType& type = std::get<StructType>(heap[callee.as_ref].data);
+                            
+                            if (arg_count > type.field_names.size()) {
+                                runtime_error(RuntimeError::ArgumentError, fmt::format("Too many arguments. Expected at most {}.", type.field_names.size())); return;
+                            }
+
+                            Struct instance;
+                            instance.type_idx = callee.as_ref;
+                            instance.fields.resize(type.field_names.size());
+                            
+                            // 1. PEEK arguments to populate fields (Do NOT pop them yet!)
+                            for (int i = 0; i < arg_count; i++) {
+                                instance.fields[i] = peek(arg_count - i);
+                            }
+                            for (size_t i = arg_count; i < type.field_names.size(); i++) {
+                                instance.fields[i] = Value(); // Default to 'none'
+                            }
+                            
+                            HeapIdx idx = alloc(Object(instance));
+                            Value instance_val(Value::Tag::StructRef, idx);
+                            
+                            HeapIdx init_id = intern_string("_init");
+                            auto it = type.methods.find(init_id);
+                            
+                            if (it != type.methods.end()) {
+                                Value init_clos = it->second;
+                                Closure& closure = std::get<Closure>(heap[init_clos.as_ref].data);
+                                Function& fn = std::get<Function>(heap[closure.function].data);
+                                
+                                if (fn.arity != arg_count + 1) {
+                                    runtime_error(RuntimeError::ArgumentError, fmt::format("_init expects {} args, got {}.", fn.arity - 1, arg_count)); return;
+                                }
+                            
+                                push(Value()); 
+                                for (int i = 0; i < arg_count; i++) {
+                                    *(sp - 1 - i) = *(sp - 2 - i); 
+                                }
+                                *(sp - 1 - arg_count) = instance_val; 
+                                *(sp - 2 - arg_count) = init_clos;  
+                                
+                                sync_ip();
+                                CallFrame new_frame;
+                                new_frame.closure = init_clos.as_ref;
+                                new_frame.ip = 0;
+                                new_frame.stack_base = stack_size() - arg_count - 1; 
+                                frames[frame_count++] = new_frame;
+                                frame = &frames[frame_count - 1];
+                                sync_frame_cache(frame, fn, instr_data, ip, ip_end, const_pool, const_pool_size);
+                            } else {
+                                sp -= arg_count;
+                                set_top(instance_val);
+                            }
+                            break;
+                        }
+                        default:
+                            runtime_error(RuntimeError::Type, "Object is not callable."); return;
                     }
                 }
                 DISPATCH();
@@ -936,14 +939,13 @@ bool VM::values_equal(const Value& a, const Value& b) {
 
                     Value index = pop();
                     Value container = peek();
-
-                    if (index.tag != Value::Tag::Int) {
-                        runtime_error(RuntimeError::Type, fmt::format("Array index must be an integer, got '{}'.", index.tag_to_string()));
-                        return;
-                    }
                     
                     switch (container.tag) {
                         case Value::Tag::ArrayRef: { 
+                            if (index.tag != Value::Tag::Int) {
+                                runtime_error(RuntimeError::Type, fmt::format("Array index must be an integer, got '{}'.", index.tag_to_string()));
+                                return;
+                            }
                             auto& vec = std::get<ArrayType>(heap[container.as_ref].data);
                             if (index.as_int < 0 || index.as_int >= static_cast<int64_t>(vec.size())) {
                                 runtime_error(RuntimeError::Index, fmt::format("Array index {} out of bounds for size {}.", index.as_int, vec.size()));
@@ -953,6 +955,10 @@ bool VM::values_equal(const Value& a, const Value& b) {
                             break;
                         }
                         case Value::Tag::StringRef: {
+                            if (index.tag != Value::Tag::Int) {
+                                runtime_error(RuntimeError::Type, fmt::format("Array index must be an integer, got '{}'.", index.tag_to_string()));
+                                return;
+                            }
                             const auto& str = std::get<std::string>(heap[container.as_ref].data);
                             if (index.as_int < 0 || index.as_int >= static_cast<int64_t>(str.size())) {
                                 runtime_error(RuntimeError::Index, fmt::format("String index {} out of bounds for length {}.", index.as_int, str.size()));
@@ -961,6 +967,22 @@ bool VM::values_equal(const Value& a, const Value& b) {
                             std::string char_str(1, str[index.as_int]);
                             HeapIdx char_idx = intern_string(char_str);
                             set_top(Value(Value::Tag::StringRef, char_idx));
+                            break;
+                        }
+                        case Value::Tag::MapRef: { 
+                            if (!is_hashable(index)) { // <-- ADD THIS CHECK
+                                runtime_error(RuntimeError::Type, fmt::format("Unhashable type '{}' cannot be used as a map key.", index.tag_to_string()));
+                                return;
+                            }
+                            auto& map = std::get<MapType>(heap[container.as_ref].data);
+                            auto it = map.find(index);
+                            if (it != map.end()) {
+                                set_top(it->second);
+                            } else {
+                                sync_ip();
+                                runtime_error(RuntimeError::Index, "Key not found in map.");
+                                return;
+                            }
                             break;
                         }
                         default: {
@@ -979,27 +1001,36 @@ bool VM::values_equal(const Value& a, const Value& b) {
 
                     Value value = peek(1);
                     Value index = peek(2);
-                    Value array_val = peek(3);
+                    Value container = peek(3);
 
-                    if (array_val.tag != Value::Tag::ArrayRef) {
-                        runtime_error(RuntimeError::Type, fmt::format("Cannot set index on non-array type '{}'.", array_val.tag_to_string()));
+                    if (container.tag == Value::Tag::ArrayRef) {
+                        if (index.tag != Value::Tag::Int) {
+                            runtime_error(RuntimeError::Type, fmt::format("Array index must be an integer, got '{}'.", index.tag_to_string()));
+                            return;
+                        }
+                        auto& vec = std::get<ArrayType>(heap[container.as_ref].data);
+                        if (index.as_int < 0 || index.as_int >= static_cast<int64_t>(vec.size())) {
+                            runtime_error(RuntimeError::Index, fmt::format("Array index {} out of bounds for size {}.", index.as_int, vec.size()));
+                            return;
+                        }
+                        vec[index.as_int] = value;
+                        sp -= 2;
+                        set_top(value);
+
+                    } else if (container.tag == Value::Tag::MapRef) {
+                        if (!is_hashable(index)) { 
+                            runtime_error(RuntimeError::Type, fmt::format("Unhashable type '{}' cannot be used as a map key.", index.tag_to_string()));
+                            return;
+                        }
+                        auto& map = std::get<MapType>(heap[container.as_ref].data);
+                        map[index] = value;
+                        sp -= 2;
+                        set_top(value);
+
+                    } else {
+                        runtime_error(RuntimeError::Type, fmt::format("Cannot set index on non-array/map type '{}'.", container.tag_to_string()));
                         return;
                     }
-
-                    if (index.tag != Value::Tag::Int) {
-                        runtime_error(RuntimeError::Type, fmt::format("Array index must be an integer, got '{}'.", index.tag_to_string()));
-                        return;
-                    }
-
-                    auto& vec = std::get<ArrayType>(heap[array_val.as_ref].data);
-                    if (index.as_int < 0 || index.as_int >= static_cast<int64_t>(vec.size())) {
-                        runtime_error(RuntimeError::Index, fmt::format("Array index {} out of bounds for size {}.", index.as_int, vec.size()));
-                        return;
-                    }
-
-                    vec[index.as_int] = value;
-                    sp -= 2;
-                    set_top(value);
                 }
                 DISPATCH();
 
@@ -1152,6 +1183,78 @@ bool VM::values_equal(const Value& a, const Value& b) {
                     
                     s.fields[it->second] = val;
                     push(val); 
+                }
+                DISPATCH();
+
+                OP(NEW_MAP) {
+                    int pair_count = static_cast<int>(ARG);
+                    MapType map;
+                    for (int i = 0; i < pair_count; i++) {
+                        Value val = pop();
+                        Value key = pop();
+
+                        if (!is_hashable(key)) {
+                            runtime_error(RuntimeError::Type, fmt::format("Unhashable type '{}' cannot be used as a map key.", key.tag_to_string()));
+                            return;
+                        }
+
+                        map[key] = val;
+                    }
+                    HeapIdx idx = alloc(Object(std::move(map)));
+                    push(Value(Value::Tag::MapRef, idx));
+                }
+                DISPATCH();
+
+                OP(CALL_KW) {
+                    int pair_count = ARG;
+                    Value callee = peek(pair_count * 2 + 1);
+
+                    if (callee.tag != Value::Tag::StructTypeRef) {
+                        runtime_error(RuntimeError::Type, "Keyword arguments only supported for struct instantiation."); return;
+                    }
+
+                    StructType& type = std::get<StructType>(heap[callee.as_ref].data);
+                    Struct instance;
+                    instance.type_idx = callee.as_ref;
+                    instance.fields.resize(type.field_names.size(), Value()); // Default 'none'
+
+                    for (int i = 0; i < pair_count; i++) {
+                        Value val = pop();
+                        Value key = pop();
+                        auto it = type.field_to_offset.find(key.as_ref);
+                        if (it == type.field_to_offset.end()) {
+                            runtime_error(RuntimeError::Name, "Invalid field name passed in named constructor."); return;
+                        }
+                        instance.fields[it->second] = val;
+                    }
+
+                    HeapIdx idx = alloc(Object(instance));
+                    Value instance_val(Value::Tag::StructRef, idx);
+                    
+                    set_top(instance_val);
+
+                    HeapIdx init_id = intern_string("_init");
+                    auto it = type.methods.find(init_id);
+                    if (it != type.methods.end()) {
+                        Value init_clos = it->second;
+                        Closure& closure = std::get<Closure>(heap[init_clos.as_ref].data);
+                        Function& fn = std::get<Function>(heap[closure.function].data);
+                        
+                        if (fn.arity != 1) { 
+                            runtime_error(RuntimeError::ArgumentError, "_init must take 0 arguments when using named initialization."); return;
+                        }
+                        
+                        push(instance_val); 
+                        
+                        sync_ip();
+                        CallFrame new_frame;
+                        new_frame.closure = init_clos.as_ref;
+                        new_frame.ip = 0;
+                        new_frame.stack_base = stack_size() - 1;
+                        frames[frame_count++] = new_frame;
+                        frame = &frames[frame_count - 1];
+                        sync_frame_cache(frame, fn, instr_data, ip, ip_end, const_pool, const_pool_size);
+                    }
                 }
                 DISPATCH();
 

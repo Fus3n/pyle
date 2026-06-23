@@ -10,6 +10,22 @@
 
 namespace pyle {
 
+    static std::unique_ptr<Expr> clone_expr(Expr* e) {
+        if (auto* v = dynamic_cast<VariableExpr*>(e)) {
+            return std::make_unique<VariableExpr>(v->name);
+        }
+        if (auto* l = dynamic_cast<LiteralExpr*>(e)) {
+            return std::make_unique<LiteralExpr>(l->token);
+        }
+        if (auto* g = dynamic_cast<GetFieldExpr*>(e)) {
+            return std::make_unique<GetFieldExpr>(clone_expr(g->obj.get()), g->name);
+        }
+        if (auto* idx = dynamic_cast<IndexExpr*>(e)) {
+            return std::make_unique<IndexExpr>(clone_expr(idx->callee.get()), clone_expr(idx->index.get()));
+        }
+        return nullptr;
+    }
+
     std::vector<std::unique_ptr<Stmt>> Parser::parse() {
         std::vector<std::unique_ptr<Stmt>> stmts;
         try {
@@ -20,18 +36,6 @@ namespace pyle {
             return {};
         }
         return stmts;
-    }
-
-    bool Parser::is_at_end() const {
-        return peek().type == TokenType::EOF_TOKEN;
-    }
-
-    Token Parser::peek() const {
-        return tokens[current];
-    }
-
-    Token Parser::previous() const {
-        return tokens[current - 1];
     }
 
     Token Parser::advance() {
@@ -274,7 +278,7 @@ std::unique_ptr<Stmt> Parser::struct_declaration() {
     std::unique_ptr<BlockStmt> Parser::block() {
         std::vector<std::unique_ptr<Stmt>> statements;
 
-        while (!check(TokenType::RIGHT_BRACE)) {
+        while (!check(TokenType::RIGHT_BRACE) && !is_at_end()) {
             statements.push_back(statement());
         }
 
@@ -316,26 +320,36 @@ std::unique_ptr<Stmt> Parser::struct_declaration() {
             Token op_eq = previous();
             std::unique_ptr<Expr> value = assignment();
             
+            TokenType binary_op_type;
+            std::string_view op_lexeme;
+            if (op_eq.type == TokenType::PLUS_EQUAL) { binary_op_type = TokenType::PLUS; op_lexeme = "+"; }
+            else if (op_eq.type == TokenType::MINUS_EQUAL) { binary_op_type = TokenType::MINUS; op_lexeme = "-"; }
+            else if (op_eq.type == TokenType::STAR_EQUAL) { binary_op_type = TokenType::STAR; op_lexeme = "*"; }
+            else { binary_op_type = TokenType::SLASH; op_lexeme = "/"; }
+                
+            Token binary_op(binary_op_type, op_lexeme, op_eq.selection);
+            
+            auto left_clone = clone_expr(expr.get());
+            if (!left_clone) {
+                reporter.report(op_eq.selection, ErrorType::Syntax, "Invalid compound assignment target.");
+                throw ParserError();
+            }
+            
+            auto binary_expr = std::make_unique<BinaryExpr>(std::move(left_clone), binary_op, std::move(value));
+            
             if (auto* var_expr = dynamic_cast<VariableExpr*>(expr.get())) {
-                Token name = var_expr->name;
-                
-                // Map += to +
-                TokenType binary_op_type;
-                std::string_view op_lexeme;
-                if (op_eq.type == TokenType::PLUS_EQUAL) { binary_op_type = TokenType::PLUS; op_lexeme = "+"; }
-                else if (op_eq.type == TokenType::MINUS_EQUAL) { binary_op_type = TokenType::MINUS; op_lexeme = "-"; }
-                else if (op_eq.type == TokenType::STAR_EQUAL) { binary_op_type = TokenType::STAR; op_lexeme = "*"; }
-                else { binary_op_type = TokenType::SLASH; op_lexeme = "/"; }
-                
-                Token binary_op(binary_op_type, op_lexeme, op_eq.selection);
-                
-                auto left_var = std::make_unique<VariableExpr>(name);
-                auto binary_expr = std::make_unique<BinaryExpr>(std::move(left_var), binary_op, std::move(value));
-                return std::make_unique<AssignExpr>(name, std::move(binary_expr));
+                return std::make_unique<AssignExpr>(var_expr->name, std::move(binary_expr));
+            }
+            if (auto* get_field = dynamic_cast<GetFieldExpr*>(expr.get())) {
+                return std::make_unique<SetFieldExpr>(std::move(get_field->obj), get_field->name, std::move(binary_expr));
+            }
+            if (auto* index_expr = dynamic_cast<IndexExpr*>(expr.get())) {
+                return std::make_unique<IndexAssignExpr>(std::move(index_expr->callee), std::move(index_expr->index), std::move(binary_expr));
             }
             
             reporter.report(op_eq.selection, ErrorType::Syntax, "Invalid compound assignment target.");
-        }
+            throw ParserError();
+    }
     
 
         return expr;
@@ -472,6 +486,17 @@ std::unique_ptr<Stmt> Parser::struct_declaration() {
     std::unique_ptr<Expr> Parser::finish_call(std::unique_ptr<Expr> callee) {
         std::vector<std::unique_ptr<Expr>> arguments;
 
+        if (check(TokenType::IDENTIFIER) && peek_next() == TokenType::COLON) {
+            std::vector<std::pair<Token, std::unique_ptr<Expr>>> kwargs;
+            do {
+                Token key = consume(TokenType::IDENTIFIER, "Expected field name.");
+                consume(TokenType::COLON, "Expected ':' after field name.");
+                kwargs.push_back({key, expression()});
+            } while (match({TokenType::COMMA}));
+            Token paren = consume(TokenType::RIGHT_PAREN, "Expected ')' after arguments.");
+            return std::make_unique<CallKwExpr>(std::move(callee), paren, std::move(kwargs));
+        }
+
         if (!check(TokenType::RIGHT_PAREN)) {
             do {
                 if (arguments.size() >= 255) {
@@ -539,12 +564,34 @@ std::unique_ptr<Stmt> Parser::struct_declaration() {
 
             if (!check(TokenType::RIGHT_BRACKET)) {
                 do {
+                    if (check(TokenType::RIGHT_BRACKET)) break; 
                     elements.push_back(expression());
                 } while (match({TokenType::COMMA}));
             }
 
             consume(TokenType::RIGHT_BRACKET, "Expected ']' after array elements.");
             return std::make_unique<ArrayExpr>(std::move(elements));
+        }
+
+        if (match({TokenType::LEFT_BRACE})) {
+            std::vector<std::pair<std::unique_ptr<Expr>, std::unique_ptr<Expr>>> entries;
+            if (!check(TokenType::RIGHT_BRACE)) {
+                do {
+                    if (check(TokenType::RIGHT_BRACE)) break;
+
+                    std::unique_ptr<Expr> key;
+                    if (match({TokenType::IDENTIFIER})) {
+                        key = std::make_unique<ImplicitStringExpr>(previous());
+                    } else {
+                        key = expression();
+                    }
+                    consume(TokenType::COLON, "Expected ':' after map key.");
+                    std::unique_ptr<Expr> value = expression();
+                    entries.push_back({std::move(key), std::move(value)});
+                } while (match({TokenType::COMMA}));
+            }
+            consume(TokenType::RIGHT_BRACE, "Expected '}' after map entries.");
+            return std::make_unique<MapExpr>(std::move(entries));
         }
 
         reporter.report(peek().selection, ErrorType::Syntax, "Expected expression");

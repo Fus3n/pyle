@@ -18,7 +18,7 @@ namespace pyle {
         enum class Tag {
             Int, Float, Bool, None, StringRef, ArrayRef, StructRef,
             NativeFuncRef, FuncRef, IteratorRef, RangeRef, ClosureRef, UpvalueRef,
-            StructTypeRef,
+            StructTypeRef, MapRef 
         } tag;
         union {
             int64_t as_int;
@@ -43,7 +43,8 @@ namespace pyle {
                    t == Tag::FuncRef ||
                    t == Tag::IteratorRef ||
                    t == Tag::RangeRef ||
-                   t == Tag::ClosureRef);
+                   t == Tag::ClosureRef ||
+                   t == Tag::MapRef);
         }
 
         std::string tag_to_string() const {
@@ -70,9 +71,55 @@ namespace pyle {
                     return "iterator";
                 case Tag::RangeRef:
                     return "range";
+                case Tag::MapRef:
+                    return "map";
                 default:
                     return fmt::format("HeapRef({})", as_ref);
             }
+        }
+
+        bool operator==(const Value& other) const {
+            if (tag != other.tag) {
+                // Promote and compare if we are comparing an Int against a Float
+                if ((tag == Tag::Int || tag == Tag::Float) &&
+                    (other.tag == Tag::Int || other.tag == Tag::Float)) {
+                    double da = (tag == Tag::Int) ? static_cast<double>(as_int) : as_float;
+                    double db = (other.tag == Tag::Int) ? static_cast<double>(other.as_int) : other.as_float;
+                    return da == db;
+                }
+                return false;
+            }
+            switch (tag) {
+                case Tag::None: return true; 
+                case Tag::Bool: return as_bool == other.as_bool;
+                case Tag::Int: return as_int == other.as_int;
+                case Tag::Float: return as_float == other.as_float;
+                default: return as_ref == other.as_ref; 
+            }
+        }
+
+        bool operator!=(const Value& other) const {
+            return !(*this == other);
+        }
+    };
+
+    struct ValueEqual {
+        bool operator()(const Value& a, const Value& b) const {
+            return a == b; 
+        }
+    };
+
+      struct ValueHash {
+        uint64_t operator()(const Value& v) const {
+            uint64_t hash = static_cast<uint64_t>(v.tag);
+            switch (v.tag) {
+                case Value::Tag::Int: hash ^= ankerl::unordered_dense::hash<int64_t>{}(v.as_int); break;
+                case Value::Tag::Float: hash ^= ankerl::unordered_dense::hash<double>{}(v.as_float); break;
+                case Value::Tag::Bool: hash ^= ankerl::unordered_dense::hash<bool>{}(v.as_bool); break;
+                case Value::Tag::None: break;
+                default: hash ^= ankerl::unordered_dense::hash<size_t>{}(v.as_ref); break;
+            }
+            return hash;
         }
     };
 
@@ -97,6 +144,7 @@ namespace pyle {
 
     using ArrayType = std::vector<Value>;
     using NativeFn = Value (*)(VM& vm, ArgView args);
+    using MapType = ankerl::unordered_dense::map<Value, Value, ValueHash, ValueEqual>;
 
     struct StructType {
         std::vector<HeapIdx> field_names; 
@@ -144,7 +192,6 @@ namespace pyle {
         std::vector<HeapIdx> upvalues; 
     };
     
-    
     struct Object {
         bool gc_marked = false;
         std::variant<
@@ -158,7 +205,8 @@ namespace pyle {
             Iterator,
             Range,
             Closure,
-            Upvalue
+            Upvalue,
+            MapType
         > data;
 
         Object() = default;
@@ -170,8 +218,9 @@ namespace pyle {
         explicit Object(Range r): data(r) {}
         explicit Object(Closure clos) : data(clos) {} 
         explicit Object(Upvalue uv)   : data(uv) {}
-        explicit Object(StructType strt) : data(std::move(strt)) {} // <-- ADD THIS
+        explicit Object(StructType strt) : data(std::move(strt)) {} 
         explicit Object(Struct strc)     : data(std::move(strc)) {}
+        explicit Object(MapType m): data(std::move(m)) {}
     };
 
 }

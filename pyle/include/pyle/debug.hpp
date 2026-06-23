@@ -62,6 +62,12 @@ namespace pyle {
                 case OpCode::SET_GLOBAL_SLOT_POP:  fmt::print("{:16} {:4}\n", "SET_GLOBAL_SLOT_POP", operand); break;
                 case OpCode::GET_ITER: fmt::print("{:16} {:4}\n", "GET_ITER", operand); break;
                 case OpCode::FOR_ITER: fmt::print("{:16} {:4}\n", "FOR_ITER", operand); break;
+                case OpCode::CLOSURE:          fmt::print("CLOSURE\n"); break;
+                case OpCode::LOAD_UPVALUE:     fmt::print("{:16} {:4}\n", "LOAD_UPVALUE", operand); break;
+                case OpCode::SET_UPVALUE:      fmt::print("{:16} {:4}\n", "SET_UPVALUE", operand); break;
+                case OpCode::SET_UPVALUE_POP:  fmt::print("{:16} {:4}\n", "SET_UPVALUE_POP", operand); break;
+                case OpCode::NEW_MAP:          fmt::print("{:16} {:4} (pairs)\n", "NEW_MAP", operand); break;
+                case OpCode::CALL_KW:          fmt::print("{:16} {:4} (pairs)\n", "CALL_KW", operand); break;
                 default: fmt::print("UNKNOWN OPCODE\n"); break;
             }
         }

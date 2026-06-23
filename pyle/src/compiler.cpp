@@ -507,12 +507,12 @@ namespace pyle {
     }
 
     void Compiler::visit_func_decl(FuncDeclStmt* stmt) {
+        int slot = vm.declare_global(std::string(stmt->name.lexeme));
         HeapIdx fn_idx = compile_function(stmt->params, stmt->body.get(), stmt->name.lexeme);
+        
         Value fn_val(Value::Tag::FuncRef, fn_idx);
         uint32_t fn_const_idx = make_constant(fn_val);
-        
-        int slot = vm.declare_global(std::string(stmt->name.lexeme));
-        
+
         emit_instruction(OpCode::LOAD_CONST, fn_const_idx, stmt->name.selection.line);
         emit_instruction(OpCode::CLOSURE, 0, stmt->name.selection.line);
         emit_instruction(OpCode::DEFINE_GLOBAL_SLOT, slot, stmt->name.selection.line);
@@ -579,4 +579,34 @@ namespace pyle {
         HeapIdx field_id = vm.intern_string(expr->name.lexeme);
         emit_instruction(OpCode::SET_FIELD, field_id, expr->name.selection.line);
     }
+
+    void Compiler::visit_implicit_string(ImplicitStringExpr* expr) {
+        HeapIdx idx = vm.intern_string(expr->token.lexeme);
+        Value v(Value::Tag::StringRef, idx);
+        uint32_t const_idx = make_constant(v);
+        emit_instruction(OpCode::LOAD_CONST, const_idx, expr->token.selection.line);
+    }
+
+    void Compiler::visit_map_expr(MapExpr* expr) {
+        for (const auto& entry : expr->entries) {
+            entry.first->accept(this);
+            entry.second->accept(this);
+        }
+        emit_instruction(OpCode::NEW_MAP, expr->entries.size(), 0);
+    }
+    
+    void Compiler::visit_call_kw_expr(CallKwExpr* expr) {
+        expr->callee->accept(this);
+        for (const auto& kwarg : expr->kwargs) {
+            HeapIdx idx = vm.intern_string(kwarg.first.lexeme);
+            Value v(Value::Tag::StringRef, idx);
+            uint32_t const_idx = make_constant(v);
+            emit_instruction(OpCode::LOAD_CONST, const_idx, expr->paren.selection.line);
+            
+            kwarg.second->accept(this);
+        }
+        emit_instruction(OpCode::CALL_KW, expr->kwargs.size(), expr->paren.selection.line);
+    }
+
+
 }
