@@ -93,7 +93,12 @@ namespace pyle {
         ankerl::unordered_dense::map<HeapIdx, ModuleFactory> module_registry;
         ankerl::unordered_dense::map<HeapIdx, Value> loaded_modules;
 
+        size_t builtin_count = 0;
+        bool builtins_finalized = false;
+        std::vector<std::vector<Value>> saved_globals_stack;
         
+        ankerl::unordered_dense::map<std::string, int> builtin_slot_map;
+
     private:
 
         bool gc_enabled = true;

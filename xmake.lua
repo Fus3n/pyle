@@ -8,7 +8,7 @@ if is_mode("release") then
 end
 
 if is_mode("debug") then
-    if is_toolchain("msvc") then
+    if has_config("toolchain") and get_config("toolchain") == "msvc" then
         add_cxflags("/fsanitize=address", {force = true})
     else
         add_cxflags("-fsanitize=address,undefined", "-fno-omit-frame-pointer", {force = true})

@@ -41,6 +41,7 @@ namespace pyle {
             assert(t == Tag::StringRef ||
                    t == Tag::ArrayRef ||
                    t == Tag::StructRef ||
+                   t == Tag::StructTypeRef ||
                    t == Tag::NativeFuncRef ||
                    t == Tag::FuncRef ||
                    t == Tag::IteratorRef ||

@@ -86,7 +86,7 @@ namespace pyle {
         return ss.str();
     }
 
-     Value native_import(VM& vm, ArgView args) {
+    Value native_import(VM& vm, ArgView args) {
         if (args.size() != 1 || args[0].tag != Value::Tag::StringRef) {
             vm.runtime_error(RuntimeError::ArgumentError, "import() expects 1 string argument.");
             return Value();
@@ -120,11 +120,14 @@ namespace pyle {
         
         std::string source = std::move(*code_opt);
         
-        auto old_slots = vm.global_slots;
-        auto old_slot_map = vm.global_slot_map;
+        vm.saved_globals_stack.push_back(std::move(vm.global_slots));
+        auto old_slot_map = std::move(vm.global_slot_map);
         
-        vm.global_slots.clear();
-        vm.global_slot_map.clear();
+        const auto& saved_slots = vm.saved_globals_stack.back();
+        vm.global_slots.assign(saved_slots.begin(), saved_slots.begin() + vm.builtin_count);
+        
+        vm.global_slot_map = old_slot_map;
+        vm.global_slot_map = vm.builtin_slot_map;
         
         ErrorReporter reporter(source, filepath);
         Lexer lexer(source, reporter);
@@ -138,6 +141,9 @@ namespace pyle {
                 Compiler compiler(vm, reporter);
                 Chunk chunk = compiler.compile(ast);
                 if (!reporter.has_errors()) {
+                    vm.source_code = source;
+                    vm.script_name = filepath;
+
                     vm.execute(chunk);
                     success = !vm.is_panicked();
                 }
@@ -145,21 +151,27 @@ namespace pyle {
         }
         
         if (!success) {
-            vm.global_slots = old_slots;
-            vm.global_slot_map = old_slot_map;
+            vm.global_slots = std::move(vm.saved_globals_stack.back());
+            vm.saved_globals_stack.pop_back();
+            vm.global_slot_map = std::move(old_slot_map);
             reporter.print_errors();
             vm.runtime_error(RuntimeError::Runtime, fmt::format("Failed to compile module '{}'.", mod_name));
             return Value();
         }
         
+        // Extract exported variables (excluding builtins)
         MapType module_map;
         for (const auto& [var_name, slot_idx] : vm.global_slot_map) {
-            Value key(Value::Tag::StringRef, vm.intern_string(var_name));
-            module_map[key] = vm.global_slots[slot_idx];
+            if (slot_idx >= static_cast<int>(vm.builtin_count)) {
+                Value key(Value::Tag::StringRef, vm.intern_string(var_name));
+                module_map[key] = vm.global_slots[slot_idx];
+            }
         }
         
-        vm.global_slots = old_slots;
-        vm.global_slot_map = old_slot_map;
+        // Restore importing modules original environment
+        vm.global_slots = std::move(vm.saved_globals_stack.back());
+        vm.saved_globals_stack.pop_back();
+        vm.global_slot_map = std::move(old_slot_map);
         
         HeapIdx map_idx = vm.alloc(Object(std::move(module_map)));
         Value val(Value::Tag::MapRef, map_idx);

@@ -160,6 +160,12 @@ namespace pyle {
             mark_value(val);
         }
 
+        for (const auto& saved_slots : saved_globals_stack) {
+            for (const Value& val : saved_slots) {
+                mark_value(val);
+            }
+        }
+
         for (const auto& [name_idx, val] : loaded_modules) {
             mark_value(Value(Value::Tag::StringRef, name_idx)); 
             mark_value(val);
@@ -510,8 +516,37 @@ namespace pyle {
 #endif
 
     void VM::execute(Chunk in_chunk) {
-        frame_count = 0;
-        sp = stack;
+        size_t saved_sp_offset = sp - stack;
+        size_t saved_frame_count = frame_count;
+        bool saved_panicked = panicked;
+        std::string_view saved_source_code = source_code;
+        std::string_view saved_script_name = script_name;
+
+        struct ExecutionGuard {
+            VM& vm;
+            size_t saved_sp_offset;
+            size_t saved_frame_count;
+            bool saved_panicked;
+            std::string_view saved_source_code;
+            std::string_view saved_script_name;
+
+            ~ExecutionGuard() {
+                vm.sp = vm.stack + saved_sp_offset;
+                vm.frame_count = saved_frame_count;
+                vm.panicked = saved_panicked;
+                vm.source_code = saved_source_code;
+                vm.script_name = saved_script_name;
+            }
+        };
+        ExecutionGuard guard{
+            *this,
+            saved_sp_offset,
+            saved_frame_count,
+            saved_panicked,
+            saved_source_code,
+            saved_script_name
+        };
+
         panicked = false;
 
         Function main_fn;
@@ -524,7 +559,12 @@ namespace pyle {
         CallFrame root_frame;
         root_frame.closure = main_closure_idx;  
         root_frame.ip = 0;
-        root_frame.stack_base = 0;
+        root_frame.stack_base = saved_sp_offset; // Stack segments cleanly above parent data
+
+        if (frame_count == frame_capacity) {
+            runtime_error(RuntimeError::Runtime, "Stack overflow (too many call frames).");
+            return;
+        }
 
         frames[frame_count++] = root_frame;
 
@@ -537,7 +577,6 @@ namespace pyle {
         const Value* const_pool;
         size_t const_pool_size;
         sync_frame_cache(frame, fn, instr_data, ip, ip_end, const_pool, const_pool_size);
-                
         auto sync_ip = [&]() {
             frame->ip = ip - instr_data;
         };
