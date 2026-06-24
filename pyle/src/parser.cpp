@@ -155,18 +155,18 @@ namespace pyle {
         return std::make_unique<FuncDeclStmt>(std::move(name), std::move(params), std::move(body));
     }
 
-    // In pyle/src/parser.cpp
-std::unique_ptr<Stmt> Parser::struct_declaration() {
-    Token name = consume(TokenType::IDENTIFIER, "Expected struct name.");
-
-    consume(TokenType::LEFT_PAREN, "Expected '(' after struct name for fields.");
+    std::unique_ptr<Stmt> Parser::struct_declaration() {
+        Token name = consume(TokenType::IDENTIFIER, "Expected struct name.");
+        
         std::vector<Token> fields;
-        if (!check(TokenType::RIGHT_PAREN)) {
-            do {
-                fields.push_back(consume(TokenType::IDENTIFIER, "Expected field name."));
-            } while (match({TokenType::COMMA}));
+        if (match({TokenType::LEFT_PAREN})) {
+            if (!check(TokenType::RIGHT_PAREN)) {
+                do {
+                    fields.push_back(consume(TokenType::IDENTIFIER, "Expected field name."));
+                } while (match({TokenType::COMMA}));
+            }
+            consume(TokenType::RIGHT_PAREN, "Expected ')' after struct fields.");
         }
-        consume(TokenType::RIGHT_PAREN, "Expected ')' after struct fields.");
 
         consume(TokenType::LEFT_BRACE, "Expected '{' before struct body.");
         std::vector<std::unique_ptr<FuncDeclStmt>> methods;
