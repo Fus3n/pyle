@@ -6,6 +6,6 @@ namespace pyle {
     public:
         VM vm;
     public:
-        bool execute(std::string_view source, bool disassamble = true);
+        bool execute(std::string_view source, bool disassamble = true, std::string_view script_name = "main.pyl");
     };
 }

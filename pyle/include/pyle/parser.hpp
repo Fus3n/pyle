@@ -64,7 +64,7 @@ namespace pyle {
         
         std::unique_ptr<Expr> unary();
         std::unique_ptr<Expr> call();
-        std::unique_ptr<Expr> finish_call(std::unique_ptr<Expr> callee);
+        std::unique_ptr<Expr> finish_call(std::unique_ptr<Expr> callee, Token open_paren);
         std::unique_ptr<Expr> func_expression();
         std::unique_ptr<Expr> primary(); // basic types, most prio
 

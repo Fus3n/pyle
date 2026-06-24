@@ -335,10 +335,52 @@ namespace pyle {
         if (frame.ip > 0 && frame.ip <= func.chunk.lines.size()) {
             line = func.chunk.lines[frame.ip - 1];
         }
-        fmt::print(stderr, "{}: {}\n", err_to_string(type), msg);
-        if (line > 0) {
-            fmt::print(stderr, " at line {}\n", line + 1);
+        
+        fmt::print(stderr, "\033[1;31m{}:\033[0m \033[1m{}\033[0m\n", err_to_string(type), msg);
+        fmt::print(stderr, "   --> {}:{}: (in function '{}')\n", script_name, line + 1, func.name);
+        
+        if (!source_code.empty()) {
+            auto get_line_of_code = [](std::string_view src, size_t target_line) -> std::string_view {
+                size_t current_line = 0;
+                size_t start = 0;
+                for (size_t i = 0; i < src.size(); ++i) {
+                    if (src[i] == '\n') {
+                        if (current_line == target_line) {
+                            return src.substr(start, i - start);
+                        }
+                        start = i + 1;
+                        current_line++;
+                    }
+                }
+                if (current_line == target_line && start < src.size()) {
+                    return src.substr(start);
+                }
+                return "";
+            };
+            
+            std::string_view line_text = get_line_of_code(source_code, line);
+            if (!line_text.empty()) {
+                fmt::print(stderr, " {:4d} | {}\n", line + 1, line_text);
+                
+                size_t first_non_space = 0;
+                while (first_non_space < line_text.size() && (line_text[first_non_space] == ' ' || line_text[first_non_space] == '\t')) {
+                    first_non_space++;
+                }
+                std::string carets = "        | ";
+                for (size_t i = 0; i < first_non_space; ++i) {
+                    if (line_text[i] == '\t') carets += '\t';
+                    else carets += ' ';
+                }
+                carets += "\033[1;31m^^^^~\033[0m";
+                fmt::print(stderr, "{}\n", carets);
+            }
         }
+        
+        std::string hint = get_runtime_hint(type, msg);
+        if (!hint.empty()) {
+            fmt::print(stderr, "    \033[1;36mHint:\033[0m {}\n", hint);
+        }
+        fmt::print(stderr, "\n");
     }
 
     HeapIdx VM::capture_upvalue(size_t stack_index) {

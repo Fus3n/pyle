@@ -61,7 +61,7 @@ namespace pyle {
     Token Parser::consume(TokenType type, const std::string &message) {
         if (check(type)) return advance();
 
-        reporter.report(peek().selection, ErrorType::Syntax, message);
+        reporter.report(peek().selection, ErrorType::Syntax, message, peek().lexeme.size());
         throw ParserError();
     }
 
@@ -72,7 +72,7 @@ namespace pyle {
 
         if (peek().selection.line > previous().selection.line) return;
 
-        reporter.report(peek().selection, ErrorType::Syntax, "Expected newline or ';' after statement.");
+        reporter.report(peek().selection, ErrorType::Syntax, "Expected newline or ';' after statement.", peek().lexeme.size());
         throw ParserError();
     }
 
@@ -120,16 +120,21 @@ namespace pyle {
     }
 
     std::vector<Token> Parser::parse_params() {
-        consume(TokenType::LEFT_PAREN, "Expected '(' for parameters.");
+        Token open_paren = consume(TokenType::LEFT_PAREN, "Expected '(' for parameters.");
         std::vector<Token> params;
         if (!check(TokenType::RIGHT_PAREN)) {
             do {
                 if (params.size() >= 255) {
-                    reporter.report(peek().selection, ErrorType::Syntax, "Cannot have more than 255 parameters");
+                    reporter.report(peek().selection, ErrorType::Syntax, "Cannot have more than 255 parameters", peek().lexeme.size());
                     throw ParserError();
                 }
                 params.push_back(consume(TokenType::IDENTIFIER, "Expected parameter name."));
             } while (match({TokenType::COMMA}));
+        }
+        
+        if (!check(TokenType::RIGHT_PAREN)) {
+            reporter.report(open_paren.selection, ErrorType::Syntax, "Expected ')' to match this '(' parameters list.", open_paren.lexeme.size());
+            throw ParserError();
         }
         consume(TokenType::RIGHT_PAREN, "Expected ')' after parameters.");
         return params;
@@ -157,20 +162,23 @@ namespace pyle {
 
     std::unique_ptr<Stmt> Parser::struct_declaration() {
         Token name = consume(TokenType::IDENTIFIER, "Expected struct name.");
-        
         std::vector<Token> fields;
         if (match({TokenType::LEFT_PAREN})) {
+            Token open_paren = previous();
             if (!check(TokenType::RIGHT_PAREN)) {
                 do {
                     fields.push_back(consume(TokenType::IDENTIFIER, "Expected field name."));
                 } while (match({TokenType::COMMA}));
             }
+            
+            if (!check(TokenType::RIGHT_PAREN)) {
+                reporter.report(open_paren.selection, ErrorType::Syntax, "Expected ')' to close this fields list.", open_paren.lexeme.size());
+                throw ParserError();
+            }
             consume(TokenType::RIGHT_PAREN, "Expected ')' after struct fields.");
         }
-
         consume(TokenType::LEFT_BRACE, "Expected '{' before struct body.");
         std::vector<std::unique_ptr<FuncDeclStmt>> methods;
-        
         while (!check(TokenType::RIGHT_BRACE) && !is_at_end()) {
             consume(TokenType::FN, "Expected 'fn' for method declaration inside struct.");
             Token method_name = consume(TokenType::IDENTIFIER, "Expected method name.");
@@ -179,27 +187,27 @@ namespace pyle {
             std::vector<Token> params;
             Token self_tok(TokenType::IDENTIFIER, "self", method_name.selection);
             params.push_back(self_tok);
-
+            
             if (!check(TokenType::RIGHT_PAREN)) {
                 do {
                     params.push_back(consume(TokenType::IDENTIFIER, "Expected parameter name."));
                 } while (match({TokenType::COMMA}));
             }
-            consume(TokenType::RIGHT_PAREN, "Expected ')' after parameters.");
             
+            consume(TokenType::RIGHT_PAREN, "Expected ')' after parameters.");
             consume(TokenType::LEFT_BRACE, "Expected '{' before method body.");
             std::unique_ptr<BlockStmt> body = block();
-
+            
             if (method_name.lexeme == "_init") {
                 auto return_self = std::make_unique<ReturnStmt>(std::make_unique<VariableExpr>(self_tok));
                 body->statements.push_back(std::move(return_self));
             }
-
             methods.push_back(std::make_unique<FuncDeclStmt>(method_name, std::move(params), std::move(body)));
         }
         consume(TokenType::RIGHT_BRACE, "Expected '}' after struct body.");
         return std::make_unique<StructDeclStmt>(name, std::move(fields), std::move(methods));
     }
+
 
     std::unique_ptr<Stmt> Parser::return_statement() {
         Token keyword = previous();
@@ -280,15 +288,20 @@ namespace pyle {
     }
 
     std::unique_ptr<BlockStmt> Parser::block() {
+        Token open_brace = previous();
         std::vector<std::unique_ptr<Stmt>> statements;
-
         while (!check(TokenType::RIGHT_BRACE) && !is_at_end()) {
             statements.push_back(statement());
         }
-
+        
+        if (!check(TokenType::RIGHT_BRACE)) {
+            reporter.report(open_brace.selection, ErrorType::Syntax, "This '{' was never closed.", open_brace.lexeme.size());
+            throw ParserError();
+        }
         consume(TokenType::RIGHT_BRACE, "Expected '}' after block.");
         return std::make_unique<BlockStmt>(std::move(statements));
     }
+
 
     std::unique_ptr<Expr> Parser::expression() {
         return assignment();
@@ -455,13 +468,12 @@ namespace pyle {
 
     std::unique_ptr<Expr> Parser::call() {
         std::unique_ptr<Expr> expr = primary();
-
         while (true) {
             if (match({TokenType::LEFT_PAREN})) {
-                expr = finish_call(std::move(expr));
+                // --- Refactored: Pass left paren token to finish_call for location tracking ---
+                expr = finish_call(std::move(expr), previous());
             } else if (match({TokenType::DOT})) {
                 Token field_name = consume(TokenType::IDENTIFIER, "Expected field or method name.");
-                
                 if (match({TokenType::LEFT_PAREN})) {
                     std::vector<std::unique_ptr<Expr>> arguments;
                     if (!check(TokenType::RIGHT_PAREN)) {
@@ -469,13 +481,11 @@ namespace pyle {
                             arguments.push_back(expression());
                         } while (match({TokenType::COMMA}));
                     }
-
                     Token paren = consume(TokenType::RIGHT_PAREN, "Expected ')' after arguments.");
                     expr = std::make_unique<MethodCallExpr>(std::move(expr), field_name, paren, std::move(arguments));
                 } else {
                     expr = std::make_unique<GetFieldExpr>(std::move(expr), field_name);
                 }
-
             } else if(match({TokenType::LEFT_BRACKET})) {
                 std::unique_ptr<Expr> index = expression();
                 consume(TokenType::RIGHT_BRACKET, "Expected ']' after index.");
@@ -487,9 +497,8 @@ namespace pyle {
         return expr;
     }
 
-    std::unique_ptr<Expr> Parser::finish_call(std::unique_ptr<Expr> callee) {
+     std::unique_ptr<Expr> Parser::finish_call(std::unique_ptr<Expr> callee, Token open_paren) {
         std::vector<std::unique_ptr<Expr>> arguments;
-
         if (check(TokenType::IDENTIFIER) && peek_next() == TokenType::COLON) {
             std::vector<std::pair<Token, std::unique_ptr<Expr>>> kwargs;
             do {
@@ -497,20 +506,28 @@ namespace pyle {
                 consume(TokenType::COLON, "Expected ':' after field name.");
                 kwargs.push_back({key, expression()});
             } while (match({TokenType::COMMA}));
+            
+            if (!check(TokenType::RIGHT_PAREN)) {
+                reporter.report(open_paren.selection, ErrorType::Syntax, "This '(' was never closed.", open_paren.lexeme.size());
+                throw ParserError();
+            }
             Token paren = consume(TokenType::RIGHT_PAREN, "Expected ')' after arguments.");
             return std::make_unique<CallKwExpr>(std::move(callee), paren, std::move(kwargs));
         }
-
         if (!check(TokenType::RIGHT_PAREN)) {
             do {
                 if (arguments.size() >= 255) {
-                    reporter.report(peek().selection, ErrorType::Syntax, "Cannot have more than 255 arguments.");
+                    reporter.report(peek().selection, ErrorType::Syntax, "Cannot have more than 255 arguments.", peek().lexeme.size());
                     throw ParserError();
                 }
                 arguments.push_back(expression());
             } while (match({TokenType::COMMA}));
         }
-
+        
+        if (!check(TokenType::RIGHT_PAREN)) {
+            reporter.report(open_paren.selection, ErrorType::Syntax, "This '(' was never closed.", open_paren.lexeme.size());
+            throw ParserError();
+        }
         Token paren = consume(TokenType::RIGHT_PAREN, "Expected ')' after arguments.");
         return std::make_unique<CallExpr>(std::move(callee), paren, std::move(arguments));
     }
@@ -547,31 +564,43 @@ namespace pyle {
         }
 
         if (match({TokenType::LEFT_PAREN})) {
+            Token open_paren = previous();
             std::unique_ptr<Expr> expr = expression();
+            
+            if (!check(TokenType::RIGHT_PAREN)) {
+                reporter.report(open_paren.selection, ErrorType::Syntax, "This '(' was never closed.", open_paren.lexeme.size());
+                throw ParserError();
+            }
+            
             consume(TokenType::RIGHT_PAREN, "Expected ')' after expression");
             return std::make_unique<GroupingExpr>(std::move(expr));
         }
 
         if (match({TokenType::LEFT_BRACKET})) {
+            Token open_bracket = previous();
             std::vector<std::unique_ptr<Expr>> elements;
-
             if (!check(TokenType::RIGHT_BRACKET)) {
                 do {
                     if (check(TokenType::RIGHT_BRACKET)) break; 
                     elements.push_back(expression());
                 } while (match({TokenType::COMMA}));
             }
-
+            
+            if (!check(TokenType::RIGHT_BRACKET)) {
+                reporter.report(open_bracket.selection, ErrorType::Syntax, "This '[' was never closed.", open_bracket.lexeme.size());
+                throw ParserError();
+            }
             consume(TokenType::RIGHT_BRACKET, "Expected ']' after array elements.");
             return std::make_unique<ArrayExpr>(std::move(elements));
         }
 
         if (match({TokenType::LEFT_BRACE})) {
+            Token open_brace = previous();
             std::vector<std::pair<std::unique_ptr<Expr>, std::unique_ptr<Expr>>> entries;
+           
             if (!check(TokenType::RIGHT_BRACE)) {
                 do {
                     if (check(TokenType::RIGHT_BRACE)) break;
-
                     std::unique_ptr<Expr> key;
                     if (match({TokenType::IDENTIFIER})) {
                         key = std::make_unique<ImplicitStringExpr>(previous());
@@ -583,11 +612,16 @@ namespace pyle {
                     entries.push_back({std::move(key), std::move(value)});
                 } while (match({TokenType::COMMA}));
             }
+            
+            if (!check(TokenType::RIGHT_BRACE)) {
+                reporter.report(open_brace.selection, ErrorType::Syntax, "This '{' was never closed.", open_brace.lexeme.size());
+                throw ParserError();
+            }
             consume(TokenType::RIGHT_BRACE, "Expected '}' after map entries.");
             return std::make_unique<MapExpr>(std::move(entries));
         }
 
-        reporter.report(peek().selection, ErrorType::Syntax, "Expected expression");
+        reporter.report(peek().selection, ErrorType::Syntax, "Expected expression", peek().lexeme.size());
         throw ParserError();
     }
 

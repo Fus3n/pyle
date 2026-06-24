@@ -17,6 +17,9 @@ namespace pyle {
 
     class VM {
     public:
+        std::string_view source_code;
+        std::string_view script_name = "main.pyl";
+        
         struct CallFrame {
             HeapIdx closure;
             size_t ip;

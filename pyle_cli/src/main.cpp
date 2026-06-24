@@ -28,6 +28,7 @@ void print_assertion_status() {
 }
 
 int main(int argc, char* argv[]) {
+
     print_assertion_status();
     argparse::ArgumentParser program("pyle");
     program.add_argument("-v", "--version")
@@ -61,10 +62,11 @@ int main(int argc, char* argv[]) {
 
     try {
         std::string source = read_file(script_path);
-        pyle.execute(source);
+        pyle.execute(source, program.get<bool>("--dissassamble"), script_path);
     } catch (const std::exception& e) {
         std::cerr << "Error: " << e.what() << "\n";
         return 1;
     }
     return 0;
+
 }
