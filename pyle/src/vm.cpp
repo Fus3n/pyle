@@ -179,10 +179,17 @@ namespace pyle {
                 for (HeapIdx str_idx : type_ptr->field_names) {
                     mark_value(Value(Value::Tag::StringRef, str_idx)); 
                 }
-                for (const auto& [name_idx, closure_idx] : type_ptr->methods) {
-                    mark_value(Value(Value::Tag::StringRef, name_idx));
-                    mark_value(Value(Value::Tag::ClosureRef, closure_idx));
+                
+                for (auto [method_name_idx, fn_idx] : type_ptr->methods) {
+                    mark_value(Value(Value::Tag::StringRef, method_name_idx));
+                    mark_value(Value(Value::Tag::FuncRef, fn_idx));
                 }
+                for (HeapIdx fn_idx : type_ptr->special_methods) {
+                    if (fn_idx != 0) {
+                        mark_value(Value(Value::Tag::FuncRef, fn_idx));
+                    }
+                }
+
             } else if (const auto *iter_ptr = std::get_if<Iterator>(&heap[current].data)) {
                 mark_value(iter_ptr->container);
             } else if (const auto *closure_ptr = std::get_if<Closure>(&heap[current].data)) { 
@@ -743,13 +750,12 @@ namespace pyle {
                         case Value::Tag::StructTypeRef: {
                             StructType& type = std::get<StructType>(heap[callee.as_ref].data);
                             if (arg_count > type.field_names.size()) {
-                                runtime_error(RuntimeError::ArgumentError, fmt::format("Too many arguments. Expected at most {}.", type.field_names.size())); return;
+                                runtime_error(RuntimeError::ArgumentError, fmt::format("Too many arguments. Expected at most {}.", type.field_names.size())); 
+                                return;
                             }
 
-                            HeapIdx init_id = intern_string("_init");
-                            auto it = type.methods.find(init_id);
-                            bool has_init = (it != type.methods.end());
-                            HeapIdx fn_idx = has_init ? it->second : 0;
+                            HeapIdx fn_idx = type.special_methods[static_cast<size_t>(SpecialMethod::Init)];
+                            bool has_init = (fn_idx != 0);
 
                             Struct instance;
                             instance.type_idx = callee.as_ref;
@@ -767,19 +773,21 @@ namespace pyle {
                             if (has_init) {
                                 Function& fn = std::get<Function>(heap[fn_idx].data);
                                 if (fn.arity != arg_count + 1) {
-                                    runtime_error(RuntimeError::ArgumentError, fmt::format("_init expects {} args, got {}.", fn.arity - 1, arg_count)); return;
+                                    runtime_error(RuntimeError::ArgumentError, fmt::format("_init expects {} args, got {}.", fn.arity - 1, arg_count)); 
+                                    return;
                                 }
+
                                 HeapIdx closure_idx = build_closure_for_call(fn_idx, frame);
                                 Value init_clos(Value::Tag::ClosureRef, closure_idx);
-
                                 Function& fn_post_clos = std::get<Function>(heap[fn_idx].data);
 
-                                push(Value()); 
-                                for (int i = 0; i < arg_count; i++) {
-                                    *(sp - 1 - i) = *(sp - 2 - i); 
-                                }
-                                *(sp - 1 - arg_count) = instance_val; 
-                                *(sp - 2 - arg_count) = init_clos;  
+                                if (sp == stack_end) grow_stack();
+                                std::copy_backward(sp - arg_count, sp, sp + 1);
+                                sp++;
+
+                                *(sp - 1 - arg_count) = instance_val;  // self
+                                *(sp - 2 - arg_count) = init_clos;     // closure
+
                                 sync_ip();
                                 CallFrame new_frame;
                                 new_frame.closure = closure_idx;
@@ -1212,25 +1220,27 @@ namespace pyle {
 
                 OP(CALL_KW) {
                     int pair_count = ARG;
+                    
                     if (stack_size() < pair_count * 2 + 1) { 
                         runtime_error(RuntimeError::StackUnderflow, "Stack underflow in CALL_KW."); 
                         return;
                     }
+                    
                     Value callee = peek(pair_count * 2 + 1);
                     if (callee.tag != Value::Tag::StructTypeRef) {
                         runtime_error(RuntimeError::Type, "Keyword arguments only supported for struct instantiation."); 
                         return;
                     }
+                    
                     StructType& type = std::get<StructType>(heap[callee.as_ref].data);
-
-                    HeapIdx init_id = intern_string("_init");
-                    auto it = type.methods.find(init_id);
-                    bool has_init = (it != type.methods.end());
-                    HeapIdx fn_idx = has_init ? it->second : 0;
+                    
+                    HeapIdx fn_idx = type.special_methods[static_cast<size_t>(SpecialMethod::Init)];
+                    bool has_init = (fn_idx != 0);
 
                     Struct instance;
                     instance.type_idx = callee.as_ref;
                     instance.fields.resize(type.field_names.size(), Value());
+                    
                     for (int i = 0; i < pair_count; i++) {
                         Value val = pop();
                         Value key = pop();
@@ -1241,23 +1251,24 @@ namespace pyle {
                         }
                         instance.fields[offset] = val;
                     }
-
+                    
                     HeapIdx idx = alloc(Object(instance));
                     Value instance_val(Value::Tag::StructRef, idx);
                     set_top(instance_val);
-
+                    
                     if (has_init) {
                         Function& fn = std::get<Function>(heap[fn_idx].data);
                         if (fn.arity != 1) { 
                             runtime_error(RuntimeError::ArgumentError, "_init must take 0 arguments when using named initialization."); 
                             return;
                         }
+                        
                         HeapIdx closure_idx = build_closure_for_call(fn_idx, frame);
                         Value init_clos(Value::Tag::ClosureRef, closure_idx);
-
                         Function& fn_post_clos = std::get<Function>(heap[fn_idx].data);
-
+                        
                         push(instance_val); 
+                        
                         sync_ip();
                         CallFrame new_frame;
                         new_frame.closure = closure_idx;

@@ -145,6 +145,7 @@ namespace pyle {
         // Push the nested compiler state
         CompileState state;
         state.enclosing = current_state;
+        state.is_init = (name == "_init"); 
         current_state = &state;
 
         current_chunk = &fn.chunk;
@@ -528,11 +529,33 @@ namespace pyle {
     }
 
     void Compiler::visit_return(ReturnStmt* stmt) {
-        if (stmt->value) {
-            stmt->value->accept(this);
+        if (current_state->is_init) {
+            bool is_returning_self = false;
+            if (stmt->value) {
+                if (auto* var_expr = dynamic_cast<VariableExpr*>(stmt->value.get())) {
+                    if (var_expr->name.lexeme == "self") {
+                        is_returning_self = true;
+                    }
+                }
+            }
+
+            if (is_returning_self) {
+                // load self directly and return
+                emit_instruction(OpCode::LOAD_LOCAL, 0, 0);
+            } else {
+                if (stmt->value) {
+                    stmt->value->accept(this);
+                    emit_instruction(OpCode::POP, 0, 0);
+                }
+                emit_instruction(OpCode::LOAD_LOCAL, 0, 0);
+            }
         } else {
-            uint32_t nil_idx = make_constant(Value());
-            emit_instruction(OpCode::LOAD_CONST, nil_idx, 0);
+            if (stmt->value) {
+                stmt->value->accept(this);
+            } else {
+                uint32_t nil_idx = make_constant(Value());
+                emit_instruction(OpCode::LOAD_CONST, nil_idx, 0);
+            }
         }
         emit_instruction(OpCode::RETURN, 0, 0);
     }
@@ -550,6 +573,10 @@ namespace pyle {
             HeapIdx fn_idx = compile_function(method->params, method->body.get(), method->name.lexeme);
             HeapIdx method_name_id = vm.intern_string(method->name.lexeme);
             type.methods[method_name_id] = fn_idx;
+
+            if (auto special = get_special_method_enum(method->name.lexeme)) {
+                type.special_methods[static_cast<size_t>(*special)] = fn_idx;
+            }
         }
         HeapIdx type_idx = vm.alloc(Object(type));
         Value type_val(Value::Tag::StructTypeRef, type_idx);

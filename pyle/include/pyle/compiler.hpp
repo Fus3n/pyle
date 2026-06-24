@@ -19,12 +19,12 @@ namespace pyle {
         CompileState* enclosing = nullptr;
         std::vector<Local> locals;
         int scope_depth = 0;
-
         struct Upvalue {
             uint8_t index;
             bool is_local;
         };
         std::vector<Upvalue> upvalues;
+        bool is_init = false;
     };
 
     class Compiler: public Visitor {

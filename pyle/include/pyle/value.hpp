@@ -8,6 +8,8 @@
 #include <fmt/format.h>
 #include "ankerl/unordered_dense.h"
 #include "pyle/bytecode.hpp"
+#include <array>       
+#include <optional>   
 
 namespace pyle {
 
@@ -147,11 +149,37 @@ namespace pyle {
     using NativeMethodFn = Value (*)(VM& vm, HeapIdx obj_idx, ArgView args); // native function definition signature
     using MapType = ankerl::unordered_dense::map<Value, Value, ValueHash, ValueEqual>;
 
+
+    enum class SpecialMethod : size_t {
+        Init,  
+        Str,    
+        Add,    
+        Sub,
+        Mul,
+        Div,
+        Eq,   
+        Count 
+    };
+
+    inline std::optional<SpecialMethod> get_special_method_enum(std::string_view name) {
+        if (name == "_init") return SpecialMethod::Init;
+        if (name == "_str")  return SpecialMethod::Str;
+        if (name == "_add")  return SpecialMethod::Add;
+        if (name == "_sub")  return SpecialMethod::Sub;
+        if (name == "_mul")  return SpecialMethod::Mul;
+        if (name == "_div")  return SpecialMethod::Div;
+        if (name == "_eq")   return SpecialMethod::Eq;
+        return std::nullopt;
+    }
+
+
     struct StructType {
         std::vector<HeapIdx> field_names; 
         ankerl::unordered_dense::map<HeapIdx, size_t> field_map; 
         ankerl::unordered_dense::map<HeapIdx, HeapIdx> methods; 
         
+        std::array<HeapIdx, static_cast<size_t>(SpecialMethod::Count)> special_methods{};
+
         size_t get_offset(HeapIdx field_id) const {
             if (field_names.size() <= 8) {
                 for (size_t i = 0; i < field_names.size(); ++i) {
