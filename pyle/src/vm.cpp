@@ -179,6 +179,10 @@ namespace pyle {
                 for (HeapIdx str_idx : type_ptr->field_names) {
                     mark_value(Value(Value::Tag::StringRef, str_idx)); 
                 }
+                for (const auto& [name_idx, closure_idx] : type_ptr->methods) {
+                    mark_value(Value(Value::Tag::StringRef, name_idx));
+                    mark_value(Value(Value::Tag::ClosureRef, closure_idx));
+                }
             } else if (const auto *iter_ptr = std::get_if<Iterator>(&heap[current].data)) {
                 mark_value(iter_ptr->container);
             } else if (const auto *closure_ptr = std::get_if<Closure>(&heap[current].data)) { 
