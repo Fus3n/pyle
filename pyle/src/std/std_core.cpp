@@ -1,10 +1,16 @@
 #include "pyle/std/std_core.hpp"
 #include "pyle/value.hpp"
-#include <chrono>
 #include <iostream>
+#include <fstream>
+#include <sstream>
 #include <fmt/args.h> 
 #include <pyle/vm.hpp>
 #include <pyle/binder.hpp>
+#include "pyle/binder.hpp"
+#include "pyle/lexer.hpp"
+#include "pyle/parser.hpp"
+#include "pyle/compiler.hpp"
+#include "pyle/std/std_core_mods.hpp"
 
 namespace pyle {
 
@@ -72,18 +78,104 @@ namespace pyle {
         return Value(Value::Tag::StringRef, idx);
     }
 
-    Value native_clock(VM& vm, ArgView args) { 
-        auto now = std::chrono::high_resolution_clock::now();
-        auto duration = now.time_since_epoch();
-
-        double seconds = std::chrono::duration_cast<std::chrono::duration<double>>(duration).count();
-        return Value(seconds);
+    static std::optional<std::string> try_read_file(const std::string& path) {
+        std::ifstream file(path);
+        if (!file.is_open()) return std::nullopt;
+        std::stringstream ss;
+        ss << file.rdbuf();
+        return ss.str();
     }
 
-    void register_core_natives(VM& vm) {
+     Value native_import(VM& vm, ArgView args) {
+        if (args.size() != 1 || args[0].tag != Value::Tag::StringRef) {
+            vm.runtime_error(RuntimeError::ArgumentError, "import() expects 1 string argument.");
+            return Value();
+        }
+
+        HeapIdx mod_name_idx = args[0].as_ref;
+        
+        auto cache_it = vm.loaded_modules.find(mod_name_idx);
+        if (cache_it != vm.loaded_modules.end()) {
+            return cache_it->second;
+        }
+        
+        auto registry_it = vm.module_registry.find(mod_name_idx);
+        if (registry_it != vm.module_registry.end()) {
+            Value module_val = registry_it->second(vm);
+            vm.loaded_modules[mod_name_idx] = module_val;
+            return module_val;
+        }
+        
+        std::string mod_name = std::get<std::string>(vm.get_heap_object(mod_name_idx).data);
+        std::string filepath = mod_name;
+        if (filepath.size() < 4 || filepath.substr(filepath.size() - 4) != ".pyl") {
+            filepath += ".pyl";
+        }
+        
+        auto code_opt = try_read_file(filepath);
+        if (!code_opt) {
+            vm.runtime_error(RuntimeError::Name, fmt::format("Module '{}' not found (checked: '{}').", mod_name, filepath));
+            return Value();
+        }
+        
+        std::string source = std::move(*code_opt);
+        
+        auto old_slots = vm.global_slots;
+        auto old_slot_map = vm.global_slot_map;
+        
+        vm.global_slots.clear();
+        vm.global_slot_map.clear();
+        
+        ErrorReporter reporter(source, filepath);
+        Lexer lexer(source, reporter);
+        auto tokens = lexer.tokenize();
+        bool success = false;
+        
+        if (!reporter.has_errors()) {
+            Parser parser(tokens, reporter);
+            auto ast = parser.parse();
+            if (!reporter.has_errors() && !ast.empty()) {
+                Compiler compiler(vm, reporter);
+                Chunk chunk = compiler.compile(ast);
+                if (!reporter.has_errors()) {
+                    vm.execute(chunk);
+                    success = !vm.is_panicked();
+                }
+            }
+        }
+        
+        if (!success) {
+            vm.global_slots = old_slots;
+            vm.global_slot_map = old_slot_map;
+            reporter.print_errors();
+            vm.runtime_error(RuntimeError::Runtime, fmt::format("Failed to compile module '{}'.", mod_name));
+            return Value();
+        }
+        
+        MapType module_map;
+        for (const auto& [var_name, slot_idx] : vm.global_slot_map) {
+            Value key(Value::Tag::StringRef, vm.intern_string(var_name));
+            module_map[key] = vm.global_slots[slot_idx];
+        }
+        
+        vm.global_slots = old_slots;
+        vm.global_slot_map = old_slot_map;
+        
+        HeapIdx map_idx = vm.alloc(Object(std::move(module_map)));
+        Value val(Value::Tag::MapRef, map_idx);
+        vm.loaded_modules[mod_name_idx] = val;
+        return val;
+    }
+
+
+    void register_core_natives(VM& vm, bool load_core_modules) {
         pyle::bind_function<native_print>(vm, "print");
         pyle::bind_function<native_printf>(vm, "printf");
         pyle::bind_function<native_format>(vm, "format");
-        pyle::bind_function<native_clock>(vm, "clock");
+        pyle::bind_function<native_import>(vm, "import");
+
+        if (load_core_modules) {
+            pyle::register_core_modules(vm);
+        }
     }
 }

@@ -160,6 +160,11 @@ namespace pyle {
             mark_value(val);
         }
 
+        for (const auto& [name_idx, val] : loaded_modules) {
+            mark_value(Value(Value::Tag::StringRef, name_idx)); 
+            mark_value(val);
+        }
+
         for (size_t i = 0; i < frame_count; ++i) {
             const auto& frame = frames[i];
             mark_value(Value(Value::Tag::ClosureRef, frame.closure)); 
@@ -933,10 +938,52 @@ namespace pyle {
                         return;
                     }
                     
-                    if (callee.tag == Value::Tag::UserdataRef) {
+                    if (callee.tag == Value::Tag::MapRef) {
+                        auto& map = std::get<MapType>(heap[callee.as_ref].data);
+                        auto it = map.find(name_val);
+                        if (it != map.end()) {
+                            Value resolved_fn = it->second;
+                            
+                            std::copy(sp - arg_count, sp, sp - arg_count - 1);
+                            sp--; 
+                            *(sp - arg_count - 1) = resolved_fn;
+
+                            if (resolved_fn.tag == Value::Tag::ClosureRef) {
+                                Closure& closure = std::get<Closure>(heap[resolved_fn.as_ref].data);
+                                Function& fn = std::get<Function>(heap[closure.function].data);
+                                if (fn.arity != arg_count) {
+                                    runtime_error(RuntimeError::ArgumentError, fmt::format("Expected {} args, got {}.", fn.arity, arg_count)); 
+                                    return;
+                                }
+                                sync_ip();
+                                CallFrame new_frame;
+                                new_frame.closure = resolved_fn.as_ref;
+                                new_frame.ip = 0;
+                                new_frame.stack_base = stack_size() - arg_count;
+                                frames[frame_count++] = new_frame;
+                                frame = &frames[frame_count - 1];
+                                sync_frame_cache(frame, fn, instr_data, ip, ip_end, const_pool, const_pool_size);
+                            } else if (resolved_fn.tag == Value::Tag::NativeFuncRef) {
+                                NativeFn native = std::get<NativeFn>(heap[resolved_fn.as_ref].data);
+                                const Value* args_ptr = arg_count > 0 ? (sp - arg_count) : nullptr;
+                                ArgView args_view{args_ptr, static_cast<size_t>(arg_count)};
+                                sync_ip();
+                                Value result = native(*this, args_view);
+                                sp -= arg_count; 
+                                set_top(result);
+                            } else {
+                                runtime_error(RuntimeError::Type, "Resolved value is not callable.");
+                                return;
+                            }
+                        } else {
+                            std::string method_name = std::get<std::string>(heap[name_val.as_ref].data);
+                            runtime_error(RuntimeError::Name, fmt::format("Module has no function '{}'.", method_name));
+                            return;
+                        }
+                    }
+                    else if (callee.tag == Value::Tag::UserdataRef) {
                         Userdata& ud = std::get<Userdata>(heap[callee.as_ref].data);
                         StructType& type = std::get<StructType>(heap[ud.type_idx].data);
-                        
                         auto it = type.methods.find(name_val.as_ref);
                         
                         if (it != type.methods.end()) {
@@ -959,18 +1006,17 @@ namespace pyle {
                             runtime_error(RuntimeError::Name, fmt::format("Method '{}' not found on native class.", method_name));
                             return;
                         }
-                    } else if (callee.tag == Value::Tag::StructRef) {
+                    }
+                    else if (callee.tag == Value::Tag::StructRef) {
                         Struct& s = std::get<Struct>(heap[callee.as_ref].data);
                         StructType& type = std::get<StructType>(heap[s.type_idx].data);
                         auto it = type.methods.find(name_val.as_ref);
+                        
                         if (it != type.methods.end()) {
                             HeapIdx fn_idx = it->second;
-
                             HeapIdx closure_idx = build_closure_for_call(fn_idx, frame);
                             Value method_closure(Value::Tag::ClosureRef, closure_idx);
-
                             Function& fn = std::get<Function>(heap[fn_idx].data);
-
                             stack[stack_size() - arg_count - 1] = callee;
                             stack[stack_size() - arg_count - 2] = method_closure;
                             int total_args = arg_count + 1;
@@ -1244,7 +1290,17 @@ namespace pyle {
                     HeapIdx field_id = ARG; 
                     Value obj_val = pop();
                     
-                    if (obj_val.tag == Value::Tag::UserdataRef) {
+                    if (obj_val.tag == Value::Tag::MapRef) {
+                        auto& map = std::get<MapType>(heap[obj_val.as_ref].data);
+                        Value key(Value::Tag::StringRef, field_id);
+                        auto it = map.find(key);
+                        if (it != map.end()) {
+                            push(it->second);
+                        } else {
+                            push(Value()); 
+                        }
+                    }
+                    else if (obj_val.tag == Value::Tag::UserdataRef) {
                         Userdata& ud = std::get<Userdata>(heap[obj_val.as_ref].data);
                         StructType& type = std::get<StructType>(heap[ud.type_idx].data);
                         auto it = type.methods.find(field_id);

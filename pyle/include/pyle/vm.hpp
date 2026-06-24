@@ -89,7 +89,13 @@ namespace pyle {
             delete [] frames;
         }
 
+        using ModuleFactory = Value (*)(VM& vm);
+        ankerl::unordered_dense::map<HeapIdx, ModuleFactory> module_registry;
+        ankerl::unordered_dense::map<HeapIdx, Value> loaded_modules;
+
+        
     private:
+
         bool gc_enabled = true;
 
         // MEMORY

@@ -26,7 +26,6 @@ namespace pyle {
 
     template <typename T>
     T from_value(VM& vm, const Value& val) {
-        // --- Added: Direct pass-through if the target type is already Value ---
         if constexpr (std::is_same_v<T, Value>) {
             return val;
         } else if constexpr (std::is_same_v<T, int64_t> || std::is_integral_v<T>) {
@@ -202,7 +201,6 @@ namespace pyle {
         }
     };
 
-    // Specialization 4: Const member functions taking VM& as first parameter
     template <auto MemFn, typename Class, typename Ret, typename... Args>
     struct MethodDeducer<MemFn, Ret (Class::*)(VM&, Args...) const> {
         template <size_t... Is>
@@ -233,11 +231,9 @@ namespace pyle {
         }
     };
 
-    // --- 4. C++17 Free Function Signature Deducers ---
     template <auto Fn, typename T = decltype(Fn)>
     struct FreeFnDeducer;
 
-    // Free function with standard signature
     template <auto Fn, typename Ret, typename... Args>
     struct FreeFnDeducer<Fn, Ret (*)(Args...)> {
         template <size_t... Is>
@@ -266,7 +262,6 @@ namespace pyle {
         }
     };
 
-    // Free function with VM& as first parameter
     template <auto Fn, typename Ret, typename... Args>
     struct FreeFnDeducer<Fn, Ret (*)(VM&, Args...)> {
         template <size_t... Is>
@@ -345,7 +340,6 @@ namespace pyle {
         }
     };
 
-    // --- 5. pybind11-compatible ClassBinder ---
     template <typename T>
     class ClassBinder {
         VM& vm;
@@ -358,7 +352,6 @@ namespace pyle {
             BindRegistry<T>::type_idx = vm.alloc(Object(type_meta));
         }
 
-        // Binds a constructor overload
         template <typename... Args>
         ClassBinder& constructor() {
             NativeFn ctor_wrapper = [](VM& vm, ArgView args) -> Value {
@@ -430,5 +423,42 @@ namespace pyle {
     void bind_function(VM& vm, const std::string& name) {
         NativeFn wrapped = FreeFnDeducer<Fn>::wrap;
         vm.define_native(name, wrapped);
+    }
+
+    class NativeModule {
+        VM& vm;
+        std::string name;
+        MapType exports;
+
+    public:
+        NativeModule(VM& vm, const std::string& name) : vm(vm), name(name) {}
+
+        NativeModule& raw_function(const std::string& func_name, NativeFn raw_fn) {
+            HeapIdx fn_idx = vm.alloc(Object(raw_fn));
+            Value key(Value::Tag::StringRef, vm.intern_string(func_name));
+            exports[key] = Value(Value::Tag::NativeFuncRef, fn_idx);
+            return *this;
+        }
+
+        template <auto Fn>
+        NativeModule& function(const std::string& func_name) {
+            NativeFn wrapped = FreeFnDeducer<Fn>::wrap;
+            HeapIdx fn_idx = vm.alloc(Object(wrapped));
+            Value key(Value::Tag::StringRef, vm.intern_string(func_name));
+            exports[key] = Value(Value::Tag::NativeFuncRef, fn_idx);
+            return *this;
+        }
+
+        Value build() {
+            HeapIdx map_idx = vm.alloc(Object(std::move(exports)));
+            return Value(Value::Tag::MapRef, map_idx);
+        }
+    };
+
+    using ModuleFactory = Value (*)(VM& vm);
+
+    inline void register_module(VM& vm, const std::string& name, ModuleFactory factory) {
+        HeapIdx name_id = vm.intern_string(name);
+        vm.module_registry[name_id] = factory;
     }
 }
