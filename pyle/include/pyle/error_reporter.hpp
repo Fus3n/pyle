@@ -60,6 +60,6 @@ namespace pyle {
         }
     }
 
-    static std::string get_runtime_hint(const RuntimeError& type, const std::string& msg);
+    std::string get_runtime_hint(const RuntimeError& type, const std::string& msg);
 
 }

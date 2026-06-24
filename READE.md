@@ -1,6 +1,6 @@
 # Pyle
 
-Pyle is a fast, lightweight, embeddable dynamic scripting language for C++.
+Pyle is a fast, lightweight, embeddable dynamic scripting language for C++ 17+.
 
 ## Overview
 

@@ -1,4 +1,3 @@
-#include <iostream>
 #include <fmt/format.h>
 #include "pyle/error_reporter.hpp"
 
@@ -109,7 +108,7 @@ namespace pyle {
         errors.clear();
     }
     
-    static std::string get_runtime_hint(const RuntimeError& type, const std::string& msg) {
+    std::string get_runtime_hint(const RuntimeError& type, const std::string& msg) {
         if (type == RuntimeError::Name) {
             if (msg.find("Struct has no field") != std::string::npos) {
                 return "Ensure the field was declared in the struct template and is spelled correctly.";

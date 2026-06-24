@@ -20,7 +20,7 @@ namespace pyle {
         enum class Tag {
             Int, Float, Bool, None, StringRef, ArrayRef, StructRef,
             NativeFuncRef, FuncRef, IteratorRef, RangeRef, ClosureRef, UpvalueRef,
-            StructTypeRef, MapRef 
+            StructTypeRef, MapRef, UserdataRef
         } tag;
         union {
             int64_t as_int;
@@ -46,35 +46,25 @@ namespace pyle {
                    t == Tag::IteratorRef ||
                    t == Tag::RangeRef ||
                    t == Tag::ClosureRef ||
-                   t == Tag::MapRef);
+                   t == Tag::MapRef ||
+                   t == Tag::UserdataRef);
         }
 
         std::string tag_to_string() const {
             switch (tag) {
-                case Tag::Int:
-                    return "int";
-                case Tag::Float:
-                    return "float";
-                case Tag::Bool:
-                    return "bool";
-                case Tag::None:
-                    return "nil";
-                case Tag::StringRef:
-                    return "string";
-                case Tag::ArrayRef:
-                    return "array";
-                case Tag::StructRef:
-                    return "struct";
-                case Tag::NativeFuncRef:
-                    return "native_function";
-                case Tag::FuncRef:
-                    return "function";
-                case Tag::IteratorRef:
-                    return "iterator";
-                case Tag::RangeRef:
-                    return "range";
-                case Tag::MapRef:
-                    return "map";
+                case Tag::Int: return "int";
+                case Tag::Float: return "float";
+                case Tag::Bool: return "bool";
+                case Tag::None: return "none";
+                case Tag::StringRef: return "string";
+                case Tag::ArrayRef: return "array";
+                case Tag::StructRef: return "struct";
+                case Tag::NativeFuncRef: return "native_function";
+                case Tag::FuncRef: return "function";
+                case Tag::IteratorRef: return "iterator";
+                case Tag::RangeRef: return "range";
+                case Tag::MapRef: return "map";
+                case Tag::UserdataRef: return "native_object"; 
                 default:
                     return fmt::format("HeapRef({})", as_ref);
             }
@@ -180,6 +170,8 @@ namespace pyle {
         
         std::array<HeapIdx, static_cast<size_t>(SpecialMethod::Count)> special_methods{};
 
+        ankerl::unordered_dense::map<HeapIdx, HeapIdx> setters;
+
         size_t get_offset(HeapIdx field_id) const {
             if (field_names.size() <= 8) {
                 for (size_t i = 0; i < field_names.size(); ++i) {
@@ -230,6 +222,16 @@ namespace pyle {
         HeapIdx function; 
         std::vector<HeapIdx> upvalues; 
     };
+
+    struct Userdata {
+        void* ptr = nullptr;
+        void (*deleter)(void*) = nullptr; 
+        HeapIdx type_idx = 0;
+    };
+
+    struct NativeMethod {
+        NativeMethodFn fn = nullptr;
+    };
     
     struct Object {
         bool gc_marked = false;
@@ -245,7 +247,9 @@ namespace pyle {
             Range,
             Closure,
             Upvalue,
-            MapType
+            MapType,
+            Userdata,
+            NativeMethod    
         > data;
 
         Object() = default;
@@ -260,6 +264,8 @@ namespace pyle {
         explicit Object(StructType strt) : data(std::move(strt)) {} 
         explicit Object(Struct strc)     : data(std::move(strc)) {}
         explicit Object(MapType m): data(std::move(m)) {}
+        explicit Object(Userdata u) : data(u) {}
+        explicit Object(NativeMethod nm) : data(nm) {}           
     };
 
 }

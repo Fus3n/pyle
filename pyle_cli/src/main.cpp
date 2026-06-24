@@ -8,6 +8,7 @@
 #include <stdexcept>
 #include <argparse/argparse.hpp>
 #include <string>
+#include "pyle/binder.hpp"
 
 std::string read_file(const std::string& filepath) {
     std::ifstream file(filepath, std::ios::in | std::ios::binary);
@@ -26,6 +27,31 @@ void print_assertion_status() {
         puts("Assertions enabled");
     #endif
 }
+
+class Player {
+public:
+    std::string name;
+    int health;
+
+    Player(const std::string& name, int health) : name(name), health(health) {
+        std::cout << "[C++] Player " << name << " allocated.\n";
+    }
+
+    ~Player() {
+        std::cout << "[C++] Player " << name << " destructed.\n";
+    }
+
+    void damageBy(int damage) {
+        health -= damage;
+        std::cout << "[C++] Player " << name << " damaged by " << damage << ". Health left: " << health << "\n";
+    }
+
+    std::string getStatus() {
+        return name + " holds " + std::to_string(health) + " hp.";
+    }
+};
+
+
 
 int main(int argc, char* argv[]) {
 
@@ -59,6 +85,14 @@ int main(int argc, char* argv[]) {
     std::string script_path = program.get<std::string>("script");
     pyle::Pyle pyle;
     pyle::register_core_natives(pyle.vm);
+
+    pyle::ClassBinder<Player>(pyle.vm, "Player")
+        .constructor<std::string, int>()                     // Constructor: Player(string, int)
+        .member<std::string, &Player::name>("name")          // Field: .name
+        .member<int, &Player::health>("health")              // Field: .health
+        .method<&Player::damageBy>("damageBy")               // Method: .damageBy(int)
+        .method<&Player::getStatus>("getStatus");            // Method: .getStatus()
+
 
     try {
         std::string source = read_file(script_path);

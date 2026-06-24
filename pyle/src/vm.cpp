@@ -103,6 +103,12 @@ namespace pyle {
                 continue;
 
             if (!heap[i].gc_marked) {
+                if (auto* ud = std::get_if<Userdata>(&heap[i].data)) {
+                    if (ud->deleter && ud->ptr) {
+                        ud->deleter(ud->ptr);
+                    }
+                }
+
                 heap[i].data = std::monostate{};
                 free_list.push_back(i);
             } else {
@@ -179,7 +185,6 @@ namespace pyle {
                 for (HeapIdx str_idx : type_ptr->field_names) {
                     mark_value(Value(Value::Tag::StringRef, str_idx)); 
                 }
-                
                 for (auto [method_name_idx, fn_idx] : type_ptr->methods) {
                     mark_value(Value(Value::Tag::StringRef, method_name_idx));
                     mark_value(Value(Value::Tag::FuncRef, fn_idx));
@@ -189,7 +194,10 @@ namespace pyle {
                         mark_value(Value(Value::Tag::FuncRef, fn_idx));
                     }
                 }
-
+                for (auto [setter_name_idx, fn_idx] : type_ptr->setters) {
+                    mark_value(Value(Value::Tag::StringRef, setter_name_idx));
+                    mark_value(Value(Value::Tag::FuncRef, fn_idx));
+                }
             } else if (const auto *iter_ptr = std::get_if<Iterator>(&heap[current].data)) {
                 mark_value(iter_ptr->container);
             } else if (const auto *closure_ptr = std::get_if<Closure>(&heap[current].data)) { 
@@ -320,6 +328,12 @@ namespace pyle {
                 }
                 ss << "}";
                 visited.erase(idx);
+                break;
+            }
+            case Value::Tag::UserdataRef: {
+                HeapIdx idx = val.as_ref;
+                Userdata& ud = std::get<Userdata>(heap[idx].data);
+                ss << "<native_object " << ud.ptr << ">";
                 break;
             }
             default:
@@ -918,7 +932,34 @@ namespace pyle {
                         runtime_error(RuntimeError::Type, "Expected string for method name.");
                         return;
                     }
-                    if (callee.tag == Value::Tag::StructRef) {
+                    
+                    if (callee.tag == Value::Tag::UserdataRef) {
+                        Userdata& ud = std::get<Userdata>(heap[callee.as_ref].data);
+                        StructType& type = std::get<StructType>(heap[ud.type_idx].data);
+                        
+                        auto it = type.methods.find(name_val.as_ref);
+                        
+                        if (it != type.methods.end()) {
+                            HeapIdx method_idx = it->second;
+                            Object& method_obj = heap[method_idx];
+                            if (auto* native_method = std::get_if<NativeMethod>(&method_obj.data)) {
+                                const Value* args_ptr = arg_count > 0 ? (sp - arg_count) : nullptr;
+                                ArgView args_view{args_ptr, static_cast<size_t>(arg_count)};
+                                sync_ip();
+                                Value result = native_method->fn(*this, callee.as_ref, args_view);
+                                if (panicked) return;
+                                sp -= (arg_count + 1); 
+                                set_top(result);
+                            } else {
+                                runtime_error(RuntimeError::Type, "Expected native method.");
+                                return;
+                            }
+                        } else {
+                            std::string method_name = std::get<std::string>(heap[name_val.as_ref].data);
+                            runtime_error(RuntimeError::Name, fmt::format("Method '{}' not found on native class.", method_name));
+                            return;
+                        }
+                    } else if (callee.tag == Value::Tag::StructRef) {
                         Struct& s = std::get<Struct>(heap[callee.as_ref].data);
                         StructType& type = std::get<StructType>(heap[s.type_idx].data);
                         auto it = type.methods.find(name_val.as_ref);
@@ -1202,20 +1243,39 @@ namespace pyle {
                 OP(GET_FIELD) {
                     HeapIdx field_id = ARG; 
                     Value obj_val = pop();
-                    if (obj_val.tag != Value::Tag::StructRef) {
-                        sync_ip();
-                        runtime_error(RuntimeError::Type, "Only structs have fields.");
-                        return;
+                    
+                    if (obj_val.tag == Value::Tag::UserdataRef) {
+                        Userdata& ud = std::get<Userdata>(heap[obj_val.as_ref].data);
+                        StructType& type = std::get<StructType>(heap[ud.type_idx].data);
+                        auto it = type.methods.find(field_id);
+                        if (it != type.methods.end()) {
+                            HeapIdx method_idx = it->second;
+                            NativeMethod& method = std::get<NativeMethod>(heap[method_idx].data);
+                            sync_ip();
+                            Value result = method.fn(*this, obj_val.as_ref, ArgView{nullptr, 0});
+                            if (panicked) return;
+                            push(result);
+                        } else {
+                            std::string field_name = std::get<std::string>(heap[field_id].data);
+                            runtime_error(RuntimeError::Name, fmt::format("Native class has no property '{}'.", field_name));
+                            return;
+                        }
+                    } else {
+                        if (obj_val.tag != Value::Tag::StructRef) {
+                            sync_ip();
+                            runtime_error(RuntimeError::Type, "Only structs have fields.");
+                            return;
+                        }
+                        Struct& s = std::get<Struct>(heap[obj_val.as_ref].data);
+                        StructType& type = std::get<StructType>(heap[s.type_idx].data);
+                        size_t offset = type.get_offset(field_id);
+                        if (offset == size_t(-1)) {
+                            sync_ip();
+                            runtime_error(RuntimeError::Name, "Struct has no field with that name.");
+                            return;
+                        }
+                        push(s.fields[offset]);
                     }
-                    Struct& s = std::get<Struct>(heap[obj_val.as_ref].data);
-                    StructType& type = std::get<StructType>(heap[s.type_idx].data);
-                    size_t offset = type.get_offset(field_id);
-                    if (offset == size_t(-1)) {
-                        sync_ip();
-                        runtime_error(RuntimeError::Name, "Struct has no field with that name.");
-                        return;
-                    }
-                    push(s.fields[offset]);
                 }
                 DISPATCH();
 
@@ -1223,21 +1283,42 @@ namespace pyle {
                     HeapIdx field_id = ARG;
                     Value val = pop();
                     Value obj_val = pop();
-                    if (obj_val.tag != Value::Tag::StructRef) {
-                        sync_ip();
-                        runtime_error(RuntimeError::Type, "Only structs have fields.");
-                        return;
+                    
+                    if (obj_val.tag == Value::Tag::UserdataRef) {
+                        Userdata& ud = std::get<Userdata>(heap[obj_val.as_ref].data);
+                        StructType& type = std::get<StructType>(heap[ud.type_idx].data);
+                        auto it = type.setters.find(field_id);
+                        
+                        if (it != type.setters.end()) {
+                            HeapIdx method_idx = it->second;
+                            NativeMethod& method = std::get<NativeMethod>(heap[method_idx].data);
+                            sync_ip();
+                            ArgView args_view{&val, 1};
+                            method.fn(*this, obj_val.as_ref, args_view);
+                            if (panicked) return;
+                            push(val);
+                        } else {
+                            std::string field_name = std::get<std::string>(heap[field_id].data);
+                            runtime_error(RuntimeError::Name, fmt::format("Native class has no writable property '{}'.", field_name));
+                            return;
+                        }
+                    } else {
+                        if (obj_val.tag != Value::Tag::StructRef) {
+                            sync_ip();
+                            runtime_error(RuntimeError::Type, "Only structs have fields.");
+                            return;
+                        }
+                        Struct& s = std::get<Struct>(heap[obj_val.as_ref].data);
+                        StructType& type = std::get<StructType>(heap[s.type_idx].data);
+                        size_t offset = type.get_offset(field_id);
+                        if (offset == size_t(-1)) {
+                            sync_ip();
+                            runtime_error(RuntimeError::Name, "Struct has no field with that name.");
+                            return;
+                        }
+                        s.fields[offset] = val;
+                        push(val); 
                     }
-                    Struct& s = std::get<Struct>(heap[obj_val.as_ref].data);
-                    StructType& type = std::get<StructType>(heap[s.type_idx].data);
-                    size_t offset = type.get_offset(field_id);
-                    if (offset == size_t(-1)) {
-                        sync_ip();
-                        runtime_error(RuntimeError::Name, "Struct has no field with that name.");
-                        return;
-                    }
-                    s.fields[offset] = val;
-                    push(val); 
                 }
                 DISPATCH();
 

@@ -4,6 +4,7 @@
 #include <iostream>
 #include <fmt/args.h> 
 #include <pyle/vm.hpp>
+#include <pyle/binder.hpp>
 
 namespace pyle {
 
@@ -80,9 +81,9 @@ namespace pyle {
     }
 
     void register_core_natives(VM& vm) {
-        vm.define_native("print", native_print);
-        vm.define_native("printf", native_printf);
-        vm.define_native("format", native_format);
-        vm.define_native("clock", native_clock);
+        pyle::bind_function<native_print>(vm, "print");
+        pyle::bind_function<native_printf>(vm, "printf");
+        pyle::bind_function<native_format>(vm, "format");
+        pyle::bind_function<native_clock>(vm, "clock");
     }
 }
