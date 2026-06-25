@@ -1,0 +1,20 @@
+fn make_counter() {
+    let x = 0
+    fn counter() {
+        x += 1 
+        return x
+    }
+    return counter
+}
+
+fn main() {
+    let c = make_counter()
+    let i = 0
+    while i < 500 {
+        i = c()
+    }
+
+    printf("Result: {}", i)
+}
+
+main()

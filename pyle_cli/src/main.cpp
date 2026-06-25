@@ -8,7 +8,7 @@
 #include <stdexcept>
 #include <argparse/argparse.hpp>
 #include <string>
-#include "pyle/binder.hpp"
+#include <pyle/config.hpp>
 
 std::string read_file(const std::string& filepath) {
     std::ifstream file(filepath, std::ios::in | std::ios::binary);
@@ -28,35 +28,11 @@ void print_assertion_status() {
     #endif
 }
 
-class Player {
-public:
-    std::string name;
-    int health;
-
-    Player(const std::string& name, int health) : name(name), health(health) {
-        std::cout << "[C++] Player " << name << " allocated.\n";
-    }
-
-    ~Player() {
-        std::cout << "[C++] Player " << name << " destructed.\n";
-    }
-
-    void damageBy(int damage) {
-        health -= damage;
-        std::cout << "[C++] Player " << name << " damaged by " << damage << ". Health left: " << health << "\n";
-    }
-
-    std::string getStatus() {
-        return name + " holds " + std::to_string(health) + " hp.";
-    }
-};
-
-
-
 int main(int argc, char* argv[]) {
     print_assertion_status();
 
     argparse::ArgumentParser program("pyle");
+
     program.add_argument("-v", "--version")
         .help("Prints version information")
         .default_value(false)
@@ -78,21 +54,13 @@ int main(int argc, char* argv[]) {
         return 1;
     }
     if (program.get<bool>("--version")) {
-        fmt::print("Pyle version 0.1.0\n");
+        fmt::printf("Pyle version %s\n", PYLE_VERSION);
         return 0;
     }
 
     std::string script_path = program.get<std::string>("script");
     pyle::Pyle pyle;
-    pyle::register_core_natives(pyle.vm);
-
-    pyle::ClassBinder<Player>(pyle.vm, "Player")
-        .constructor<std::string, int>()                    
-        .member<std::string, &Player::name>("name")          
-        .member<int, &Player::health>("health")              
-        .method<&Player::damageBy>("damageBy")              
-        .method<&Player::getStatus>("getStatus");         
-
+    pyle::register_core_natives(pyle.vm); // Register core functions and modules
 
     try {
         std::string source = read_file(script_path);

@@ -626,7 +626,7 @@ namespace pyle {
         CallFrame root_frame;
         root_frame.closure = main_closure_idx;  
         root_frame.ip = 0;
-        root_frame.stack_base = saved_sp_offset; // Stack segments cleanly above parent data
+        root_frame.stack_base = saved_sp_offset;
 
         if (frame_count == frame_capacity) {
             runtime_error(RuntimeError::Runtime, "Stack overflow (too many call frames).");
@@ -784,12 +784,12 @@ namespace pyle {
                     }
 
                     if (a.tag == Value::Tag::Int && b.tag == Value::Tag::Int) {
-                        set_top(Value(a.as_int % b.as_int)); // Overwrite in-place
+                        set_top(Value(a.as_int % b.as_int)); 
                     } else if ((a.tag == Value::Tag::Int || a.tag == Value::Tag::Float) &&
                             (b.tag == Value::Tag::Int || b.tag == Value::Tag::Float)) {
                         double da = (a.tag == Value::Tag::Int) ? static_cast<double>(a.as_int) : a.as_float;
                         double db = (b.tag == Value::Tag::Int) ? static_cast<double>(b.as_int) : b.as_float;
-                        set_top(Value(std::fmod(da, db)));   // Overwrite in-place
+                        set_top(Value(std::fmod(da, db))); 
                     } else {
                         std::string msg = fmt::format("Unsupported operand types for modulo. a.tag={}, b.tag={}", 
                         static_cast<int>(a.tag), static_cast<int>(b.tag));

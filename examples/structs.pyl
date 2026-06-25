@@ -1,0 +1,39 @@
+struct Pos(x, y) {} 
+
+struct Player(name, health, pos) {
+
+    fn _init(n) {
+        self.name = n
+        self.health = 100
+        self.pos = Pos(x: 0, y: 0)
+    }
+
+    fn setHealth(new_health) {
+        self.health = new_health
+    }
+
+    fn damageBy(n) {
+        self.health -= n
+    }
+    
+    fn distanceFrom(other) {
+        return Pos(
+            x: self.pos.x - other.x, 
+            y: self.pos.y - other.y
+        )
+    }
+
+    fn status() {
+        return format("Name: {}\nHealth: {}", self.name, self.health)
+    }
+}
+
+
+fn main() {
+    let p = Player("John")
+    print(p.status())
+    p.damageBy(20)
+    printf("{} has {} hp left.", p.name, p.health)
+    print(p.distanceFrom(Pos(x: 0, y: 5)))
+
+}

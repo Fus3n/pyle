@@ -148,7 +148,6 @@ namespace pyle {
             }
         }
         
-        // Restore parent environment on compilation failure
         if (!success) {
             vm.global_slots = std::move(vm.saved_globals_stack.back());
             vm.saved_globals_stack.pop_back();

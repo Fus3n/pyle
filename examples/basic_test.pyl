@@ -1,0 +1,85 @@
+let os = import("os")
+
+fn calculate_fibonacci(n) {
+    if n <= 1 {
+        return n
+    }
+    let a = 0
+    let b = 1
+    let i = 2
+    while i <= n {
+        let temp = a + b
+        a = b
+        b = temp
+        i += 1 
+    }
+    return b
+}
+
+fn test_array_ops(arr) {
+    arr.append(3)
+    
+    let n = arr.size()
+    let i = 0
+    
+    while i < n {
+        let j = 0
+        while j < n - i - 1 {
+            if arr[j] > arr[j + 1] {
+                let temp = arr[j]
+                arr[j] = arr[j + 1]
+                arr[j + 1] = temp
+            }
+            j += 1
+        }
+        i += 1
+    }
+    
+    arr.pop()     # Remove the highest number (9)
+    arr.reverse() # Should flip the sorted array to descending
+    return arr
+}
+
+fn test_logic(x) {
+    let is_valid = (x != none) and (x > 10)
+    let fallback = (x == none) or (x < 0)
+    
+    if is_valid {
+        return 1
+    } elif fallback {
+        return -1
+    } else {
+        return 0
+    }
+}
+
+fn main() {
+    # COMMENTS
+    let start = os.time()
+    
+    let fib = calculate_fibonacci(10)
+    printf("Fibonacci(10) == 55      : {}", fib == 55)
+    
+    let sorted_arr = test_array_ops([5, 2, 8, 1, 9])
+    printf("Array sort [5, 2, 8, 1, 9] : {}", sorted_arr)
+    
+    let msg = "Hello, Pyle!"
+    printf("String length == 12      : {}", msg.size() == 12)
+    printf("String indexing [7] == P : {}", msg[7] == "P")
+    
+    let logic_1 = test_logic(none)
+    let logic_2 = test_logic(20)
+    let logic_3 = test_logic(5)
+    
+    printf("Logic (none) == -1        : {}", logic_1 == -1)
+    printf("Logic (20) == 1          : {}", logic_2 == 1)
+    printf("Logic (5) == 0           : {}", logic_3 == 0)
+
+    let mod_test = -15 % 4
+    printf("Modulo Test (-15 % 4)    : {}", mod_test)
+
+    let end = os.time()
+    printf("--- All Tests Completed in {} seconds ---", end - start)
+}
+
+main()

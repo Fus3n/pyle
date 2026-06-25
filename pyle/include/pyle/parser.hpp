@@ -59,18 +59,17 @@ namespace pyle {
         std::unique_ptr<Expr> equality();
         std::unique_ptr<Expr> comparison();
         std::unique_ptr<Expr> range();
-        std::unique_ptr<Expr> term(); // + and -
-        std::unique_ptr<Expr> factor(); // * and /
+        std::unique_ptr<Expr> term(); 
+        std::unique_ptr<Expr> factor();
         
         std::unique_ptr<Expr> unary();
         std::unique_ptr<Expr> call();
         std::unique_ptr<Expr> finish_call(std::unique_ptr<Expr> callee, Token open_paren);
         std::unique_ptr<Expr> func_expression();
-        std::unique_ptr<Expr> primary(); // basic types, most prio
+        std::unique_ptr<Expr> primary();
 
         std::vector<Token> parse_params();
 
-        // error
         struct ParserError: public std::exception {};
         void synchronize();
 

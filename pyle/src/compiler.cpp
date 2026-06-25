@@ -108,7 +108,7 @@ namespace pyle {
     }
 
     int Compiler::resolve_upvalue(CompileState* state, const Token& name) {
-        if (state->enclosing == nullptr) return -1; // Reached global scope! [cite: 1.2.1]
+        if (state->enclosing == nullptr) return -1; 
 
         int local = resolve_local_in_state(state->enclosing, name);
         if (local != -1) {

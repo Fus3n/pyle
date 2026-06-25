@@ -45,3 +45,22 @@ target("pyle_cli")
     if is_mode("release") then
         set_policy("build.optimization.lto", true)
     end
+
+
+target("example_basic_embedding")
+    set_kind("binary")
+    set_languages("c++17")
+    add_files("examples_cpp/01_basic_embedding.cpp")
+    add_deps("pyle")
+
+target("example_function_binding")
+    set_kind("binary")
+    set_languages("c++17")
+    add_files("examples_cpp/02_function_binding.cpp")
+    add_deps("pyle")
+
+target("example_class_binding")
+    set_kind("binary")
+    set_languages("c++17")
+    add_files("examples_cpp/03_class_binding.cpp")
+    add_deps("pyle")

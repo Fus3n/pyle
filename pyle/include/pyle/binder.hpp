@@ -25,43 +25,45 @@ namespace pyle {
     inline constexpr bool is_vector_v = is_vector<T>::value;
 
     template <typename T>
-    T from_value(VM& vm, const Value& val) {
-        if constexpr (std::is_same_v<T, Value>) {
+    auto from_value(VM& vm, const Value& val) {
+        using DecayedT = std::remove_cv_t<std::remove_reference_t<T>>;
+
+        if constexpr (std::is_same_v<DecayedT, Value>) {
             return val;
-        } else if constexpr (std::is_same_v<T, int64_t> || std::is_integral_v<T>) {
+        } else if constexpr (std::is_same_v<DecayedT, int64_t> || std::is_integral_v<DecayedT>) {
             if (val.tag != Value::Tag::Int) {
                 vm.runtime_error(RuntimeError::Type, "Expected integer.");
-                return 0;
+                return static_cast<DecayedT>(0);
             }
-            return static_cast<T>(val.as_int);
-        } else if constexpr (std::is_floating_point_v<T>) {
-            if (val.tag == Value::Tag::Float) return static_cast<T>(val.as_float);
-            if (val.tag == Value::Tag::Int) return static_cast<T>(val.as_int);
+            return static_cast<DecayedT>(val.as_int);
+        } else if constexpr (std::is_floating_point_v<DecayedT>) {
+            if (val.tag == Value::Tag::Float) return static_cast<DecayedT>(val.as_float);
+            if (val.tag == Value::Tag::Int) return static_cast<DecayedT>(val.as_int);
             vm.runtime_error(RuntimeError::Type, "Expected number.");
-            return 0.0;
-        } else if constexpr (std::is_same_v<T, std::string> || std::is_same_v<T, std::string_view>) {
+            return static_cast<DecayedT>(0.0);
+        } else if constexpr (std::is_same_v<DecayedT, std::string> || std::is_same_v<DecayedT, std::string_view>) {
             if (val.tag != Value::Tag::StringRef) {
                 vm.runtime_error(RuntimeError::Type, "Expected string.");
-                return "";
+                return std::string("");
             }
             return std::get<std::string>(vm.get_heap_object(val.as_ref).data);
-        } else if constexpr (std::is_same_v<T, bool>) {
+        } else if constexpr (std::is_same_v<DecayedT, bool>) {
             return vm.is_truthy(val);
-        } else if constexpr (std::is_pointer_v<T>) {
+        } else if constexpr (std::is_pointer_v<DecayedT>) {
             if (val.tag != Value::Tag::NativeObjectRef) {
                 vm.runtime_error(RuntimeError::Type, "Expected native object.");
-                return nullptr;
+                return static_cast<DecayedT>(nullptr);
             }
             auto& ud = std::get<NativeObject>(vm.get_heap_object(val.as_ref).data);
-            return static_cast<T>(ud.ptr);
-        } else if constexpr (is_vector_v<T>) {
+            return static_cast<DecayedT>(ud.ptr);
+        } else if constexpr (is_vector_v<DecayedT>) {
             if (val.tag != Value::Tag::ArrayRef) {
                 vm.runtime_error(RuntimeError::Type, "Expected array.");
-                return T();
+                return DecayedT();
             }
             auto& arr = std::get<ArrayType>(vm.get_heap_object(val.as_ref).data);
-            using ElementType = typename T::value_type;
-            T result;
+            using ElementType = typename DecayedT::value_type;
+            DecayedT result;
             result.reserve(arr.size());
             for (const auto& elem : arr) {
                 result.push_back(from_value<ElementType>(vm, elem));
@@ -343,6 +345,7 @@ namespace pyle {
     template <typename T>
     class ClassBinder {
         VM& vm;
+        Value ctor_val; 
 
     public:
         ClassBinder(VM& vm, const std::string& name) : vm(vm) {
@@ -373,11 +376,19 @@ namespace pyle {
                 return Value(Value::Tag::NativeObjectRef, idx);
             };
 
-            vm.define_native(BindRegistry<T>::class_name, ctor_wrapper);
+            HeapIdx ctor_idx = vm.alloc(Object(ctor_wrapper));
+            ctor_val = Value(Value::Tag::NativeFuncRef, ctor_idx);
             return *this;
         }
 
-        // Binds a member function
+        ClassBinder& register_globally() {
+            int slot = vm.declare_global(vm.intern_string(BindRegistry<T>::class_name));
+            vm.global_slots[slot] = ctor_val;
+            return *this;
+        }
+
+        Value get_constructor() const { return ctor_val; }
+
         template <auto MemFn>
         ClassBinder& method(const std::string& name) {
             NativeMethodFn wrapped = MethodDeducer<MemFn>::wrap;
@@ -412,8 +423,8 @@ namespace pyle {
             HeapIdx name_id = vm.intern_string(name);
 
             auto& registered_meta = std::get<StructType>(vm.get_heap_object(BindRegistry<T>::type_idx).data);
-            registered_meta.methods[name_id] = getter_idx; // Read properties from methods mapping
-            registered_meta.setters[name_id] = setter_idx; // Write properties from setters mapping
+            registered_meta.methods[name_id] = getter_idx; 
+            registered_meta.setters[name_id] = setter_idx; 
 
             return *this;
         }
@@ -449,13 +460,19 @@ namespace pyle {
             return *this;
         }
 
+        template <typename T>
+        NativeModule& class_binder(ClassBinder<T>& binder) {
+            Value ctor = binder.get_constructor();
+            Value key(Value::Tag::StringRef, vm.intern_string(BindRegistry<T>::class_name));
+            exports[key] = ctor;
+            return *this;
+        }
+
         Value build() {
             HeapIdx map_idx = vm.alloc(Object(std::move(exports)));
             return Value(Value::Tag::MapRef, map_idx);
         }
     };
-
-    using ModuleFactory = Value (*)(VM& vm);
 
     inline void register_module(VM& vm, const std::string& name, ModuleFactory factory) {
         HeapIdx name_id = vm.intern_string(name);

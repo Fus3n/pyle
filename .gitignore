@@ -13,7 +13,7 @@ test.pyl
 test.py
 commands.txt
 
-examples
+pyle_test_dev
 
 # Handled by xmake
 CMakeLists.txt

@@ -9,6 +9,8 @@
 
 namespace pyle {
 
+    using ModuleFactory = std::function<Value(VM& vm)>;
+
     struct VMConfig {
         size_t stack_capacity = 8192;
         size_t frame_capacity = 2048;
@@ -97,7 +99,6 @@ namespace pyle {
             }
         }
 
-        using ModuleFactory = Value (*)(VM& vm);
         ankerl::unordered_dense::map<HeapIdx, ModuleFactory> module_registry;
         ankerl::unordered_dense::map<HeapIdx, Value> loaded_modules;
 

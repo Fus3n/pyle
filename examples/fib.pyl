@@ -1,0 +1,19 @@
+let os = import("os")
+
+fn fib(n) {
+    if n <= 1 {
+        return n
+    }
+    return fib(n - 1) + fib(n - 2)
+}
+
+fn main() {
+    printf("Starting Pyle Fibonacci(35)")
+    let start = os.time()
+    let r = fib(35) 
+    let end = os.time()
+    printf("Fibonacci(35) result: {}", r)
+    printf("Time taken: {:.6f} seconds", end - start) 
+}
+
+main()
