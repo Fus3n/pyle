@@ -77,6 +77,59 @@ namespace pyle {
         return alloc(Object(closure));
     }
 
+    bool VM::instantiate_struct(HeapIdx struct_type_idx, int arg_count, CallFrame* current_frame) {
+        StructType& type = std::get<StructType>(heap[struct_type_idx].data);
+        if (arg_count > type.field_names.size()) {
+            runtime_error(RuntimeError::ArgumentError, fmt::format("Too many arguments. Expected at most {}.", type.field_names.size())); 
+            return false;
+        }
+
+        HeapIdx fn_idx = type.special_methods[static_cast<size_t>(SpecialMethod::Init)];
+        bool has_init = (fn_idx != 0);
+
+        Struct instance;
+        instance.type_idx = struct_type_idx;
+        instance.fields.resize(type.field_names.size());
+        for (int i = 0; i < arg_count; i++) {
+            instance.fields[i] = peek(arg_count - i);
+        }
+        for (size_t i = arg_count; i < type.field_names.size(); i++) {
+            instance.fields[i] = Value();
+        }
+
+        HeapIdx idx = alloc(Object(instance));
+        Value instance_val(Value::Tag::StructRef, idx);
+
+        if (has_init) {
+            Function& fn = std::get<Function>(heap[fn_idx].data);
+            if (fn.arity != arg_count + 1) {
+                runtime_error(RuntimeError::ArgumentError, fmt::format("_init expects {} args, got {}.", fn.arity - 1, arg_count)); 
+                return false;
+            }
+
+            HeapIdx closure_idx = build_closure_for_call(fn_idx, current_frame);
+            Value init_clos(Value::Tag::ClosureRef, closure_idx);
+
+            if (sp == stack_end) grow_stack();
+            std::copy_backward(sp - arg_count, sp, sp + 1);
+            sp++;
+
+            *(sp - 1 - arg_count) = instance_val;  // self
+            *(sp - 2 - arg_count) = init_clos;     // closure
+
+            CallFrame new_frame;
+            new_frame.closure = closure_idx;
+            new_frame.ip = 0;
+            new_frame.stack_base = stack_size() - arg_count - 1; 
+            frames[frame_count++] = new_frame;
+            return true;
+        } else {
+            sp -= arg_count;
+            set_top(instance_val);
+            return false; 
+        }
+    }
+
     HeapIdx VM::alloc(Object obj) {
         if (gc_enabled && free_list.empty() && heap.size() >= gc_threshold) {
             gc_collect();
@@ -163,6 +216,20 @@ namespace pyle {
         for (const auto& saved_slots : saved_globals_stack) {
             for (const Value& val : saved_slots) {
                 mark_value(val);
+            }
+        }
+
+        for (const auto& [name_idx, slot_idx] : global_slot_map) {
+            mark_value(Value(Value::Tag::StringRef, name_idx));
+        }
+
+        for (const auto& [name_idx, slot_idx] : builtin_slot_map) {
+            mark_value(Value(Value::Tag::StringRef, name_idx));
+        }
+
+        for (const auto& saved_map : saved_slot_maps_stack) {
+            for (const auto& [name_idx, slot_idx] : saved_map) {
+                mark_value(Value(Value::Tag::StringRef, name_idx));
             }
         }
 
@@ -848,57 +915,10 @@ namespace pyle {
                             break;
                         }
                         case Value::Tag::StructTypeRef: {
-                            StructType& type = std::get<StructType>(heap[callee.as_ref].data);
-                            if (arg_count > type.field_names.size()) {
-                                runtime_error(RuntimeError::ArgumentError, fmt::format("Too many arguments. Expected at most {}.", type.field_names.size())); 
-                                return;
-                            }
-
-                            HeapIdx fn_idx = type.special_methods[static_cast<size_t>(SpecialMethod::Init)];
-                            bool has_init = (fn_idx != 0);
-
-                            Struct instance;
-                            instance.type_idx = callee.as_ref;
-                            instance.fields.resize(type.field_names.size());
-                            for (int i = 0; i < arg_count; i++) {
-                                instance.fields[i] = peek(arg_count - i);
-                            }
-                            for (size_t i = arg_count; i < type.field_names.size(); i++) {
-                                instance.fields[i] = Value();
-                            }
-
-                            HeapIdx idx = alloc(Object(instance));
-                            Value instance_val(Value::Tag::StructRef, idx);
-
-                            if (has_init) {
-                                Function& fn = std::get<Function>(heap[fn_idx].data);
-                                if (fn.arity != arg_count + 1) {
-                                    runtime_error(RuntimeError::ArgumentError, fmt::format("_init expects {} args, got {}.", fn.arity - 1, arg_count)); 
-                                    return;
-                                }
-
-                                HeapIdx closure_idx = build_closure_for_call(fn_idx, frame);
-                                Value init_clos(Value::Tag::ClosureRef, closure_idx);
-                                Function& fn_post_clos = std::get<Function>(heap[fn_idx].data);
-
-                                if (sp == stack_end) grow_stack();
-                                std::copy_backward(sp - arg_count, sp, sp + 1);
-                                sp++;
-
-                                *(sp - 1 - arg_count) = instance_val;  // self
-                                *(sp - 2 - arg_count) = init_clos;     // closure
-
-                                sync_ip();
-                                CallFrame new_frame;
-                                new_frame.closure = closure_idx;
-                                new_frame.ip = 0;
-                                new_frame.stack_base = stack_size() - arg_count - 1; 
-                                frames[frame_count++] = new_frame;
+                            if (instantiate_struct(callee.as_ref, arg_count, frame)) {
                                 frame = &frames[frame_count - 1];
+                                Function& fn_post_clos = get_func_from_frame(*frame);
                                 sync_frame_cache(frame, fn_post_clos, instr_data, ip, ip_end, const_pool, const_pool_size);
-                            } else {
-                                sp -= arg_count;
-                                set_top(instance_val);
                             }
                             break;
                         }
@@ -1010,6 +1030,12 @@ namespace pyle {
                                 Value result = native(*this, args_view);
                                 sp -= arg_count; 
                                 set_top(result);
+                            } else if (resolved_fn.tag == Value::Tag::StructTypeRef) {
+                                if (instantiate_struct(resolved_fn.as_ref, arg_count, frame)) {
+                                    frame = &frames[frame_count - 1];
+                                    Function& fn_post_clos = get_func_from_frame(*frame);
+                                    sync_frame_cache(frame, fn_post_clos, instr_data, ip, ip_end, const_pool, const_pool_size);
+                                }
                             } else {
                                 runtime_error(RuntimeError::Type, "Resolved value is not callable.");
                                 return;
@@ -1514,22 +1540,22 @@ namespace pyle {
     }
 
     
-    int VM::declare_global(const std::string& name) {
-        auto it = global_slot_map.find(name);
+    int VM::declare_global(HeapIdx name_idx) {
+        auto it = global_slot_map.find(name_idx);
         if (it != global_slot_map.end()) return it->second;
 
         int slot = static_cast<int>(global_slot_map.size());
         global_slots.push_back(Value());
-        global_slot_map[name] = slot;
+        global_slot_map[name_idx] = slot;
         return slot;
     }
 
-    void VM::define_native(const std::string &name, NativeFn function) {
+     void VM::define_native(const std::string &name, NativeFn function) {
         HeapIdx name_idx = intern_string(name);
         HeapIdx fn_idx = alloc(Object(function));
 
         Value fn_val(Value::Tag::NativeFuncRef, fn_idx);
-        int slot = declare_global(name);
+        int slot = declare_global(name_idx);
 
         global_slots[slot] = fn_val;
     }

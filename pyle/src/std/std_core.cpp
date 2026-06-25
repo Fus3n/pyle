@@ -121,12 +121,11 @@ namespace pyle {
         std::string source = std::move(*code_opt);
         
         vm.saved_globals_stack.push_back(std::move(vm.global_slots));
-        auto old_slot_map = std::move(vm.global_slot_map);
+        vm.saved_slot_maps_stack.push_back(std::move(vm.global_slot_map));
         
         const auto& saved_slots = vm.saved_globals_stack.back();
         vm.global_slots.assign(saved_slots.begin(), saved_slots.begin() + vm.builtin_count);
         
-        vm.global_slot_map = old_slot_map;
         vm.global_slot_map = vm.builtin_slot_map;
         
         ErrorReporter reporter(source, filepath);
@@ -143,35 +142,36 @@ namespace pyle {
                 if (!reporter.has_errors()) {
                     vm.source_code = source;
                     vm.script_name = filepath;
-
                     vm.execute(chunk);
                     success = !vm.is_panicked();
                 }
             }
         }
         
+        // Restore parent environment on compilation failure
         if (!success) {
             vm.global_slots = std::move(vm.saved_globals_stack.back());
             vm.saved_globals_stack.pop_back();
-            vm.global_slot_map = std::move(old_slot_map);
+            vm.global_slot_map = std::move(vm.saved_slot_maps_stack.back());
+            vm.saved_slot_maps_stack.pop_back();
             reporter.print_errors();
             vm.runtime_error(RuntimeError::Runtime, fmt::format("Failed to compile module '{}'.", mod_name));
             return Value();
         }
         
-        // Extract exported variables (excluding builtins)
         MapType module_map;
-        for (const auto& [var_name, slot_idx] : vm.global_slot_map) {
+        for (const auto& [var_name_idx, slot_idx] : vm.global_slot_map) {
             if (slot_idx >= static_cast<int>(vm.builtin_count)) {
-                Value key(Value::Tag::StringRef, vm.intern_string(var_name));
+                Value key(Value::Tag::StringRef, var_name_idx);
                 module_map[key] = vm.global_slots[slot_idx];
             }
         }
         
-        // Restore importing modules original environment
+        // Restore parent environment on success
         vm.global_slots = std::move(vm.saved_globals_stack.back());
         vm.saved_globals_stack.pop_back();
-        vm.global_slot_map = std::move(old_slot_map);
+        vm.global_slot_map = std::move(vm.saved_slot_maps_stack.back());
+        vm.saved_slot_maps_stack.pop_back();
         
         HeapIdx map_idx = vm.alloc(Object(std::move(module_map)));
         Value val(Value::Tag::MapRef, map_idx);

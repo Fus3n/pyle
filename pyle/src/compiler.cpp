@@ -88,7 +88,8 @@ namespace pyle {
     }
 
     int Compiler::resolve_global_slot(const Token& name) {
-        auto it = vm.global_slot_map.find(std::string(name.lexeme));
+        HeapIdx name_idx = vm.intern_string(name.lexeme);
+        auto it = vm.global_slot_map.find(name_idx);
         if (it == vm.global_slot_map.end()) {
             reporter.report(name.selection, ErrorType::Compile,
                             fmt::format("Undefined global '{}'.", name.lexeme));
@@ -282,7 +283,7 @@ namespace pyle {
         if (current_state->scope_depth > 0) {
             current_state->locals.push_back(Local{stmt->name, current_state->scope_depth});
         } else {
-            int slot = vm.declare_global(std::string(stmt->name.lexeme));
+            int slot = vm.declare_global(vm.intern_string(stmt->name.lexeme));
             emit_instruction(OpCode::DEFINE_GLOBAL_SLOT, slot, stmt->name.selection.line);
         }
     }
@@ -508,7 +509,7 @@ namespace pyle {
     }
 
     void Compiler::visit_func_decl(FuncDeclStmt* stmt) {
-        int slot = vm.declare_global(std::string(stmt->name.lexeme));
+        int slot = vm.declare_global(vm.intern_string(stmt->name.lexeme));
         HeapIdx fn_idx = compile_function(stmt->params, stmt->body.get(), stmt->name.lexeme);
         
         Value fn_val(Value::Tag::FuncRef, fn_idx);
@@ -581,7 +582,7 @@ namespace pyle {
         HeapIdx type_idx = vm.alloc(Object(type));
         Value type_val(Value::Tag::StructTypeRef, type_idx);
         uint32_t const_idx = make_constant(type_val);
-        int slot = vm.declare_global(std::string(stmt->name.lexeme));
+        int slot = vm.declare_global(vm.intern_string(stmt->name.lexeme));
         emit_instruction(OpCode::LOAD_CONST, const_idx, stmt->name.selection.line);
         emit_instruction(OpCode::DEFINE_GLOBAL_SLOT, slot, stmt->name.selection.line);
     }

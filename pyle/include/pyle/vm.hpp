@@ -42,7 +42,7 @@ namespace pyle {
         void close_upvalues(Value* limit);
 
         std::vector<Value> global_slots;
-        ankerl::unordered_dense::map<std::string, int> global_slot_map;
+        ankerl::unordered_dense::map<HeapIdx, int> global_slot_map;
 
         HeapIdx alloc(Object obj);
         HeapIdx intern_string(std::string_view str);
@@ -61,7 +61,7 @@ namespace pyle {
 
         const auto& get_interned_strings() const { return interned_strings; }
 
-        int declare_global(const std::string& name);
+        int declare_global(HeapIdx name_idx);
 
         bool is_truthy(const Value& v);
 
@@ -96,9 +96,9 @@ namespace pyle {
         size_t builtin_count = 0;
         bool builtins_finalized = false;
         std::vector<std::vector<Value>> saved_globals_stack;
-        
-        ankerl::unordered_dense::map<std::string, int> builtin_slot_map;
 
+        ankerl::unordered_dense::map<HeapIdx, int> builtin_slot_map;
+        std::vector<ankerl::unordered_dense::map<HeapIdx, int>> saved_slot_maps_stack;
     private:
 
         bool gc_enabled = true;
@@ -146,5 +146,6 @@ namespace pyle {
         }
 
         HeapIdx build_closure_for_call(HeapIdx fn_idx, CallFrame* caller_frame);
+        PYLE_FORCEINLINE bool instantiate_struct(HeapIdx struct_type_idx, int arg_count, CallFrame* current_frame);
     };
 }

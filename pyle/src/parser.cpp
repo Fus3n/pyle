@@ -470,19 +470,38 @@ namespace pyle {
         std::unique_ptr<Expr> expr = primary();
         while (true) {
             if (match({TokenType::LEFT_PAREN})) {
-                // --- Refactored: Pass left paren token to finish_call for location tracking ---
                 expr = finish_call(std::move(expr), previous());
             } else if (match({TokenType::DOT})) {
                 Token field_name = consume(TokenType::IDENTIFIER, "Expected field or method name.");
                 if (match({TokenType::LEFT_PAREN})) {
-                    std::vector<std::unique_ptr<Expr>> arguments;
-                    if (!check(TokenType::RIGHT_PAREN)) {
+                    Token open_paren = previous();
+                    
+                    if (check(TokenType::IDENTIFIER) && peek_next() == TokenType::COLON) {
+                        auto get_field = std::make_unique<GetFieldExpr>(std::move(expr), field_name);
+                        
+                        std::vector<std::pair<Token, std::unique_ptr<Expr>>> kwargs;
                         do {
-                            arguments.push_back(expression());
+                            Token key = consume(TokenType::IDENTIFIER, "Expected field name.");
+                            consume(TokenType::COLON, "Expected ':' after field name.");
+                            kwargs.push_back({key, expression()});
                         } while (match({TokenType::COMMA}));
+                        
+                        if (!check(TokenType::RIGHT_PAREN)) {
+                            reporter.report(open_paren.selection, ErrorType::Syntax, "This '(' was never closed.", open_paren.lexeme.size());
+                            throw ParserError();
+                        }
+                        Token paren = consume(TokenType::RIGHT_PAREN, "Expected ')' after arguments.");
+                        expr = std::make_unique<CallKwExpr>(std::move(get_field), paren, std::move(kwargs));
+                    } else {
+                        std::vector<std::unique_ptr<Expr>> arguments;
+                        if (!check(TokenType::RIGHT_PAREN)) {
+                            do {
+                                arguments.push_back(expression());
+                            } while (match({TokenType::COMMA}));
+                        }
+                        Token paren = consume(TokenType::RIGHT_PAREN, "Expected ')' after arguments.");
+                        expr = std::make_unique<MethodCallExpr>(std::move(expr), field_name, paren, std::move(arguments));
                     }
-                    Token paren = consume(TokenType::RIGHT_PAREN, "Expected ')' after arguments.");
-                    expr = std::make_unique<MethodCallExpr>(std::move(expr), field_name, paren, std::move(arguments));
                 } else {
                     expr = std::make_unique<GetFieldExpr>(std::move(expr), field_name);
                 }
