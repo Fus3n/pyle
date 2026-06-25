@@ -48,11 +48,11 @@ namespace pyle {
         } else if constexpr (std::is_same_v<T, bool>) {
             return vm.is_truthy(val);
         } else if constexpr (std::is_pointer_v<T>) {
-            if (val.tag != Value::Tag::UserdataRef) {
+            if (val.tag != Value::Tag::NativeObjectRef) {
                 vm.runtime_error(RuntimeError::Type, "Expected native object.");
                 return nullptr;
             }
-            auto& ud = std::get<Userdata>(vm.get_heap_object(val.as_ref).data);
+            auto& ud = std::get<NativeObject>(vm.get_heap_object(val.as_ref).data);
             return static_cast<T>(ud.ptr);
         } else if constexpr (is_vector_v<T>) {
             if (val.tag != Value::Tag::ArrayRef) {
@@ -88,12 +88,12 @@ namespace pyle {
             HeapIdx idx = vm.intern_string(val);
             return Value(Value::Tag::StringRef, idx);
         } else if constexpr (std::is_pointer_v<T>) {
-            Userdata ud;
+            NativeObject ud;
             ud.ptr = const_cast<std::remove_const_t<std::remove_pointer_t<T>>*>(val);
             ud.deleter = nullptr;
             ud.type_idx = BindRegistry<std::remove_const_t<std::remove_pointer_t<T>>>::type_idx;
             HeapIdx idx = vm.alloc(Object(ud));
-            return Value(Value::Tag::UserdataRef, idx);
+            return Value(Value::Tag::NativeObjectRef, idx);
         } else if constexpr (is_vector_v<T>) {
             using ElementType = typename T::value_type;
             ArrayType arr;
@@ -131,7 +131,7 @@ namespace pyle {
 
         static Value wrap(VM& vm, HeapIdx obj_idx, ArgView args) {
             Object& obj = vm.get_heap_object(obj_idx);
-            auto* instance = static_cast<Class*>(std::get<Userdata>(obj.data).ptr);
+            auto* instance = static_cast<Class*>(std::get<NativeObject>(obj.data).ptr);
             constexpr size_t param_count = sizeof...(Args);
             if (args.size() != param_count) {
                 vm.runtime_error(RuntimeError::ArgumentError, fmt::format("Expected {} arguments, got {}.", param_count, args.size()));
@@ -161,7 +161,7 @@ namespace pyle {
 
         static Value wrap(VM& vm, HeapIdx obj_idx, ArgView args) {
             Object& obj = vm.get_heap_object(obj_idx);
-            auto* instance = static_cast<Class*>(std::get<Userdata>(obj.data).ptr);
+            auto* instance = static_cast<Class*>(std::get<NativeObject>(obj.data).ptr);
             constexpr size_t param_count = sizeof...(Args);
             if (args.size() != param_count) {
                 vm.runtime_error(RuntimeError::ArgumentError, fmt::format("Expected {} arguments, got {}.", param_count, args.size()));
@@ -191,7 +191,7 @@ namespace pyle {
 
         static Value wrap(VM& vm, HeapIdx obj_idx, ArgView args) {
             Object& obj = vm.get_heap_object(obj_idx);
-            const auto* instance = static_cast<const Class*>(std::get<Userdata>(obj.data).ptr);
+            const auto* instance = static_cast<const Class*>(std::get<NativeObject>(obj.data).ptr);
             constexpr size_t param_count = sizeof...(Args);
             if (args.size() != param_count) {
                 vm.runtime_error(RuntimeError::ArgumentError, fmt::format("Expected {} arguments, got {}.", param_count, args.size()));
@@ -221,7 +221,7 @@ namespace pyle {
 
         static Value wrap(VM& vm, HeapIdx obj_idx, ArgView args) {
             Object& obj = vm.get_heap_object(obj_idx);
-            const auto* instance = static_cast<const Class*>(std::get<Userdata>(obj.data).ptr);
+            const auto* instance = static_cast<const Class*>(std::get<NativeObject>(obj.data).ptr);
             constexpr size_t param_count = sizeof...(Args);
             if (args.size() != param_count) {
                 vm.runtime_error(RuntimeError::ArgumentError, fmt::format("Expected {} arguments, got {}.", param_count, args.size()));
@@ -321,11 +321,11 @@ namespace pyle {
     struct MethodDeducer<MemFn, Ret (Class::*)(VM&, ArgView)> {
         static Value wrap(VM& vm, HeapIdx obj_idx, ArgView args) {
             Object& obj = vm.get_heap_object(obj_idx);
-            if (!std::holds_alternative<Userdata>(obj.data)) {
+            if (!std::holds_alternative<NativeObject>(obj.data)) {
                 vm.runtime_error(RuntimeError::Type, "Expected native object instance.");
                 return Value();
             }
-            auto* instance = static_cast<Class*>(std::get<Userdata>(obj.data).ptr);
+            auto* instance = static_cast<Class*>(std::get<NativeObject>(obj.data).ptr);
             try {
                 if constexpr (std::is_same_v<Ret, void>) {
                     (instance->*MemFn)(vm, args);
@@ -364,13 +364,13 @@ namespace pyle {
                 T* instance = invoke_constructor_helper<T, Args...>(vm, args, std::make_index_sequence<param_count>{});
                 if (!instance) return Value();
 
-                Userdata ud;
+                NativeObject ud;
                 ud.ptr = instance;
                 ud.deleter = [](void* p) { delete static_cast<T*>(p); };
                 ud.type_idx = BindRegistry<T>::type_idx;
 
                 HeapIdx idx = vm.alloc(Object(ud));
-                return Value(Value::Tag::UserdataRef, idx);
+                return Value(Value::Tag::NativeObjectRef, idx);
             };
 
             vm.define_native(BindRegistry<T>::class_name, ctor_wrapper);
@@ -396,13 +396,13 @@ namespace pyle {
         ClassBinder& member(const std::string& name) {
             // Getter Wrapper
             NativeMethodFn getter = [](VM& vm, HeapIdx obj_idx, ArgView args) -> Value {
-                auto* inst = static_cast<T*>(std::get<Userdata>(vm.get_heap_object(obj_idx).data).ptr);
+                auto* inst = static_cast<T*>(std::get<NativeObject>(vm.get_heap_object(obj_idx).data).ptr);
                 return to_value(vm, inst->*FieldPtr);
             };
             
             // Setter Wrapper
             NativeMethodFn setter = [](VM& vm, HeapIdx obj_idx, ArgView args) -> Value {
-                auto* inst = static_cast<T*>(std::get<Userdata>(vm.get_heap_object(obj_idx).data).ptr);
+                auto* inst = static_cast<T*>(std::get<NativeObject>(vm.get_heap_object(obj_idx).data).ptr);
                 inst->*FieldPtr = from_value<FieldType>(vm, args[0]);
                 return args[0];
             };

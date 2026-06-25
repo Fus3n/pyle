@@ -21,7 +21,7 @@ Pyle is designed to be simple to read, easy to embed, and practical for small to
 
 ## Example
 
-```pyle
+```js
 struct Pos(x, y) {}
 
 struct Player(name, health, pos) {
@@ -31,13 +31,8 @@ struct Player(name, health, pos) {
         self.pos = Pos(x: 0, y: 0)
     }
 
-    fn setHealth(new_health) {
-        self.health = new_health
-    }
-
-    fn damageBy(n) {
-        self.health -= n
-    }
+    fn setHealth(new_health) { self.health = new_health }
+    fn damageBy(n) { self.health -= n }
 
     fn distanceFrom(other) {
         return Pos(
@@ -65,7 +60,7 @@ main()
 
 ### Functions
 
-```pyle
+```js
 fn fib(n) {
     if n <= 1 {
         return n
@@ -76,7 +71,7 @@ fn fib(n) {
 
 ### Closures
 
-```pyle
+```js
 fn make_counter() {
     let x = 0
     fn counter() {
@@ -85,11 +80,15 @@ fn make_counter() {
     }
     return counter
 }
+let counter = make_counter()
+print(counter()) # 1
+print(counter()) # 2
+print(counter()) # 3
 ```
 
 ### Arrays and loops
 
-```pyle
+```js
 fn sum(values) {
     let total = 0
     let i = 0
@@ -99,6 +98,15 @@ fn sum(values) {
     }
     return total
 }
+sum([1, 2, 3, 4])
+```
+
+```js
+let os = import("os")
+let script = import("another_script.pyl")
+
+os.system("ls")
+script.some_func()
 ```
 
 ## Status

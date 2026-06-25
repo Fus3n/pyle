@@ -54,8 +54,8 @@ public:
 
 
 int main(int argc, char* argv[]) {
-
     print_assertion_status();
+
     argparse::ArgumentParser program("pyle");
     program.add_argument("-v", "--version")
         .help("Prints version information")
@@ -87,11 +87,11 @@ int main(int argc, char* argv[]) {
     pyle::register_core_natives(pyle.vm);
 
     pyle::ClassBinder<Player>(pyle.vm, "Player")
-        .constructor<std::string, int>()                     // Constructor: Player(string, int)
-        .member<std::string, &Player::name>("name")          // Field: .name
-        .member<int, &Player::health>("health")              // Field: .health
-        .method<&Player::damageBy>("damageBy")               // Method: .damageBy(int)
-        .method<&Player::getStatus>("getStatus");            // Method: .getStatus()
+        .constructor<std::string, int>()                    
+        .member<std::string, &Player::name>("name")          
+        .member<int, &Player::health>("health")              
+        .method<&Player::damageBy>("damageBy")              
+        .method<&Player::getStatus>("getStatus");         
 
 
     try {

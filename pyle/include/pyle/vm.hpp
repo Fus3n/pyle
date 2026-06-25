@@ -87,6 +87,14 @@ namespace pyle {
         ~VM() {
             delete[] stack;
             delete [] frames;
+
+            for (auto& obj : heap) {
+                if (auto* ud = std::get_if<NativeObject>(&obj.data)) {
+                    if (ud->deleter && ud->ptr) {
+                        ud->deleter(ud->ptr);
+                    }
+                }
+            }
         }
 
         using ModuleFactory = Value (*)(VM& vm);

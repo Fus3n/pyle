@@ -156,7 +156,7 @@ namespace pyle {
                 continue;
 
             if (!heap[i].gc_marked) {
-                if (auto* ud = std::get_if<Userdata>(&heap[i].data)) {
+                if (auto* ud = std::get_if<NativeObject>(&heap[i].data)) {
                     if (ud->deleter && ud->ptr) {
                         ud->deleter(ud->ptr);
                     }
@@ -408,9 +408,9 @@ namespace pyle {
                 visited.erase(idx);
                 break;
             }
-            case Value::Tag::UserdataRef: {
+            case Value::Tag::NativeObjectRef: {
                 HeapIdx idx = val.as_ref;
-                Userdata& ud = std::get<Userdata>(heap[idx].data);
+                NativeObject& ud = std::get<NativeObject>(heap[idx].data);
                 ss << "<native_object " << ud.ptr << ">";
                 break;
             }
@@ -1046,8 +1046,8 @@ namespace pyle {
                             return;
                         }
                     }
-                    else if (callee.tag == Value::Tag::UserdataRef) {
-                        Userdata& ud = std::get<Userdata>(heap[callee.as_ref].data);
+                    else if (callee.tag == Value::Tag::NativeObjectRef) {
+                        NativeObject& ud = std::get<NativeObject>(heap[callee.as_ref].data);
                         StructType& type = std::get<StructType>(heap[ud.type_idx].data);
                         auto it = type.methods.find(name_val.as_ref);
                         
@@ -1365,8 +1365,8 @@ namespace pyle {
                             push(Value()); 
                         }
                     }
-                    else if (obj_val.tag == Value::Tag::UserdataRef) {
-                        Userdata& ud = std::get<Userdata>(heap[obj_val.as_ref].data);
+                    else if (obj_val.tag == Value::Tag::NativeObjectRef) {
+                        NativeObject& ud = std::get<NativeObject>(heap[obj_val.as_ref].data);
                         StructType& type = std::get<StructType>(heap[ud.type_idx].data);
                         auto it = type.methods.find(field_id);
                         if (it != type.methods.end()) {
@@ -1405,8 +1405,8 @@ namespace pyle {
                     Value val = pop();
                     Value obj_val = pop();
                     
-                    if (obj_val.tag == Value::Tag::UserdataRef) {
-                        Userdata& ud = std::get<Userdata>(heap[obj_val.as_ref].data);
+                    if (obj_val.tag == Value::Tag::NativeObjectRef) {
+                        NativeObject& ud = std::get<NativeObject>(heap[obj_val.as_ref].data);
                         StructType& type = std::get<StructType>(heap[ud.type_idx].data);
                         auto it = type.setters.find(field_id);
                         

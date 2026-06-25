@@ -8,6 +8,7 @@
 #include <fmt/format.h>
 #include "ankerl/unordered_dense.h"
 #include "pyle/bytecode.hpp"
+#include "pyle/value.hpp"
 #include <array>       
 #include <optional>   
 
@@ -20,7 +21,7 @@ namespace pyle {
         enum class Tag {
             Int, Float, Bool, None, StringRef, ArrayRef, StructRef,
             NativeFuncRef, FuncRef, IteratorRef, RangeRef, ClosureRef, UpvalueRef,
-            StructTypeRef, MapRef, UserdataRef
+            StructTypeRef, MapRef, NativeObjectRef
         } tag;
         union {
             int64_t as_int;
@@ -48,7 +49,7 @@ namespace pyle {
                    t == Tag::RangeRef ||
                    t == Tag::ClosureRef ||
                    t == Tag::MapRef ||
-                   t == Tag::UserdataRef);
+                   t == Tag::NativeObjectRef);
         }
 
         std::string tag_to_string() const {
@@ -65,7 +66,7 @@ namespace pyle {
                 case Tag::IteratorRef: return "iterator";
                 case Tag::RangeRef: return "range";
                 case Tag::MapRef: return "map";
-                case Tag::UserdataRef: return "native_object"; 
+                case Tag::NativeObjectRef: return "native_object"; 
                 default:
                     return fmt::format("HeapRef({})", as_ref);
             }
@@ -224,7 +225,7 @@ namespace pyle {
         std::vector<HeapIdx> upvalues; 
     };
 
-    struct Userdata {
+    struct NativeObject {
         void* ptr = nullptr;
         void (*deleter)(void*) = nullptr; 
         HeapIdx type_idx = 0;
@@ -249,7 +250,7 @@ namespace pyle {
             Closure,
             Upvalue,
             MapType,
-            Userdata,
+            NativeObject,
             NativeMethod    
         > data;
 
@@ -265,7 +266,7 @@ namespace pyle {
         explicit Object(StructType strt) : data(std::move(strt)) {} 
         explicit Object(Struct strc)     : data(std::move(strc)) {}
         explicit Object(MapType m): data(std::move(m)) {}
-        explicit Object(Userdata u) : data(u) {}
+        explicit Object(NativeObject u) : data(u) {}
         explicit Object(NativeMethod nm) : data(nm) {}           
     };
 
