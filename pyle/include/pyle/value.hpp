@@ -13,14 +13,21 @@
 
 namespace pyle {
 
-    using HeapIdx = size_t;
     class VM;
+    using HeapIdx = size_t;
+    struct Coroutine;
+
+    struct CallFrame {
+        HeapIdx closure;
+        size_t ip;
+        size_t stack_base;
+    };
 
     struct Value {
         enum class Tag {
             Int, Float, Bool, None, StringRef, ArrayRef, StructRef,
             NativeFuncRef, FuncRef, IteratorRef, RangeRef, ClosureRef, UpvalueRef,
-            StructTypeRef, MapRef, NativeObjectRef
+            StructTypeRef, MapRef, NativeObjectRef, CoroutineRef,
         } tag;
         union {
             int64_t as_int;
@@ -48,7 +55,8 @@ namespace pyle {
                    t == Tag::RangeRef ||
                    t == Tag::ClosureRef ||
                    t == Tag::MapRef ||
-                   t == Tag::NativeObjectRef);
+                   t == Tag::NativeObjectRef ||
+                   t == Tag::CoroutineRef);
         }
 
         std::string tag_to_string() const {
@@ -66,6 +74,7 @@ namespace pyle {
                 case Tag::RangeRef: return "range";
                 case Tag::MapRef: return "map";
                 case Tag::NativeObjectRef: return "native_object"; 
+                case Tag::CoroutineRef: return "fiber";
                 default:
                     return fmt::format("HeapRef({})", as_ref);
             }
@@ -234,6 +243,130 @@ namespace pyle {
         NativeMethodFn fn = nullptr;
     };
     
+    struct Coroutine {
+        Value* stack = nullptr;
+        Value* sp = nullptr;
+        size_t stack_capacity = 0;
+
+        CallFrame* frames = nullptr;
+        size_t frame_count = 0;
+        size_t frame_capacity = 0;
+
+        HeapIdx closure_idx = 0;       
+        Coroutine* caller = nullptr;   
+        HeapIdx self_idx = 0;          
+
+        enum class State {
+            Suspended,
+            Running,
+            Dead
+        } state = State::Suspended;
+
+        bool is_main = false;
+        bool started = false; 
+
+        Coroutine() = default;
+
+        ~Coroutine() {
+            cleanup();
+        }
+
+        Coroutine(const Coroutine& other) {
+            copy_from(other);
+        }
+
+        Coroutine& operator=(const Coroutine& other) {
+            if (this != &other) {
+                cleanup();
+                copy_from(other);
+            }
+            return *this;
+        }
+
+        Coroutine(Coroutine&& other) noexcept {
+            move_from(std::move(other));
+        }
+
+        Coroutine& operator=(Coroutine&& other) noexcept {
+            if (this != &other) {
+                cleanup();
+                move_from(std::move(other));
+            }
+            return *this;
+        }
+
+    private:
+        void cleanup() {
+            if (!is_main) {
+                delete[] stack;
+                delete[] frames;
+            }
+            stack = nullptr;
+            frames = nullptr;
+            sp = nullptr;
+            stack_capacity = 0;
+            frame_capacity = 0;
+            frame_count = 0;
+            started = false;
+        }
+
+        void copy_from(const Coroutine& other) {
+            is_main = other.is_main;
+            state = other.state;
+            closure_idx = other.closure_idx;
+            caller = other.caller;
+            self_idx = other.self_idx;
+            stack_capacity = other.stack_capacity;
+            frame_capacity = other.frame_capacity;
+            frame_count = other.frame_count;
+            started = other.started;
+
+            if (other.stack && !other.is_main) {
+                stack = new Value[stack_capacity];
+                size_t elements = other.sp - other.stack;
+                for (size_t i = 0; i < elements; ++i) {
+                    stack[i] = other.stack[i];
+                }
+                sp = stack + elements;
+            } else {
+                stack = other.stack;
+                sp = other.sp;
+            }
+
+            if (other.frames && !other.is_main) {
+                frames = new CallFrame[frame_capacity];
+                for (size_t i = 0; i < frame_count; ++i) {
+                    frames[i] = other.frames[i];
+                }
+            } else {
+                frames = other.frames;
+            }
+        }
+
+        void move_from(Coroutine&& other) noexcept {
+            is_main = other.is_main;
+            state = other.state;
+            closure_idx = other.closure_idx;
+            caller = other.caller;
+            self_idx = other.self_idx;
+            stack_capacity = other.stack_capacity;
+            frame_capacity = other.frame_capacity;
+            frame_count = other.frame_count;
+            started = other.started;
+
+            stack = other.stack;
+            sp = other.sp;
+            frames = other.frames;
+
+            other.stack = nullptr;
+            other.sp = nullptr;
+            other.frames = nullptr;
+            other.stack_capacity = 0;
+            other.frame_capacity = 0;
+            other.frame_count = 0;
+        }
+    };
+
     struct Object {
         bool gc_marked = false;
         std::variant<
@@ -250,7 +383,8 @@ namespace pyle {
             Upvalue,
             MapType,
             NativeObject,
-            NativeMethod    
+            NativeMethod,
+            Coroutine
         > data;
 
         Object() = default;
@@ -267,6 +401,7 @@ namespace pyle {
         explicit Object(MapType m): data(std::move(m)) {}
         explicit Object(NativeObject u) : data(u) {}
         explicit Object(NativeMethod nm) : data(nm) {}           
+        explicit Object(Coroutine coro) : data(std::move(coro)) {} 
     };
 
 }

@@ -49,6 +49,7 @@ namespace pyle {
         CALL_KW,
         GET_INDEX,
         SET_INDEX,
+        YIELD,
         HALT
     };
 

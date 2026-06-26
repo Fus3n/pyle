@@ -271,6 +271,16 @@ namespace pyle {
         void accept(Visitor* visitor) override;
     };
 
+    struct YieldExpr: public Expr {
+        Token token;
+        std::unique_ptr<Expr> value;
+
+        YieldExpr(Token token, std::unique_ptr<Expr> value)
+            : token(token), value(std::move(value)) {}
+        
+        void accept(Visitor* visitor) override;
+    };  
+
     struct Visitor {
         virtual ~Visitor() = default;
 
@@ -302,6 +312,7 @@ namespace pyle {
         virtual void visit_implicit_string(ImplicitStringExpr* expr) = 0; 
         virtual void visit_map_expr(MapExpr* expr) = 0;                  
         virtual void visit_call_kw_expr(CallKwExpr* expr) = 0;           
+        virtual void visit_yield_expr(YieldExpr* expr) = 0;
     };  
 
     inline void LiteralExpr::accept(Visitor* visitor)  { visitor->visit_literal(this); }
@@ -332,4 +343,5 @@ namespace pyle {
     inline void ImplicitStringExpr::accept(Visitor* visitor) { visitor->visit_implicit_string(this); }
     inline void MapExpr::accept(Visitor* visitor) { visitor->visit_map_expr(this); }
     inline void CallKwExpr::accept(Visitor* visitor) { visitor->visit_call_kw_expr(this); }
+    inline void YieldExpr::accept(Visitor* visitor) { visitor->visit_yield_expr(this); }
 }

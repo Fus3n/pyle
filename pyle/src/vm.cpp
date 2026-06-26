@@ -12,7 +12,7 @@ namespace pyle {
     constexpr size_t INITIAL_THRESHOLD = 256;
     size_t gc_threshold = INITIAL_THRESHOLD;
 
-    PYLE_FORCEINLINE void sync_frame_cache(VM::CallFrame* f, Function& fn,
+    PYLE_FORCEINLINE void sync_frame_cache(CallFrame* f, Function& fn,
                                 const uint32_t*& instr_data, const uint32_t*& ip,
                                 const uint32_t*& ip_end, const Value*& const_pool,
                                 size_t& const_pool_size) {
@@ -130,6 +130,28 @@ namespace pyle {
         }
     }
 
+    void VM::init_root_coroutine() {
+        if (main_coroutine == nullptr) {
+            Coroutine root;
+            root.stack = this->stack;
+            root.sp = this->sp;
+            root.stack_capacity = this->stack_capacity;
+            root.frames = this->frames;
+            root.frame_count = this->frame_count;
+            root.frame_capacity = this->frame_capacity;
+            root.state = Coroutine::State::Running;
+            root.is_main = true;
+
+            HeapIdx root_idx = alloc(Object(root));
+            main_coroutine_idx = root_idx;
+            active_coroutine_idx = root_idx;
+            
+            main_coroutine = &std::get<Coroutine>(heap[root_idx].data);
+            main_coroutine->self_idx = root_idx;
+            active_coroutine = main_coroutine;
+        }
+    }
+
     HeapIdx VM::alloc(Object obj) {
         if (gc_enabled && free_list.empty() && heap.size() >= gc_threshold) {
             gc_collect();
@@ -193,7 +215,8 @@ namespace pyle {
                 case Value::Tag::UpvalueRef: 
                 case Value::Tag::StructRef:
                 case Value::Tag::StructTypeRef: 
-                case Value::Tag::MapRef: {
+                case Value::Tag::MapRef: 
+                case Value::Tag::CoroutineRef: {
                     HeapIdx idx = val.as_ref;
                     if (!heap[idx].gc_marked) {
                         heap[idx].gc_marked = true;
@@ -204,6 +227,14 @@ namespace pyle {
                 default: break;
             }
         };
+
+        if (main_coroutine_idx != 0) {
+            mark_value(Value(Value::Tag::CoroutineRef, main_coroutine_idx));
+        }
+        if (active_coroutine_idx != 0) {
+            mark_value(Value(Value::Tag::CoroutineRef, active_coroutine_idx));
+        }
+
 
         for (Value* ptr = stack; ptr < sp; ++ptr) {
             mark_value(*ptr);
@@ -295,6 +326,25 @@ namespace pyle {
             } else if (const auto *fn_ptr = std::get_if<Function>(&heap[current].data)) {
                 for (const Value &val: fn_ptr->chunk.const_pool) {
                     mark_value(val);
+                }
+            } else if (const auto *coro_ptr = std::get_if<Coroutine>(&heap[current].data)) {
+                if (coro_ptr->closure_idx != 0) {
+                    mark_value(Value(Value::Tag::ClosureRef, coro_ptr->closure_idx));
+                }
+                if (coro_ptr->caller) {
+                    mark_value(Value(Value::Tag::CoroutineRef, coro_ptr->caller->self_idx));
+                }
+
+                // Trace evaluation stack and CallFrames only if suspended.
+                // (Active coroutine elements are already marked natively on the VM stack)
+                if (coro_ptr != active_coroutine) {
+                    for (Value* ptr = coro_ptr->stack; ptr < coro_ptr->sp; ++ptr) {
+                        mark_value(*ptr);
+                    }
+                    for (size_t i = 0; i < coro_ptr->frame_count; ++i) {
+                        const auto& frame = coro_ptr->frames[i];
+                        mark_value(Value(Value::Tag::ClosureRef, frame.closure));
+                    }
                 }
             }
         }
@@ -523,6 +573,11 @@ namespace pyle {
             double da = (a.tag == Value::Tag::Int) ? static_cast<double>(a.as_int) : a.as_float; \
             double db = (b.tag == Value::Tag::Int) ? static_cast<double>(b.as_int) : b.as_float; \
             set_top(Value(da op db));  \
+        } else if (a.tag == Value::Tag::StringRef && b.tag == Value::Tag::StringRef) { \
+            const std::string& sa = std::get<std::string>(heap[a.as_ref].data);\
+            const std::string& sb = std::get<std::string>(heap[b.as_ref].data);\
+            HeapIdx idx = intern_string(sa + sb);\
+            set_top(Value(Value::Tag::StringRef, idx));\
         } else { \
             std::string msg = fmt::format("Unsupported operand types. a.tag={}, b.tag={}", \
             static_cast<int>(a.tag), static_cast<int>(b.tag)); \
@@ -589,7 +644,7 @@ namespace pyle {
         std::string_view saved_source_code = source_code;
         std::string_view saved_script_name = script_name;
 
-        struct ExecutionGuard {
+         struct ExecutionGuard {
             VM& vm;
             size_t saved_sp_offset;
             size_t saved_frame_count;
@@ -598,6 +653,33 @@ namespace pyle {
             std::string_view saved_script_name;
 
             ~ExecutionGuard() {
+                // If we exit execute() while a non-main fiber is active,
+                // safely suspend it and restore VM registers back to the root main thread.
+                // This guarantees VM::stack/frames point back to their original allocated memory.
+                if (vm.main_coroutine && vm.active_coroutine != vm.main_coroutine) {
+                    // 1. Suspend and save the active coroutine's registers
+                    vm.active_coroutine->stack = vm.stack;
+                    vm.active_coroutine->sp = vm.sp;
+                    vm.active_coroutine->stack_capacity = vm.stack_capacity;
+                    vm.active_coroutine->frames = vm.frames;
+                    vm.active_coroutine->frame_count = vm.frame_count;
+                    vm.active_coroutine->frame_capacity = vm.frame_capacity;
+                    vm.active_coroutine->state = Coroutine::State::Suspended;
+
+                    // 2. Safely swap registers back to the main_coroutine
+                    vm.stack = vm.main_coroutine->stack;
+                    vm.sp = vm.main_coroutine->sp;
+                    vm.stack_capacity = vm.main_coroutine->stack_capacity;
+                    vm.frames = vm.main_coroutine->frames;
+                    vm.frame_count = vm.main_coroutine->frame_count;
+                    vm.frame_capacity = vm.main_coroutine->frame_capacity;
+                    vm.stack_end = vm.stack + vm.stack_capacity;
+
+                    vm.active_coroutine = vm.main_coroutine;
+                    vm.active_coroutine_idx = vm.main_coroutine_idx;
+                }
+
+                // Restore stack offset and execution context
                 vm.sp = vm.stack + saved_sp_offset;
                 vm.frame_count = saved_frame_count;
                 vm.panicked = saved_panicked;
@@ -615,6 +697,8 @@ namespace pyle {
         };
 
         panicked = false;
+
+        init_root_coroutine();
 
         Function main_fn;
         main_fn.name = "main";
@@ -698,6 +782,7 @@ namespace pyle {
             &&op_CALL_KW,
             &&op_GET_INDEX,
             &&op_SET_INDEX,
+            &&op_YIELD,
             &&op_HALT
         };
         if (ip >= ip_end) {
@@ -933,7 +1018,45 @@ namespace pyle {
                     size_t stack_base = frame->stack_base; 
                     close_upvalues(&stack[stack_base]);
                     frame_count--;
-                    if (frame_count == 0) return;
+
+                    if (frame_count == 0) {
+                        Coroutine* current = active_coroutine;
+                        current->state = Coroutine::State::Dead;
+
+                        if (current->is_main) {
+                            return;
+                        }
+
+                        Coroutine* target = current->caller;
+                        if (!target) {
+                            runtime_error(RuntimeError::Runtime, "Fiber completed but has no caller to yield back to.");
+                            return;
+                        }
+
+                        this->stack = target->stack;
+                        this->sp = target->sp;
+                        this->stack_capacity = target->stack_capacity;
+                        this->frames = target->frames;
+                        this->frame_count = target->frame_count;
+                        this->frame_capacity = target->frame_capacity;
+                        this->stack_end = this->stack + this->stack_capacity;
+
+                        push(ret_val);
+
+                        active_coroutine = target;
+                        active_coroutine_idx = target->self_idx;
+
+                        frame = &frames[frame_count - 1];
+                        Function& fn_next = get_func_from_frame(*frame);
+                        sync_frame_cache(frame, fn_next, instr_data, ip, ip_end, const_pool, const_pool_size);
+
+                        #ifdef PYLE_USE_COMPUTED_GOTO
+                        DISPATCH();
+                        #else
+                        break;
+                        #endif
+                    }
+
                     stack[stack_base - 1] = ret_val;
                     sp = stack + stack_base; 
                     frame = &frames[frame_count - 1];
@@ -1106,7 +1229,92 @@ namespace pyle {
                             runtime_error(RuntimeError::Name, fmt::format("Method '{}' not found.", method_name));
                             return;
                         }
-                    } else {
+                    } 
+                    // 1. Add CoroutineRef (fiber) branch directly into the main if-else chain
+                    else if (callee.tag == Value::Tag::CoroutineRef) {
+                        std::string method_name = std::get<std::string>(heap[name_val.as_ref].data);
+                        if (method_name == "resume") {
+                            if (arg_count > 1) {
+                                runtime_error(RuntimeError::ArgumentError, "resume() takes at most 1 argument.");
+                                return;
+                            }
+                            Value resume_arg = (arg_count == 1) ? pop() : Value();
+                            
+                            pop(); // Pop method name
+                            pop(); // Pop callee
+
+                            Coroutine& target = std::get<Coroutine>(heap[callee.as_ref].data);
+                            if (target.state == Coroutine::State::Running) {
+                                runtime_error(RuntimeError::Runtime, "Cannot resume an already running fiber.");
+                                return;
+                            }
+                            if (target.state == Coroutine::State::Dead) {
+                                runtime_error(RuntimeError::Runtime, "Cannot resume a dead fiber.");
+                                return;
+                            }
+
+                            Coroutine* current = active_coroutine;
+                            
+                            // 1. Save caller fiber state
+                            sync_ip();
+                            current->stack = this->stack;
+                            current->sp = this->sp;
+                            current->stack_capacity = this->stack_capacity;
+                            current->frames = this->frames;
+                            current->frame_count = this->frame_count;
+                            current->frame_capacity = this->frame_capacity;
+                            current->state = Coroutine::State::Suspended;
+
+                            // 2. Setup target fiber
+                            target.caller = current;
+                            target.state = Coroutine::State::Running;
+
+                            // 3. Load target fiber VM registers
+                            this->stack = target.stack;
+                            this->sp = target.sp;
+                            this->stack_capacity = target.stack_capacity;
+                            this->frames = target.frames;
+                            this->frame_count = target.frame_count;
+                            this->frame_capacity = target.frame_capacity;
+                            this->stack_end = this->stack + this->stack_capacity;
+
+                            
+                            // 4. Push the resume argument onto target's stack
+                            if (!target.started) {
+                                target.started = true; // Ignore initial argument to align local slots
+                            } else {
+                                push(resume_arg); // Push on subsequent yields
+                            }
+
+                            // 5. Update active coroutine pointers
+                            active_coroutine = &target;
+                            active_coroutine_idx = callee.as_ref;
+
+                            // 6. Synchronize caller's loop cache
+                            frame = &frames[frame_count - 1];
+                            Function& fn_next = get_func_from_frame(*frame);
+                            sync_frame_cache(frame, fn_next, instr_data, ip, ip_end, const_pool, const_pool_size);
+                        }
+                        else if (method_name == "state") {
+                            if (arg_count != 0) {
+                                runtime_error(RuntimeError::ArgumentError, "state() takes 0 arguments.");
+                                return;
+                            }
+                            Coroutine& target = std::get<Coroutine>(heap[callee.as_ref].data);
+                            std::string state_str = "suspended";
+                            if (target.state == Coroutine::State::Running) state_str = "running";
+                            else if (target.state == Coroutine::State::Dead) state_str = "dead";
+                            
+                            HeapIdx str_idx = intern_string(state_str);
+                            sp -= 2; // Pop callee and method name
+                            push(Value(Value::Tag::StringRef, str_idx));
+                        }
+                        else {
+                            runtime_error(RuntimeError::Name, fmt::format("fiber has no method '{}'", method_name));
+                            return;
+                        }
+                    }
+                    else {
                         std::string method_name = std::get<std::string>(heap[name_val.as_ref].data);
                         const Value *args_ptr = arg_count > 0 ? (sp - arg_count) : nullptr;
                         ArgView args_view{args_ptr, static_cast<size_t>(arg_count)};
@@ -1522,6 +1730,47 @@ namespace pyle {
                         frame = &frames[frame_count - 1];
                         sync_frame_cache(frame, fn_post_clos, instr_data, ip, ip_end, const_pool, const_pool_size);
                     }
+                }
+                DISPATCH();
+
+                OP(YIELD) {
+                    Value yield_val = pop();
+
+                    Coroutine* current = active_coroutine;
+                    if (!current || !current->caller) {
+                        runtime_error(RuntimeError::Runtime, "Cannot yield from the root fiber (or no caller context).");
+                        return;
+                    }
+
+                    Coroutine* target = current->caller;
+
+                    sync_ip();
+                    current->stack = this->stack;
+                    current->sp = this->sp;
+                    current->stack_capacity = this->stack_capacity;
+                    current->frames = this->frames;
+                    current->frame_count = this->frame_count;
+                    current->frame_capacity = this->frame_capacity;
+                    current->state = Coroutine::State::Suspended;
+
+                    current->caller = nullptr;
+
+                    this->stack = target->stack;
+                    this->sp = target->sp;
+                    this->stack_capacity = target->stack_capacity;
+                    this->frames = target->frames;
+                    this->frame_count = target->frame_count;
+                    this->frame_capacity = target->frame_capacity;
+                    this->stack_end = this->stack + this->stack_capacity;
+
+                    push(yield_val);
+
+                    active_coroutine = target;
+                    active_coroutine_idx = target->self_idx;
+
+                    frame = &frames[frame_count - 1];
+                    Function& fn_next = get_func_from_frame(*frame);
+                    sync_frame_cache(frame, fn_next, instr_data, ip, ip_end, const_pool, const_pool_size);
                 }
                 DISPATCH();
 

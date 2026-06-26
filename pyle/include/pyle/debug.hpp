@@ -68,6 +68,7 @@ namespace pyle {
                 case OpCode::SET_UPVALUE_POP:  fmt::print("{:16} {:4}\n", "SET_UPVALUE_POP", operand); break;
                 case OpCode::NEW_MAP:          fmt::print("{:16} {:4} (pairs)\n", "NEW_MAP", operand); break;
                 case OpCode::CALL_KW:          fmt::print("{:16} {:4} (pairs)\n", "CALL_KW", operand); break;
+                case OpCode::YIELD:         fmt::print("YIELD\n"); break;
                 default: fmt::print("UNKNOWN OPCODE\n"); break;
             }
         }

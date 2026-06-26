@@ -22,11 +22,6 @@ namespace pyle {
         std::string_view source_code;
         std::string_view script_name = "main.pyl";
         
-        struct CallFrame {
-            HeapIdx closure;
-            size_t ip;
-            size_t stack_base;
-        };
 
         Value* stack = nullptr;
         Value* sp = nullptr;
@@ -96,6 +91,15 @@ namespace pyle {
                         ud->deleter(ud->ptr);
                     }
                 }
+
+                if (auto* coro = std::get_if<Coroutine>(&obj.data)) {
+                    if (!coro->is_main) {
+                        delete[] coro->stack;
+                        delete[] coro->frames;
+                        coro->stack = nullptr;
+                        coro->frames = nullptr;
+                    }
+                }
             }
         }
 
@@ -108,6 +112,15 @@ namespace pyle {
 
         ankerl::unordered_dense::map<HeapIdx, int> builtin_slot_map;
         std::vector<ankerl::unordered_dense::map<HeapIdx, int>> saved_slot_maps_stack;
+
+
+        Coroutine* active_coroutine = nullptr;
+        Coroutine* main_coroutine = nullptr;
+        HeapIdx active_coroutine_idx = 0;
+        HeapIdx main_coroutine_idx = 0;
+
+        void init_root_coroutine();
+
     private:
 
         bool gc_enabled = true;

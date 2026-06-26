@@ -29,7 +29,8 @@ namespace pyle {
         FN, RETURN,             
         LET, GLOBAL,              
         STRUCT,                     
-        NONE, TRUE, FALSE,       
+        NONE, TRUE, FALSE,    
+        YIELD,   
 
         // Special
         ERROR,
@@ -69,6 +70,7 @@ namespace pyle {
         {"none",    TokenType::NONE},
         {"true",   TokenType::TRUE},
         {"false",  TokenType::FALSE},
+        {"yield",  TokenType::YIELD},
     };
 
 }

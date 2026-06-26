@@ -178,12 +178,61 @@ namespace pyle {
         return val;
     }
 
+    Value native_fiber_constructor(VM& vm, ArgView args) {
+        if (args.size() != 1) {
+            vm.runtime_error(RuntimeError::ArgumentError, "Fiber constructor expects exactly 1 argument (function or closure).");
+            return Value();
+        }
+
+        Value callee = args[0];
+        HeapIdx closure_idx = 0;
+
+        if (callee.tag == Value::Tag::ClosureRef) {
+            closure_idx = callee.as_ref;
+        } else if (callee.tag == Value::Tag::FuncRef) {
+            closure_idx = vm.alloc(Object(Closure{callee.as_ref}));
+        } else {
+            vm.runtime_error(RuntimeError::Type, "Fiber constructor argument must be a valid callable function or closure.");
+            return Value();
+        }
+
+        Coroutine coro;
+        coro.stack_capacity = 256; 
+        coro.stack = new Value[coro.stack_capacity];
+        coro.sp = coro.stack;
+
+        coro.frame_capacity = 64; 
+        coro.frames = new CallFrame[coro.frame_capacity];
+        coro.frame_count = 0;
+
+        coro.closure_idx = closure_idx;
+        coro.state = Coroutine::State::Suspended;
+        coro.is_main = false;
+
+        CallFrame entry_frame;
+        entry_frame.closure = closure_idx;
+        entry_frame.ip = 0;
+        entry_frame.stack_base = 1; 
+
+        coro.frames[coro.frame_count++] = entry_frame;
+
+        coro.stack[0] = Value(Value::Tag::ClosureRef, closure_idx);
+        coro.sp = coro.stack + 1;
+
+        HeapIdx coro_idx = vm.alloc(Object(std::move(coro)));
+        
+        std::get<Coroutine>(vm.get_heap_object(coro_idx).data).self_idx = coro_idx;
+
+        return Value(Value::Tag::CoroutineRef, coro_idx);
+    }
+
 
     void register_core_natives(VM& vm, bool load_core_modules) {
         pyle::bind_function<native_print>(vm, "print");
         pyle::bind_function<native_printf>(vm, "printf");
         pyle::bind_function<native_format>(vm, "format");
         pyle::bind_function<native_import>(vm, "import");
+        pyle::bind_function<native_fiber_constructor>(vm, "Fiber");
 
         if (load_core_modules) {
             pyle::register_core_modules(vm);

@@ -88,6 +88,7 @@ namespace pyle {
         void visit_implicit_string(ImplicitStringExpr* expr) override;
         void visit_map_expr(MapExpr* expr) override;
         void visit_call_kw_expr(CallKwExpr* expr) override;
+        void visit_yield_expr(YieldExpr* expr) override;
     };
 
 

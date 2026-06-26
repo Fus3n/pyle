@@ -640,6 +640,19 @@ namespace pyle {
             return std::make_unique<MapExpr>(std::move(entries));
         }
 
+        if (match({TokenType::YIELD})) {
+            Token yield_token = previous();
+            std::unique_ptr<Expr> value = nullptr;
+            // Parse optional value expression if not followed immediately by statements endings
+            if (!check(TokenType::RIGHT_PAREN) && !check(TokenType::RIGHT_BRACE) &&
+                !check(TokenType::RIGHT_BRACKET) && !check(TokenType::COMMA) &&
+                !check(TokenType::SEMICOLON) && !check(TokenType::EOF_TOKEN) &&
+                peek().selection.line == yield_token.selection.line) {
+                value = expression();
+            }
+            return std::make_unique<YieldExpr>(yield_token, std::move(value));
+        }
+
         reporter.report(peek().selection, ErrorType::Syntax, "Expected expression", peek().lexeme.size());
         throw ParserError();
     }

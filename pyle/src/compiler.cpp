@@ -628,5 +628,15 @@ namespace pyle {
         emit_instruction(OpCode::CALL_KW, expr->kwargs.size(), expr->paren.selection.line);
     }
 
+    void Compiler::visit_yield_expr(YieldExpr* expr) {
+        if (expr->value) {
+            expr->value->accept(this);
+        } else {
+            uint32_t none_idx = make_constant(Value());
+            emit_instruction(OpCode::LOAD_CONST, none_idx, expr->token.selection.line);
+        }
+        emit_instruction(OpCode::YIELD, 0, expr->token.selection.line);
+    }
+
 
 }
