@@ -1,17 +1,25 @@
 add_rules("mode.debug", "mode.release")
 
-set_toolchains("mingw")
 
 if is_mode("release") then
     set_optimize("fastest")
     set_symbols("hidden")
     set_strip("all")
+    add_ldflags("-flto=thin", {force = true})
+
+    if get_config("toolchain") == "clang" then
+        add_ldflags("-fuse-ld=lld", {force = true})
+    end
 end
 
 if is_mode("debug") then
     if has_config("toolchain") and get_config("toolchain") == "msvc" then
         add_cxflags("/fsanitize=address", {force = true})
     else
+        if is_plat("windows") and get_config("toolchain") == "clang" then
+            set_plat("mingw")
+        end
+
         add_cxflags("-fsanitize=address,undefined", "-fno-omit-frame-pointer", {force = true})
         add_ldflags("-fsanitize=address,undefined", {force = true})
     end
@@ -31,8 +39,6 @@ target("pyle")
     add_packages("fmt", "unordered_dense", {public = true})
     if is_mode("release") then
         set_policy("build.optimization.lto", true)
-        set_toolset("ar", "gcc-ar")
-        set_toolset("ranlib", "gcc-ranlib")
     end
 
 target("pyle_cli")
