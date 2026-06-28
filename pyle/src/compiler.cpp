@@ -19,6 +19,7 @@ namespace pyle {
                 char next = str[i + 1];
                 switch (next) {
                     case 'n':  result += '\n'; break;
+                    case 'e':  result += '\x1b'; break; 
                     case 't':  result += '\t'; break;
                     case 'r':  result += '\r'; break;
                     case '\\': result += '\\'; break;
