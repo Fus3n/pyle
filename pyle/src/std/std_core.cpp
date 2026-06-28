@@ -10,7 +10,8 @@
 #include "pyle/lexer.hpp"
 #include "pyle/parser.hpp"
 #include "pyle/compiler.hpp"
-#include "pyle/std/std_core_mods.hpp"
+#include "pyle/std/std_core_modules.hpp"
+#include <fmt/color.h>
 
 namespace pyle {
 
