@@ -107,7 +107,7 @@ namespace pyle {
 
         HeapIdx active_coroutine_idx = 0;
         HeapIdx main_coroutine_idx = 0;
-        bool fiber_switched = false;
+        bool coro_switched = false;
 
         inline void save_coroutine_state(Coroutine& coro) {
             coro.stack = this->stack;

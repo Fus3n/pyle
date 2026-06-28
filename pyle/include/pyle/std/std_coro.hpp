@@ -1,6 +1,6 @@
 #pragma once
 #include "pyle/value.hpp"
 
-namespace pyle::FiberMethods {
+namespace pyle::CoroMethods {
     Value dispatch(VM& vm, HeapIdx obj_idx, const std::string& name, ArgView args);
 }

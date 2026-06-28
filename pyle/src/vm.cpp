@@ -6,7 +6,7 @@
 #include "pyle/bytecode.hpp"
 #include "pyle/std/std_array.hpp"
 #include "pyle/std/std_string.hpp"
-#include "pyle/std/std_fiber.hpp"
+#include "pyle/std/std_coro.hpp"
 #include "pyle/std/std_map.hpp"
 #include "pyle/value.hpp"
 
@@ -377,7 +377,7 @@ namespace pyle {
             case Value::Tag::Float: ss << val.as_float; break;
             case Value::Tag::Bool: ss << (val.as_bool ? "true": "false"); break;
             case Value::Tag::None: ss << "null"; break;
-            case Value::Tag::CoroutineRef: ss << "<fiber>"; break;
+            case Value::Tag::CoroutineRef: ss << "<coro>"; break;
             case Value::Tag::NativeFuncRef: ss << "<native_function>"; break;
             case Value::Tag::StringRef: {
                 ss << std::get<std::string>(heap[val.as_ref].data);
@@ -1023,7 +1023,7 @@ namespace pyle {
 
                         HeapIdx target_idx = current.caller_idx;
                         if (target_idx == 0) {
-                            runtime_error(RuntimeError::Runtime, "Fiber completed but has no caller to yield back to.");
+                            runtime_error(RuntimeError::Runtime, "Coro completed but has no caller to yield back to.");
                             return;
                         }
 
@@ -1242,11 +1242,11 @@ namespace pyle {
                             sp -= (arg_count + 2);
                             
                             sync_ip();
-                            fiber_switched = false;
-                            Value result = FiberMethods::dispatch(*this, callee.as_ref, method_name, args_view);
+                            coro_switched = false;
+                            Value result = CoroMethods::dispatch(*this, callee.as_ref, method_name, args_view);
                             if (panicked) return;
 
-                            if (fiber_switched) {
+                            if (coro_switched) {
                                 frame = &frames[frame_count - 1];
                                 Function& fn_next = get_func_from_frame(*frame);
                                 sync_frame_cache(frame, fn_next, instr_data, ip, ip_end, const_pool, const_pool_size);
@@ -1690,7 +1690,7 @@ namespace pyle {
 
                     Coroutine& current = std::get<Coroutine>(heap[active_coroutine_idx].data);
                     if (current.caller_idx == 0) {
-                        runtime_error(RuntimeError::Runtime, "Cannot yield from the root fiber (or no caller context).");
+                        runtime_error(RuntimeError::Runtime, "Cannot yield from the root coro (or no caller context).");
                         return;
                     }
 

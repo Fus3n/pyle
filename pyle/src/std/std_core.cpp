@@ -178,9 +178,9 @@ namespace pyle {
         return val;
     }
 
-    Value native_fiber_constructor(VM& vm, ArgView args) {
+    Value native_coro_constructor(VM& vm, ArgView args) {
         if (args.size() != 1) {
-            vm.runtime_error(RuntimeError::ArgumentError, "Fiber constructor expects exactly 1 argument (function or closure).");
+            vm.runtime_error(RuntimeError::ArgumentError, "Coro constructor expects exactly 1 argument (function or closure).");
             return Value();
         }
 
@@ -192,7 +192,7 @@ namespace pyle {
         } else if (callee.tag == Value::Tag::FuncRef) {
             closure_idx = vm.alloc(Object(Closure{callee.as_ref}));
         } else {
-            vm.runtime_error(RuntimeError::Type, "Fiber constructor argument must be a valid callable function or closure.");
+            vm.runtime_error(RuntimeError::Type, "Coro constructor argument must be a valid callable function or closure.");
             return Value();
         }
 
@@ -232,7 +232,7 @@ namespace pyle {
         pyle::bind_function<native_printf>(vm, "printf");
         pyle::bind_function<native_format>(vm, "format");
         pyle::bind_function<native_import>(vm, "import");
-        pyle::bind_function<native_fiber_constructor>(vm, "Fiber");
+        pyle::bind_function<native_coro_constructor>(vm, "Coro");
 
         if (load_core_modules) {
             pyle::register_core_modules(vm);

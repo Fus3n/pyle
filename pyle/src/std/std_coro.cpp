@@ -1,8 +1,8 @@
-#include "pyle/std/std_fiber.hpp"
+#include "pyle/std/std_coro.hpp"
 #include "pyle/vm.hpp"
 #include <fmt/format.h>
 
-namespace pyle::FiberMethods {
+namespace pyle::CoroMethods {
 
     Value resume(VM& vm, HeapIdx obj_idx, ArgView args) {
         if (args.size() > 1) {
@@ -14,11 +14,11 @@ namespace pyle::FiberMethods {
         
         Coroutine& target = std::get<Coroutine>(vm.get_heap_object(obj_idx).data);
         if (target.state == Coroutine::State::Running) {
-            vm.runtime_error(RuntimeError::Runtime, "Cannot resume an already running fiber.");
+            vm.runtime_error(RuntimeError::Runtime, "Cannot resume an already running coro.");
             return Value();
         }
         if (target.state == Coroutine::State::Dead) {
-            vm.runtime_error(RuntimeError::Runtime, "Cannot resume a dead fiber.");
+            vm.runtime_error(RuntimeError::Runtime, "Cannot resume a dead coro.");
             return Value();
         }
 
@@ -43,7 +43,7 @@ namespace pyle::FiberMethods {
         }
 
         vm.active_coroutine_idx = obj_idx;
-        vm.fiber_switched = true; 
+        vm.coro_switched = true; 
 
         return Value(); 
     }
@@ -70,7 +70,7 @@ namespace pyle::FiberMethods {
             return state(vm, obj_idx, args);
         }
 
-        vm.runtime_error(RuntimeError::Name, fmt::format("fiber has no method '{}'", name));
+        vm.runtime_error(RuntimeError::Name, fmt::format("coro has no method '{}'", name));
         return Value();
     }
 }

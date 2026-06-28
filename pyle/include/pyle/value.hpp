@@ -74,7 +74,7 @@ namespace pyle {
                 case Tag::RangeRef: return "range";
                 case Tag::MapRef: return "map";
                 case Tag::NativeObjectRef: return "native_object"; 
-                case Tag::CoroutineRef: return "fiber";
+                case Tag::CoroutineRef: return "coro";
                 default:
                     return fmt::format("HeapRef({})", as_ref);
             }
