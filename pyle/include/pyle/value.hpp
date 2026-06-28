@@ -253,7 +253,7 @@ namespace pyle {
         size_t frame_capacity = 0;
 
         HeapIdx closure_idx = 0;       
-        Coroutine* caller = nullptr;   
+        HeapIdx caller_idx = 0;   
         HeapIdx self_idx = 0;          
 
         enum class State {
@@ -271,17 +271,8 @@ namespace pyle {
             cleanup();
         }
 
-        Coroutine(const Coroutine& other) {
-            copy_from(other);
-        }
-
-        Coroutine& operator=(const Coroutine& other) {
-            if (this != &other) {
-                cleanup();
-                copy_from(other);
-            }
-            return *this;
-        }
+        Coroutine(const Coroutine& other) = delete;
+        Coroutine& operator=(const Coroutine& other) = delete;
 
         Coroutine(Coroutine&& other) noexcept {
             move_from(std::move(other));
@@ -307,47 +298,14 @@ namespace pyle {
             stack_capacity = 0;
             frame_capacity = 0;
             frame_count = 0;
-            started = false;
         }
 
-        void copy_from(const Coroutine& other) {
-            is_main = other.is_main;
-            state = other.state;
-            closure_idx = other.closure_idx;
-            caller = other.caller;
-            self_idx = other.self_idx;
-            stack_capacity = other.stack_capacity;
-            frame_capacity = other.frame_capacity;
-            frame_count = other.frame_count;
-            started = other.started;
-
-            if (other.stack && !other.is_main) {
-                stack = new Value[stack_capacity];
-                size_t elements = other.sp - other.stack;
-                for (size_t i = 0; i < elements; ++i) {
-                    stack[i] = other.stack[i];
-                }
-                sp = stack + elements;
-            } else {
-                stack = other.stack;
-                sp = other.sp;
-            }
-
-            if (other.frames && !other.is_main) {
-                frames = new CallFrame[frame_capacity];
-                for (size_t i = 0; i < frame_count; ++i) {
-                    frames[i] = other.frames[i];
-                }
-            } else {
-                frames = other.frames;
-            }
-        }
 
         void move_from(Coroutine&& other) noexcept {
             is_main = other.is_main;
             state = other.state;
             closure_idx = other.closure_idx;
-            caller = other.caller;
+            caller_idx = other.caller_idx;
             self_idx = other.self_idx;
             stack_capacity = other.stack_capacity;
             frame_capacity = other.frame_capacity;

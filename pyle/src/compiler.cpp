@@ -342,6 +342,17 @@ namespace pyle {
     }
 
     void Compiler::visit_method_call(MethodCallExpr *expr) {
+        if (!expr->method_name.lexeme.empty() && expr->method_name.lexeme[0] == '_') {
+            bool is_self = false;
+            if (auto* var = dynamic_cast<VariableExpr*>(expr->callee.get())) {
+                if (var->name.lexeme == "self") is_self = true;
+            }
+            if (!is_self) {
+                reporter.report(expr->method_name.selection, ErrorType::Compile, "Cannot call private method starting with '_'.");
+                return;
+            }
+        }
+
         expr->callee->accept(this);
 
         HeapIdx name_idx = vm.intern_string(expr->method_name.lexeme);
@@ -588,12 +599,34 @@ namespace pyle {
     }
 
     void Compiler::visit_get_field(GetFieldExpr* expr) {
+        if (!expr->name.lexeme.empty() && expr->name.lexeme[0] == '_') {
+            bool is_self = false;
+            if (auto* var = dynamic_cast<VariableExpr*>(expr->obj.get())) {
+                if (var->name.lexeme == "self") is_self = true;
+            }
+            if (!is_self) {
+                reporter.report(expr->name.selection, ErrorType::Compile, "Cannot access private member starting with '_'.");
+                return;
+            }
+        }
+        
         expr->obj->accept(this);
         HeapIdx field_id = vm.intern_string(expr->name.lexeme);
         emit_instruction(OpCode::GET_FIELD, field_id, expr->name.selection.line);
     }
 
     void Compiler::visit_set_field(SetFieldExpr* expr) {
+        if (!expr->name.lexeme.empty() && expr->name.lexeme[0] == '_') {
+            bool is_self = false;
+            if (auto* var = dynamic_cast<VariableExpr*>(expr->obj.get())) {
+                if (var->name.lexeme == "self") is_self = true;
+            }
+            if (!is_self) {
+                reporter.report(expr->name.selection, ErrorType::Compile, "Cannot modify private member starting with '_'.");
+                return;
+            }
+        }
+
         expr->obj->accept(this);
         expr->value->accept(this);
         HeapIdx field_id = vm.intern_string(expr->name.lexeme);

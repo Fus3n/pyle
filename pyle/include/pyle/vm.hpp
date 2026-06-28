@@ -91,15 +91,6 @@ namespace pyle {
                         ud->deleter(ud->ptr);
                     }
                 }
-
-                if (auto* coro = std::get_if<Coroutine>(&obj.data)) {
-                    if (!coro->is_main) {
-                        delete[] coro->stack;
-                        delete[] coro->frames;
-                        coro->stack = nullptr;
-                        coro->frames = nullptr;
-                    }
-                }
             }
         }
 
@@ -114,10 +105,28 @@ namespace pyle {
         std::vector<ankerl::unordered_dense::map<HeapIdx, int>> saved_slot_maps_stack;
 
 
-        Coroutine* active_coroutine = nullptr;
-        Coroutine* main_coroutine = nullptr;
         HeapIdx active_coroutine_idx = 0;
         HeapIdx main_coroutine_idx = 0;
+        bool fiber_switched = false;
+
+        inline void save_coroutine_state(Coroutine& coro) {
+            coro.stack = this->stack;
+            coro.sp = this->sp;
+            coro.stack_capacity = this->stack_capacity;
+            coro.frames = this->frames;
+            coro.frame_count = this->frame_count;
+            coro.frame_capacity = this->frame_capacity;
+        }
+
+        inline void load_coroutine_state(Coroutine& coro) {
+            this->stack = coro.stack;
+            this->sp = coro.sp;
+            this->stack_capacity = coro.stack_capacity;
+            this->frames = coro.frames;
+            this->frame_count = coro.frame_count;
+            this->frame_capacity = coro.frame_capacity;
+            this->stack_end = this->stack + this->stack_capacity;
+        }
 
         void init_root_coroutine();
 

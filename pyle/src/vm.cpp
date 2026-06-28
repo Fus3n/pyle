@@ -6,6 +6,8 @@
 #include "pyle/bytecode.hpp"
 #include "pyle/std/std_array.hpp"
 #include "pyle/std/std_string.hpp"
+#include "pyle/std/std_fiber.hpp"
+#include "pyle/std/std_map.hpp"
 #include "pyle/value.hpp"
 
 namespace pyle {
@@ -91,8 +93,15 @@ namespace pyle {
         instance.type_idx = struct_type_idx;
         instance.fields.resize(type.field_names.size());
         for (int i = 0; i < arg_count; i++) {
+            const std::string& field_name = std::get<std::string>(heap[type.field_names[i]].data);
+            if (!field_name.empty() && field_name[0] == '_') {
+                runtime_error(RuntimeError::ArgumentError, fmt::format("Cannot initialize private field '{}' during construction.", field_name));
+                return false;
+            }
+            
             instance.fields[i] = peek(arg_count - i);
         }
+
         for (size_t i = arg_count; i < type.field_names.size(); i++) {
             instance.fields[i] = Value();
         }
@@ -131,7 +140,7 @@ namespace pyle {
     }
 
     void VM::init_root_coroutine() {
-        if (main_coroutine == nullptr) {
+        if (main_coroutine_idx == 0) {
             Coroutine root;
             root.stack = this->stack;
             root.sp = this->sp;
@@ -142,13 +151,12 @@ namespace pyle {
             root.state = Coroutine::State::Running;
             root.is_main = true;
 
-            HeapIdx root_idx = alloc(Object(root));
+            HeapIdx root_idx = alloc(Object(std::move(root)));
             main_coroutine_idx = root_idx;
             active_coroutine_idx = root_idx;
             
-            main_coroutine = &std::get<Coroutine>(heap[root_idx].data);
-            main_coroutine->self_idx = root_idx;
-            active_coroutine = main_coroutine;
+            Coroutine& main_c = std::get<Coroutine>(heap[root_idx].data);
+            main_c.self_idx = root_idx;
         }
     }
 
@@ -331,13 +339,13 @@ namespace pyle {
                 if (coro_ptr->closure_idx != 0) {
                     mark_value(Value(Value::Tag::ClosureRef, coro_ptr->closure_idx));
                 }
-                if (coro_ptr->caller) {
-                    mark_value(Value(Value::Tag::CoroutineRef, coro_ptr->caller->self_idx));
+                if (coro_ptr->caller_idx != 0) {
+                    mark_value(Value(Value::Tag::CoroutineRef, coro_ptr->caller_idx));
                 }
 
                 // Trace evaluation stack and CallFrames only if suspended.
                 // (Active coroutine elements are already marked natively on the VM stack)
-                if (coro_ptr != active_coroutine) {
+                if (active_coroutine_idx == 0 || coro_ptr != &std::get<Coroutine>(heap[active_coroutine_idx].data)) {
                     for (Value* ptr = coro_ptr->stack; ptr < coro_ptr->sp; ++ptr) {
                         mark_value(*ptr);
                     }
@@ -369,6 +377,7 @@ namespace pyle {
             case Value::Tag::Float: ss << val.as_float; break;
             case Value::Tag::Bool: ss << (val.as_bool ? "true": "false"); break;
             case Value::Tag::None: ss << "null"; break;
+            case Value::Tag::CoroutineRef: ss << "<fiber>"; break;
             case Value::Tag::NativeFuncRef: ss << "<native_function>"; break;
             case Value::Tag::StringRef: {
                 ss << std::get<std::string>(heap[val.as_ref].data);
@@ -653,29 +662,13 @@ namespace pyle {
             std::string_view saved_script_name;
 
             ~ExecutionGuard() {
-                // If we exit execute() while a non-main fiber is active,
-                // safely suspend it and restore VM registers back to the root main thread.
-                // This guarantees VM::stack/frames point back to their original allocated memory.
-                if (vm.main_coroutine && vm.active_coroutine != vm.main_coroutine) {
-                    // 1. Suspend and save the active coroutine's registers
-                    vm.active_coroutine->stack = vm.stack;
-                    vm.active_coroutine->sp = vm.sp;
-                    vm.active_coroutine->stack_capacity = vm.stack_capacity;
-                    vm.active_coroutine->frames = vm.frames;
-                    vm.active_coroutine->frame_count = vm.frame_count;
-                    vm.active_coroutine->frame_capacity = vm.frame_capacity;
-                    vm.active_coroutine->state = Coroutine::State::Suspended;
+                if (vm.main_coroutine_idx != 0 && vm.active_coroutine_idx != vm.main_coroutine_idx) {
+                    Coroutine& active = std::get<Coroutine>(vm.heap[vm.active_coroutine_idx].data);
+                    vm.save_coroutine_state(active);
+                    active.state = Coroutine::State::Suspended;
 
-                    // 2. Safely swap registers back to the main_coroutine
-                    vm.stack = vm.main_coroutine->stack;
-                    vm.sp = vm.main_coroutine->sp;
-                    vm.stack_capacity = vm.main_coroutine->stack_capacity;
-                    vm.frames = vm.main_coroutine->frames;
-                    vm.frame_count = vm.main_coroutine->frame_count;
-                    vm.frame_capacity = vm.main_coroutine->frame_capacity;
-                    vm.stack_end = vm.stack + vm.stack_capacity;
-
-                    vm.active_coroutine = vm.main_coroutine;
+                    Coroutine& main_c = std::get<Coroutine>(vm.heap[vm.main_coroutine_idx].data);
+                    vm.load_coroutine_state(main_c);
                     vm.active_coroutine_idx = vm.main_coroutine_idx;
                 }
 
@@ -1000,6 +993,7 @@ namespace pyle {
                             break;
                         }
                         case Value::Tag::StructTypeRef: {
+                            sync_ip(); 
                             if (instantiate_struct(callee.as_ref, arg_count, frame)) {
                                 frame = &frames[frame_count - 1];
                                 Function& fn_post_clos = get_func_from_frame(*frame);
@@ -1020,31 +1014,25 @@ namespace pyle {
                     frame_count--;
 
                     if (frame_count == 0) {
-                        Coroutine* current = active_coroutine;
-                        current->state = Coroutine::State::Dead;
+                        Coroutine& current = std::get<Coroutine>(heap[active_coroutine_idx].data);
+                        current.state = Coroutine::State::Dead;
 
-                        if (current->is_main) {
+                        if (current.is_main) {
                             return;
                         }
 
-                        Coroutine* target = current->caller;
-                        if (!target) {
+                        HeapIdx target_idx = current.caller_idx;
+                        if (target_idx == 0) {
                             runtime_error(RuntimeError::Runtime, "Fiber completed but has no caller to yield back to.");
                             return;
                         }
 
-                        this->stack = target->stack;
-                        this->sp = target->sp;
-                        this->stack_capacity = target->stack_capacity;
-                        this->frames = target->frames;
-                        this->frame_count = target->frame_count;
-                        this->frame_capacity = target->frame_capacity;
-                        this->stack_end = this->stack + this->stack_capacity;
+                        Coroutine& target = std::get<Coroutine>(heap[target_idx].data);
+                        this->load_coroutine_state(target);
 
                         push(ret_val);
 
-                        active_coroutine = target;
-                        active_coroutine_idx = target->self_idx;
+                        active_coroutine_idx = target_idx;
 
                         frame = &frames[frame_count - 1];
                         Function& fn_next = get_func_from_frame(*frame);
@@ -1120,217 +1108,175 @@ namespace pyle {
                         return;
                     }
                     
-                    if (callee.tag == Value::Tag::MapRef) {
-                        auto& map = std::get<MapType>(heap[callee.as_ref].data);
-                        auto it = map.find(name_val);
-                        if (it != map.end()) {
-                            Value resolved_fn = it->second;
-                            
-                            std::copy(sp - arg_count, sp, sp - arg_count - 1);
-                            sp--; 
-                            *(sp - arg_count - 1) = resolved_fn;
+                    std::string method_name = std::get<std::string>(heap[name_val.as_ref].data);
 
-                            if (resolved_fn.tag == Value::Tag::ClosureRef) {
-                                Closure& closure = std::get<Closure>(heap[resolved_fn.as_ref].data);
-                                Function& fn = std::get<Function>(heap[closure.function].data);
-                                if (fn.arity != arg_count) {
-                                    runtime_error(RuntimeError::ArgumentError, fmt::format("Expected {} args, got {}.", fn.arity, arg_count)); 
+                    switch (callee.tag) {
+                        case Value::Tag::MapRef: {
+                            if (MapMethods::has_method(method_name)) {
+                                const Value *args_ptr = arg_count > 0 ? (sp - arg_count) : nullptr;
+                                ArgView args_view{args_ptr, static_cast<size_t>(arg_count)};
+                                sync_ip();
+                                Value result = MapMethods::dispatch(*this, callee.as_ref, method_name, args_view);
+                                if (panicked) return;
+                                sp -= (arg_count + 1);
+                                set_top(result);
+                            } else {
+                                auto& map = std::get<MapType>(heap[callee.as_ref].data);
+                                auto it = map.find(name_val);
+                                if (it != map.end()) {
+                                    Value resolved_fn = it->second;
+                                    
+                                    std::copy(sp - arg_count, sp, sp - arg_count - 1);
+                                    sp--; 
+                                    *(sp - arg_count - 1) = resolved_fn;
+
+                                    if (resolved_fn.tag == Value::Tag::ClosureRef) {
+                                        Closure& closure = std::get<Closure>(heap[resolved_fn.as_ref].data);
+                                        Function& fn = std::get<Function>(heap[closure.function].data);
+                                        if (fn.arity != arg_count) {
+                                            runtime_error(RuntimeError::ArgumentError, fmt::format("Expected {} args, got {}.", fn.arity, arg_count)); 
+                                            return;
+                                        }
+                                        sync_ip();
+                                        CallFrame new_frame;
+                                        new_frame.closure = resolved_fn.as_ref;
+                                        new_frame.ip = 0;
+                                        new_frame.stack_base = stack_size() - arg_count;
+                                        frames[frame_count++] = new_frame;
+                                        frame = &frames[frame_count - 1];
+                                        sync_frame_cache(frame, fn, instr_data, ip, ip_end, const_pool, const_pool_size);
+                                    } else if (resolved_fn.tag == Value::Tag::NativeFuncRef) {
+                                        NativeFn native = std::get<NativeFn>(heap[resolved_fn.as_ref].data);
+                                        const Value* args_ptr = arg_count > 0 ? (sp - arg_count) : nullptr;
+                                        ArgView args_view{args_ptr, static_cast<size_t>(arg_count)};
+                                        sync_ip();
+                                        Value result = native(*this, args_view);
+                                        sp -= arg_count; 
+                                        set_top(result);
+                                    } else if (resolved_fn.tag == Value::Tag::StructTypeRef) {
+                                        sync_ip();
+                                        if (instantiate_struct(resolved_fn.as_ref, arg_count, frame)) {
+                                            frame = &frames[frame_count - 1];
+                                            Function& fn_post_clos = get_func_from_frame(*frame);
+                                            sync_frame_cache(frame, fn_post_clos, instr_data, ip, ip_end, const_pool, const_pool_size);
+                                        }
+                                    } else {
+                                        runtime_error(RuntimeError::Type, "Resolved value is not callable.");
+                                        return;
+                                    }
+                                } else {
+                                    runtime_error(RuntimeError::Name, fmt::format("Map has no static method or key '{}'.", method_name));
+                                    return;
+                                }
+                            }
+                            break;
+                        }
+                        
+                        case Value::Tag::NativeObjectRef: {
+                            NativeObject& ud = std::get<NativeObject>(heap[callee.as_ref].data);
+                            StructType& type = std::get<StructType>(heap[ud.type_idx].data);
+                            auto it = type.methods.find(name_val.as_ref);
+                            
+                            if (it != type.methods.end()) {
+                                HeapIdx method_idx = it->second;
+                                Object& method_obj = heap[method_idx];
+                                if (auto* native_method = std::get_if<NativeMethod>(&method_obj.data)) {
+                                    const Value* args_ptr = arg_count > 0 ? (sp - arg_count) : nullptr;
+                                    ArgView args_view{args_ptr, static_cast<size_t>(arg_count)};
+                                    sync_ip();
+                                    Value result = native_method->fn(*this, callee.as_ref, args_view);
+                                    if (panicked) return;
+                                    sp -= (arg_count + 1); 
+                                    set_top(result);
+                                } else {
+                                    runtime_error(RuntimeError::Type, "Expected native method.");
+                                    return;
+                                }
+                            } else {
+                                runtime_error(RuntimeError::Name, fmt::format("Method '{}' not found on native class.", method_name));
+                                return;
+                            }
+                            break;
+                        }
+
+                        case Value::Tag::StructRef: {
+                            Struct& s = std::get<Struct>(heap[callee.as_ref].data);
+                            StructType& type = std::get<StructType>(heap[s.type_idx].data);
+                            auto it = type.methods.find(name_val.as_ref);
+                            
+                            if (it != type.methods.end()) {
+                                HeapIdx fn_idx = it->second;
+                                HeapIdx closure_idx = build_closure_for_call(fn_idx, frame);
+                                Value method_closure(Value::Tag::ClosureRef, closure_idx);
+                                Function& fn = std::get<Function>(heap[fn_idx].data);
+                                stack[stack_size() - arg_count - 1] = callee;
+                                stack[stack_size() - arg_count - 2] = method_closure;
+                                int total_args = arg_count + 1;
+                                if (fn.arity != total_args) {
+                                    runtime_error(RuntimeError::ArgumentError, fmt::format("Expected {} arguments, got {}.", fn.arity, total_args));
                                     return;
                                 }
                                 sync_ip();
                                 CallFrame new_frame;
-                                new_frame.closure = resolved_fn.as_ref;
+                                new_frame.closure = closure_idx;
                                 new_frame.ip = 0;
-                                new_frame.stack_base = stack_size() - arg_count;
+                                new_frame.stack_base = stack_size() - total_args;
+                                if (frame_count == frame_capacity) [[unlikely]] {
+                                    runtime_error(RuntimeError::Runtime, "Stack overflow."); 
+                                    return;
+                                }
                                 frames[frame_count++] = new_frame;
                                 frame = &frames[frame_count - 1];
                                 sync_frame_cache(frame, fn, instr_data, ip, ip_end, const_pool, const_pool_size);
-                            } else if (resolved_fn.tag == Value::Tag::NativeFuncRef) {
-                                NativeFn native = std::get<NativeFn>(heap[resolved_fn.as_ref].data);
-                                const Value* args_ptr = arg_count > 0 ? (sp - arg_count) : nullptr;
-                                ArgView args_view{args_ptr, static_cast<size_t>(arg_count)};
-                                sync_ip();
-                                Value result = native(*this, args_view);
-                                sp -= arg_count; 
-                                set_top(result);
-                            } else if (resolved_fn.tag == Value::Tag::StructTypeRef) {
-                                if (instantiate_struct(resolved_fn.as_ref, arg_count, frame)) {
-                                    frame = &frames[frame_count - 1];
-                                    Function& fn_post_clos = get_func_from_frame(*frame);
-                                    sync_frame_cache(frame, fn_post_clos, instr_data, ip, ip_end, const_pool, const_pool_size);
-                                }
                             } else {
-                                runtime_error(RuntimeError::Type, "Resolved value is not callable.");
+                                runtime_error(RuntimeError::Name, fmt::format("Method '{}' not found.", method_name));
                                 return;
                             }
-                        } else {
-                            std::string method_name = std::get<std::string>(heap[name_val.as_ref].data);
-                            runtime_error(RuntimeError::Name, fmt::format("Module has no function '{}'.", method_name));
-                            return;
+                            break;
                         }
-                    }
-                    else if (callee.tag == Value::Tag::NativeObjectRef) {
-                        NativeObject& ud = std::get<NativeObject>(heap[callee.as_ref].data);
-                        StructType& type = std::get<StructType>(heap[ud.type_idx].data);
-                        auto it = type.methods.find(name_val.as_ref);
-                        
-                        if (it != type.methods.end()) {
-                            HeapIdx method_idx = it->second;
-                            Object& method_obj = heap[method_idx];
-                            if (auto* native_method = std::get_if<NativeMethod>(&method_obj.data)) {
-                                const Value* args_ptr = arg_count > 0 ? (sp - arg_count) : nullptr;
-                                ArgView args_view{args_ptr, static_cast<size_t>(arg_count)};
-                                sync_ip();
-                                Value result = native_method->fn(*this, callee.as_ref, args_view);
-                                if (panicked) return;
-                                sp -= (arg_count + 1); 
-                                set_top(result);
-                            } else {
-                                runtime_error(RuntimeError::Type, "Expected native method.");
-                                return;
-                            }
-                        } else {
-                            std::string method_name = std::get<std::string>(heap[name_val.as_ref].data);
-                            runtime_error(RuntimeError::Name, fmt::format("Method '{}' not found on native class.", method_name));
-                            return;
-                        }
-                    }
-                    else if (callee.tag == Value::Tag::StructRef) {
-                        Struct& s = std::get<Struct>(heap[callee.as_ref].data);
-                        StructType& type = std::get<StructType>(heap[s.type_idx].data);
-                        auto it = type.methods.find(name_val.as_ref);
-                        
-                        if (it != type.methods.end()) {
-                            HeapIdx fn_idx = it->second;
-                            HeapIdx closure_idx = build_closure_for_call(fn_idx, frame);
-                            Value method_closure(Value::Tag::ClosureRef, closure_idx);
-                            Function& fn = std::get<Function>(heap[fn_idx].data);
-                            stack[stack_size() - arg_count - 1] = callee;
-                            stack[stack_size() - arg_count - 2] = method_closure;
-                            int total_args = arg_count + 1;
-                            if (fn.arity != total_args) {
-                                runtime_error(RuntimeError::ArgumentError, fmt::format("Expected {} arguments, got {}.", fn.arity, total_args));
-                                return;
-                            }
+
+                        case Value::Tag::CoroutineRef: {
+                            std::vector<Value> args_copy(sp - arg_count, sp);
+                            ArgView args_view{args_copy.data(), args_copy.size()};
+                            
+                            sp -= (arg_count + 2);
+                            
                             sync_ip();
-                            CallFrame new_frame;
-                            new_frame.closure = closure_idx;
-                            new_frame.ip = 0;
-                            new_frame.stack_base = stack_size() - total_args;
-                            if (frame_count == frame_capacity) [[unlikely]] {
-                                runtime_error(RuntimeError::Runtime, "Stack overflow."); 
-                                return;
-                            }
-                            frames[frame_count++] = new_frame;
-                            frame = &frames[frame_count - 1];
-                            sync_frame_cache(frame, fn, instr_data, ip, ip_end, const_pool, const_pool_size);
-                        } else {
-                            std::string method_name = std::get<std::string>(heap[name_val.as_ref].data);
-                            runtime_error(RuntimeError::Name, fmt::format("Method '{}' not found.", method_name));
-                            return;
-                        }
-                    } 
-                    // 1. Add CoroutineRef (fiber) branch directly into the main if-else chain
-                    else if (callee.tag == Value::Tag::CoroutineRef) {
-                        std::string method_name = std::get<std::string>(heap[name_val.as_ref].data);
-                        if (method_name == "resume") {
-                            if (arg_count > 1) {
-                                runtime_error(RuntimeError::ArgumentError, "resume() takes at most 1 argument.");
-                                return;
-                            }
-                            Value resume_arg = (arg_count == 1) ? pop() : Value();
-                            
-                            pop(); // Pop method name
-                            pop(); // Pop callee
+                            fiber_switched = false;
+                            Value result = FiberMethods::dispatch(*this, callee.as_ref, method_name, args_view);
+                            if (panicked) return;
 
-                            Coroutine& target = std::get<Coroutine>(heap[callee.as_ref].data);
-                            if (target.state == Coroutine::State::Running) {
-                                runtime_error(RuntimeError::Runtime, "Cannot resume an already running fiber.");
-                                return;
-                            }
-                            if (target.state == Coroutine::State::Dead) {
-                                runtime_error(RuntimeError::Runtime, "Cannot resume a dead fiber.");
-                                return;
-                            }
-
-                            Coroutine* current = active_coroutine;
-                            
-                            // 1. Save caller fiber state
-                            sync_ip();
-                            current->stack = this->stack;
-                            current->sp = this->sp;
-                            current->stack_capacity = this->stack_capacity;
-                            current->frames = this->frames;
-                            current->frame_count = this->frame_count;
-                            current->frame_capacity = this->frame_capacity;
-                            current->state = Coroutine::State::Suspended;
-
-                            // 2. Setup target fiber
-                            target.caller = current;
-                            target.state = Coroutine::State::Running;
-
-                            // 3. Load target fiber VM registers
-                            this->stack = target.stack;
-                            this->sp = target.sp;
-                            this->stack_capacity = target.stack_capacity;
-                            this->frames = target.frames;
-                            this->frame_count = target.frame_count;
-                            this->frame_capacity = target.frame_capacity;
-                            this->stack_end = this->stack + this->stack_capacity;
-
-                            
-                            // 4. Push the resume argument onto target's stack
-                            if (!target.started) {
-                                target.started = true; // Ignore initial argument to align local slots
+                            if (fiber_switched) {
+                                frame = &frames[frame_count - 1];
+                                Function& fn_next = get_func_from_frame(*frame);
+                                sync_frame_cache(frame, fn_next, instr_data, ip, ip_end, const_pool, const_pool_size);
                             } else {
-                                push(resume_arg); // Push on subsequent yields
+                                push(result);
                             }
-
-                            // 5. Update active coroutine pointers
-                            active_coroutine = &target;
-                            active_coroutine_idx = callee.as_ref;
-
-                            // 6. Synchronize caller's loop cache
-                            frame = &frames[frame_count - 1];
-                            Function& fn_next = get_func_from_frame(*frame);
-                            sync_frame_cache(frame, fn_next, instr_data, ip, ip_end, const_pool, const_pool_size);
+                            break;
                         }
-                        else if (method_name == "state") {
-                            if (arg_count != 0) {
-                                runtime_error(RuntimeError::ArgumentError, "state() takes 0 arguments.");
-                                return;
+
+                        case Value::Tag::ArrayRef:
+                        case Value::Tag::StringRef: {
+                            const Value *args_ptr = arg_count > 0 ? (sp - arg_count) : nullptr;
+                            ArgView args_view{args_ptr, static_cast<size_t>(arg_count)};
+                            sync_ip();
+                            Value result;
+                            if (callee.tag == Value::Tag::ArrayRef) {
+                                result = ArrayMethods::dispatch(*this, callee.as_ref, method_name, args_view);
+                            } else {
+                                result = StringMethods::dispatch(*this, callee.as_ref, method_name, args_view);
                             }
-                            Coroutine& target = std::get<Coroutine>(heap[callee.as_ref].data);
-                            std::string state_str = "suspended";
-                            if (target.state == Coroutine::State::Running) state_str = "running";
-                            else if (target.state == Coroutine::State::Dead) state_str = "dead";
-                            
-                            HeapIdx str_idx = intern_string(state_str);
-                            sp -= 2; // Pop callee and method name
-                            push(Value(Value::Tag::StringRef, str_idx));
+                            if (panicked) return;
+                            sp -= (arg_count + 1);
+                            set_top(result);
+                            break;
                         }
-                        else {
-                            runtime_error(RuntimeError::Name, fmt::format("fiber has no method '{}'", method_name));
-                            return;
-                        }
-                    }
-                    else {
-                        std::string method_name = std::get<std::string>(heap[name_val.as_ref].data);
-                        const Value *args_ptr = arg_count > 0 ? (sp - arg_count) : nullptr;
-                        ArgView args_view{args_ptr, static_cast<size_t>(arg_count)};
-                        sync_ip();
-                        Value result;
-                        if (callee.tag == Value::Tag::ArrayRef) {
-                            result = ArrayMethods::dispatch(*this, callee.as_ref, method_name, args_view);
-                        } else if (callee.tag == Value::Tag::StringRef) {
-                            result = StringMethods::dispatch(*this, callee.as_ref, method_name, args_view);
-                        } else {
+
+                        default: {
                             runtime_error(RuntimeError::Type, fmt::format("Expected object with method, got {} instead", callee.tag_to_string()));
                             return;
                         }
-                        if (panicked) return;
-                        sp -= (arg_count + 1);
-                        set_top(result);
                     }
                 }
                 DISPATCH();
@@ -1696,6 +1642,12 @@ namespace pyle {
                     for (int i = 0; i < pair_count; i++) {
                         Value val = pop();
                         Value key = pop();
+                        const std::string& field_name = std::get<std::string>(heap[key.as_ref].data);
+                        if (!field_name.empty() && field_name[0] == '_') {
+                            runtime_error(RuntimeError::ArgumentError, fmt::format("Cannot initialize private field '{}' via named constructor.", field_name));
+                            return;
+                        }
+
                         size_t offset = type.get_offset(key.as_ref);
                         if (offset == size_t(-1)) {
                             runtime_error(RuntimeError::Name, "Invalid field name passed in named constructor."); 
@@ -1736,37 +1688,26 @@ namespace pyle {
                 OP(YIELD) {
                     Value yield_val = pop();
 
-                    Coroutine* current = active_coroutine;
-                    if (!current || !current->caller) {
+                    Coroutine& current = std::get<Coroutine>(heap[active_coroutine_idx].data);
+                    if (current.caller_idx == 0) {
                         runtime_error(RuntimeError::Runtime, "Cannot yield from the root fiber (or no caller context).");
                         return;
                     }
 
-                    Coroutine* target = current->caller;
+                    HeapIdx target_idx = current.caller_idx;
+                    Coroutine& target = std::get<Coroutine>(heap[target_idx].data);
 
                     sync_ip();
-                    current->stack = this->stack;
-                    current->sp = this->sp;
-                    current->stack_capacity = this->stack_capacity;
-                    current->frames = this->frames;
-                    current->frame_count = this->frame_count;
-                    current->frame_capacity = this->frame_capacity;
-                    current->state = Coroutine::State::Suspended;
+                    this->save_coroutine_state(current);
+                    current.state = Coroutine::State::Suspended;
 
-                    current->caller = nullptr;
+                    current.caller_idx = 0;
 
-                    this->stack = target->stack;
-                    this->sp = target->sp;
-                    this->stack_capacity = target->stack_capacity;
-                    this->frames = target->frames;
-                    this->frame_count = target->frame_count;
-                    this->frame_capacity = target->frame_capacity;
-                    this->stack_end = this->stack + this->stack_capacity;
+                    this->load_coroutine_state(target);
 
                     push(yield_val);
 
-                    active_coroutine = target;
-                    active_coroutine_idx = target->self_idx;
+                    active_coroutine_idx = target_idx;
 
                     frame = &frames[frame_count - 1];
                     Function& fn_next = get_func_from_frame(*frame);
