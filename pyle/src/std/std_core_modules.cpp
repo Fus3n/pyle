@@ -2,6 +2,11 @@
 #include "pyle/binder.hpp"
 #include "pyle/value.hpp"
 #include <chrono>
+#include "pyle/std/std_future.hpp"
+#include <thread>
+#include <fstream>
+#include <sstream>
+
 
 namespace pyle {
 
@@ -24,10 +29,72 @@ namespace pyle {
         return Value(static_cast<int64_t>(result));
     }
 
+    pyle::Value os_read_file_async(pyle::VM& vm, pyle::ArgView args) {
+        if (args.size() < 1) {
+            vm.runtime_error(pyle::RuntimeError::ArgumentError, "os.read_file_async expects 1 argument (file path).");
+            return pyle::Value();
+        }
+
+        std::string path = pyle::from_value<std::string>(vm, args[0]);
+
+        auto* sp = new std::shared_ptr<pyle::Future>(std::make_shared<pyle::Future>());
+
+        std::thread([sp_copy = *sp, path]() {
+            std::ifstream file(path);
+            if (!file.is_open()) {
+                sp_copy->error = "Could not open file: " + path;
+                sp_copy->failed = true;
+                sp_copy->finished.store(true);
+                return;
+            }
+
+            std::stringstream ss;
+            ss << file.rdbuf();
+            
+            sp_copy->raw_string = ss.str();
+            sp_copy->finished.store(true);
+        }).detach();
+
+        pyle::NativeObject ud;
+        ud.ptr = sp;
+        ud.deleter = [](void* p) { 
+            delete static_cast<std::shared_ptr<pyle::Future>*>(p); 
+        };
+        ud.type_idx = pyle::BindRegistry<std::shared_ptr<pyle::Future>>::type_idx;
+        
+        pyle::HeapIdx idx = vm.alloc(pyle::Object(ud));
+        return pyle::Value(pyle::Value::Tag::NativeObjectRef, idx);
+    }
+
+    pyle::Value os_read_file(pyle::VM& vm, pyle::ArgView args) {
+        if (args.size() < 1) {
+            vm.runtime_error(pyle::RuntimeError::ArgumentError, "os.read_file expects 1 argument (file path).");
+            return pyle::Value();
+        }
+
+        std::string path = pyle::from_value<std::string>(vm, args[0]);
+        if (vm.is_panicked()) {
+            return pyle::Value();
+        }
+
+        std::ifstream file(path);
+        if (!file.is_open()) {
+            return pyle::Value(); 
+        }
+
+        std::stringstream ss;
+        ss << file.rdbuf();
+        std::string contents = ss.str();
+        pyle::HeapIdx idx = vm.intern_string(contents);
+        return pyle::Value(pyle::Value::Tag::StringRef, idx);
+    }
+
     Value os_module_factory(VM& vm) {
         return NativeModule(vm, "os")
             .raw_function("system", os_sys)
             .function<os_time>("time")
+            .raw_function("read_file_async", os_read_file_async)
+            .raw_function("read_file", os_read_file)
             .build();
     }
     

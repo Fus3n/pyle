@@ -11,7 +11,9 @@
 #include "pyle/parser.hpp"
 #include "pyle/compiler.hpp"
 #include "pyle/std/std_core_modules.hpp"
+#include "pyle/std/std_future.hpp"
 #include <fmt/color.h>
+
 
 namespace pyle {
 
@@ -234,6 +236,45 @@ namespace pyle {
         pyle::bind_function<native_format>(vm, "format");
         pyle::bind_function<native_import>(vm, "import");
         pyle::bind_function<native_coro_constructor>(vm, "Coro");
+
+        pyle::register_core_future(vm); 
+
+
+        if (!vm.builtins_finalized) {
+            std::string prelude_source = R"(
+                fn waitfor(task) {
+                    while not task.is_done() {
+                        yield
+                    }
+                    if task.has_failed() {
+                        print("Error: " + task.get_error())
+                        return none
+                    }
+                    return task.get_data()
+                }
+
+                fn blockon(func) {
+                    let c = Coro(func)
+                    while c.state() != "dead" {
+                        c.resume()
+                    }
+                }
+            )";
+
+            ErrorReporter prelude_reporter(prelude_source, "<prelude>");
+            Lexer prelude_lexer(prelude_source, prelude_reporter);
+            Parser prelude_parser(prelude_lexer.tokenize(), prelude_reporter);
+            auto prelude_ast = prelude_parser.parse();
+            
+            Compiler prelude_compiler(vm, prelude_reporter);
+            Chunk prelude_chunk = prelude_compiler.compile(prelude_ast);
+            
+            vm.execute(prelude_chunk);
+
+            vm.builtin_count = vm.global_slots.size();
+            vm.builtin_slot_map = vm.global_slot_map;
+            vm.builtins_finalized = true;
+        }
 
         if (load_core_modules) {
             pyle::register_core_modules(vm);

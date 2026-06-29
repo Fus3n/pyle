@@ -110,6 +110,18 @@ namespace pyle {
         }
     }
 
+    template <typename T>
+    Value to_value_owned(VM& vm, T* val) {
+        NativeObject ud;
+        ud.ptr = const_cast<std::remove_const_t<T>*>(val);
+        
+        ud.deleter = [](void* p) { delete static_cast<T*>(p); };
+        
+        ud.type_idx = BindRegistry<std::remove_const_t<T>>::type_idx;
+        HeapIdx idx = vm.alloc(Object(ud));
+        return Value(Value::Tag::NativeObjectRef, idx);
+    }
+
     template <auto MemFn, typename T = decltype(MemFn)>
     struct MethodDeducer;
 
