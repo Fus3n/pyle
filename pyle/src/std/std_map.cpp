@@ -60,10 +60,30 @@ namespace pyle::MapMethods {
         return Value(Value::Tag::ArrayRef, array_idx);
     }
 
+    Value values(VM& vm, HeapIdx obj_idx, ArgView args) {
+        if (args.size() != 0) {
+            vm.runtime_error(RuntimeError::ArgumentError, "map.values() takes 0 arguments.");
+            return Value();
+        }
+
+        Object& obj = vm.get_heap_object(obj_idx);
+        auto& map = std::get<MapType>(obj.data);
+
+        ArrayType key_array;
+        key_array.reserve(map.size());
+        for (const auto& [k, v] : map) {
+            key_array.push_back(v);
+        }
+
+        HeapIdx array_idx = vm.alloc(Object(std::move(key_array)));
+        return Value(Value::Tag::ArrayRef, array_idx);
+    }
+
     static const ankerl::unordered_dense::map<std::string, NativeMethodFn> methods = {
         {"size", size},
         {"remove", remove},
-        {"keys", keys}
+        {"keys", keys},
+        {"values", values}
     };
 
     bool has_method(const std::string& name) {
