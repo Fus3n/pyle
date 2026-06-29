@@ -152,7 +152,8 @@ namespace pyle {
         if (!reporter.has_errors()) {
             Parser parser(tokens, reporter);
             auto ast = parser.parse();
-            if (!reporter.has_errors() && !ast.empty()) {
+            
+            if (!reporter.has_errors()) {
                 Compiler compiler(vm, reporter);
                 Chunk chunk = compiler.compile(ast);
                 if (!reporter.has_errors()) {

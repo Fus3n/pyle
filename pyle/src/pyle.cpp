@@ -19,7 +19,7 @@ namespace pyle {
 
         Parser parser(tokens, reporter);
         std::vector<std::unique_ptr<Stmt>> ast = parser.parse();
-        if (reporter.has_errors() || ast.empty()) {
+        if (reporter.has_errors()) {
             reporter.print_errors();
             return false;
         }
