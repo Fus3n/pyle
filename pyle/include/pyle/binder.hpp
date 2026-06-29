@@ -440,6 +440,22 @@ namespace pyle {
 
             return *this;
         }
+
+        ClassBinder& custom_constructor(NativeFn custom_ctor) {
+            HeapIdx ctor_idx = vm.alloc(Object(custom_ctor));
+            ctor_val = Value(Value::Tag::NativeFuncRef, ctor_idx);
+            return *this;
+        }
+
+        ClassBinder& custom_method(const std::string& name, NativeMethodFn custom_fn) {
+            HeapIdx method_idx = vm.alloc(Object(NativeMethod{custom_fn}));
+            HeapIdx name_id = vm.intern_string(name);
+
+            auto& registered_meta = std::get<StructType>(vm.get_heap_object(BindRegistry<T>::type_idx).data);
+            registered_meta.methods[name_id] = method_idx;
+
+            return *this;
+        }
     };
 
     template <auto Fn>

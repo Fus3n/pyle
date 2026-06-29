@@ -6,10 +6,9 @@
 #include <thread>
 #include <fstream>
 #include <sstream>
-
+#include <filesystem>
 
 namespace pyle {
-
 
     // OS MODULE
     Value os_time() {
@@ -18,7 +17,7 @@ namespace pyle {
         double seconds = std::chrono::duration_cast<std::chrono::duration<double>>(duration).count();
         return Value(seconds);
     }
-    
+  
     Value os_sys(VM& vm, ArgView args) {
         if (args.size() != 1 || args[0].tag != Value::Tag::StringRef) {
             vm.runtime_error(RuntimeError::ArgumentError, "os.system expects 1 string argument.");
@@ -27,6 +26,10 @@ namespace pyle {
         std::string cmd = std::get<std::string>(vm.get_heap_object(args[0].as_ref).data);
         int result = std::system(cmd.c_str());
         return Value(static_cast<int64_t>(result));
+    }
+
+    Value os_file_exists(std::string file_path) {
+        return Value(std::filesystem::exists(file_path));
     }
 
     pyle::Value os_read_file_async(pyle::VM& vm, pyle::ArgView args) {
@@ -93,6 +96,7 @@ namespace pyle {
         return NativeModule(vm, "os")
             .raw_function("system", os_sys)
             .function<os_time>("time")
+            .function<os_read_file_async>("file_exists")
             .raw_function("read_file_async", os_read_file_async)
             .raw_function("read_file", os_read_file)
             .build();
