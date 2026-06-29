@@ -269,17 +269,17 @@ namespace pyle {
         if (!vm.builtins_finalized) {
             std::string prelude_source = R"(
                 fn waitfor(task) {
-                    while not task.is_done() {
+                    while not task.is_done {
                         yield
                     }
-                    if task.has_failed() {
-                        print("Error: " + task.get_error())
+                    if task.has_failed {
+                        print("Error: " + task.error)
                         return none
                     }
-                    return task.get_data()
+                    return task.data
                 }
 
-                fn blockon(func) {
+                fn run_async(func) {
                     let c = Coro(func)
                     while c.state() != "dead" {
                         c.resume()

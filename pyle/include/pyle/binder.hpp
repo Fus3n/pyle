@@ -414,16 +414,14 @@ namespace pyle {
             return *this;
         }
 
-        // Binds public fields directly
         template <typename FieldType, FieldType T::*FieldPtr>
         ClassBinder& member(const std::string& name) {
-            // Getter Wrapper
+
             NativeMethodFn getter = [](VM& vm, HeapIdx obj_idx, ArgView args) -> Value {
                 auto* inst = static_cast<T*>(std::get<NativeObject>(vm.get_heap_object(obj_idx).data).ptr);
                 return to_value(vm, inst->*FieldPtr);
             };
-            
-            // Setter Wrapper
+
             NativeMethodFn setter = [](VM& vm, HeapIdx obj_idx, ArgView args) -> Value {
                 auto* inst = static_cast<T*>(std::get<NativeObject>(vm.get_heap_object(obj_idx).data).ptr);
                 inst->*FieldPtr = from_value<FieldType>(vm, args[0]);
@@ -435,8 +433,9 @@ namespace pyle {
             HeapIdx name_id = vm.intern_string(name);
 
             auto& registered_meta = std::get<StructType>(vm.get_heap_object(BindRegistry<T>::type_idx).data);
-            registered_meta.methods[name_id] = getter_idx; 
-            registered_meta.setters[name_id] = setter_idx; 
+            
+            registered_meta.getters[name_id] = getter_idx; 
+            registered_meta.setters[name_id] = setter_idx;
 
             return *this;
         }
@@ -453,6 +452,26 @@ namespace pyle {
 
             auto& registered_meta = std::get<StructType>(vm.get_heap_object(BindRegistry<T>::type_idx).data);
             registered_meta.methods[name_id] = method_idx;
+
+            return *this;
+        }
+
+        ClassBinder& custom_getter(const std::string& name, NativeMethodFn getter_fn) {
+            HeapIdx getter_idx = vm.alloc(Object(NativeMethod{getter_fn}));
+            HeapIdx name_id = vm.intern_string(name);
+
+            auto& registered_meta = std::get<StructType>(vm.get_heap_object(BindRegistry<T>::type_idx).data);
+            registered_meta.getters[name_id] = getter_idx;
+
+            return *this;
+        }
+
+        ClassBinder& custom_setter(const std::string& name, NativeMethodFn setter_fn) {
+            HeapIdx setter_idx = vm.alloc(Object(NativeMethod{setter_fn}));
+            HeapIdx name_id = vm.intern_string(name);
+
+            auto& registered_meta = std::get<StructType>(vm.get_heap_object(BindRegistry<T>::type_idx).data);
+            registered_meta.setters[name_id] = setter_idx;
 
             return *this;
         }

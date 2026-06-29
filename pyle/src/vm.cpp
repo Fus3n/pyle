@@ -1522,10 +1522,11 @@ namespace pyle {
                     else if (obj_val.tag == Value::Tag::NativeObjectRef) {
                         NativeObject& ud = std::get<NativeObject>(heap[obj_val.as_ref].data);
                         StructType& type = std::get<StructType>(heap[ud.type_idx].data);
-                        auto it = type.methods.find(field_id);
-                        if (it != type.methods.end()) {
-                            HeapIdx method_idx = it->second;
-                            NativeMethod& method = std::get<NativeMethod>(heap[method_idx].data);
+                        
+                        auto it = type.getters.find(field_id); 
+                        if (it != type.getters.end()) {
+                            HeapIdx getter_idx = it->second;
+                            NativeMethod& method = std::get<NativeMethod>(heap[getter_idx].data);
                             sync_ip();
                             Value result = method.fn(*this, obj_val.as_ref, ArgView{nullptr, 0});
                             if (panicked) return;

@@ -180,6 +180,7 @@ namespace pyle {
         
         std::array<HeapIdx, static_cast<size_t>(SpecialMethod::Count)> special_methods{};
 
+        ankerl::unordered_dense::map<HeapIdx, HeapIdx> getters; 
         ankerl::unordered_dense::map<HeapIdx, HeapIdx> setters;
 
         size_t get_offset(HeapIdx field_id) const {
