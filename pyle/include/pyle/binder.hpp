@@ -80,12 +80,12 @@ namespace pyle {
             return val;
         } else if constexpr (std::is_same_v<T, void>) {
             return Value();
+        } else if constexpr (std::is_same_v<T, bool>) {
+            return Value(val);
         } else if constexpr (std::is_same_v<T, int64_t> || std::is_integral_v<T>) {
             return Value(static_cast<int64_t>(val));
         } else if constexpr (std::is_floating_point_v<T>) {
             return Value(static_cast<double>(val));
-        } else if constexpr (std::is_same_v<T, bool>) {
-            return Value(val);
         } else if constexpr (std::is_same_v<T, std::string> || std::is_same_v<T, std::string_view>) {
             HeapIdx idx = vm.intern_string(val);
             return Value(Value::Tag::StringRef, idx);

@@ -1,5 +1,6 @@
 #include "pyle/std/std_string.hpp"
 #include "pyle/vm.hpp"
+#include <sstream>
 
 namespace  pyle::StringMethods {
     Value size(VM& vm, HeapIdx obj_idx, ArgView args) {
@@ -122,14 +123,39 @@ namespace  pyle::StringMethods {
         return Value(true);
     }
 
+    Value join(VM& vm, HeapIdx obj_idx, ArgView args) {
+        if (args.size() != 1 || args[0].tag != Value::Tag::ArrayRef) {
+            vm.runtime_error(RuntimeError::ArgumentError, "string.join() expects exactly 1 array argument.");
+            return Value();
+        }
+
+        const auto& delim = std::get<std::string>(vm.get_heap_object(obj_idx).data);
+        const auto& arr = std::get<ArrayType>(vm.get_heap_object(args[0].as_ref).data);
+
+        if (arr.empty()) {
+            return Value(Value::Tag::StringRef, vm.intern_string(""));
+        }
+
+        std::stringstream ss;
+        for (size_t i = 0; i < arr.size(); ++i) {
+            ss << vm.value_to_string(arr[i]);
+            if (i < arr.size() - 1) {
+                ss << delim;
+            }
+        }
+        HeapIdx idx = vm.intern_string(ss.str());
+        return Value(Value::Tag::StringRef, idx);
+    }
+
     static const ankerl::unordered_dense::map<std::string, NativeMethodFn> methods = {
         {"size", size},
-        {"to_num", size},
+        {"to_num", to_num},
         {"slice", slice},
         {"is_digit", is_digit},
         {"is_alpha", is_alpha},
         {"is_alnum", is_alnum},
-        {"is_space", is_space}
+        {"is_space", is_space},
+        {"join", join}
     };
 
     Value dispatch(VM& vm, HeapIdx obj_idx, const std::string& name, ArgView args) {

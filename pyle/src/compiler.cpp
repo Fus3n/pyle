@@ -510,14 +510,14 @@ namespace pyle {
     void Compiler::visit_index(IndexExpr* expr) {
         expr->callee->accept(this);
         expr->index->accept(this);
-        emit_instruction(OpCode::GET_INDEX, 0, 0);
+        emit_instruction(OpCode::GET_INDEX, 0, expr->bracket.selection.line);
     }
 
     void Compiler::visit_index_assign(IndexAssignExpr* expr) {
         expr->callee->accept(this);
         expr->index->accept(this);
         expr->value->accept(this);
-        emit_instruction(OpCode::SET_INDEX, 0, 0);
+        emit_instruction(OpCode::SET_INDEX, 0, expr->bracket.selection.line);
     }
 
     void Compiler::visit_func_decl(FuncDeclStmt* stmt) {

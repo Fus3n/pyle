@@ -1,11 +1,25 @@
+# A struct without any _init function works simialr to a dataclass 
+# although it doesnt have any special function all it will contain are data
 struct Pos(x, y) {} 
 
-struct Player(name, health, pos) {
 
+# A struct in Pyle is a fixed shape structure
+# Struct with properties must be defined at the top
+# If something is not defined it cannot be accessed through self. or from outside
+# Once it's created it's shape (properties, functions) cannot be changed after that
+# Means you can't add new properties like self.something anywhere in the struct OR outside after its initiated
+# Any properties or function names starting with "_" will be private and can only be accessed through self. within the struct itself
+struct Player(name, health, pos, _private_prop) {
+
+    # _init runs after Player(..) means you can still use Player(name: "John", health: 25, ...)
+    # and it will be overwritten by _init if you do update them inside it
     fn _init(n) {
         self.name = n
         self.health = 100
-        self.pos = Pos(x: 0, y: 0)
+
+        # This struct is being initialized by the default constructor
+        # Any property that hasn't been initialized through default constructor will be `none`
+        self.pos = Pos(x: 0, y: 0) 
     }
 
     fn setHealth(new_health) {
@@ -23,11 +37,14 @@ struct Player(name, health, pos) {
         )
     }
 
+    fn _private_function(msg) {
+        print(msg)
+    }
+
     fn status() {
         return format("Name: {}\nHealth: {}", self.name, self.health)
     }
 }
-
 
 fn main() {
     let p = Player("John")

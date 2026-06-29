@@ -167,9 +167,10 @@ namespace pyle {
     struct IndexExpr: public Expr {
         std::unique_ptr<Expr> callee;
         std::unique_ptr<Expr> index;
+        Token bracket;
 
-        IndexExpr(std::unique_ptr<Expr> callee, std::unique_ptr<Expr> index)
-            : callee(std::move(callee)), index(std::move(index)) {}
+        IndexExpr(std::unique_ptr<Expr> callee, std::unique_ptr<Expr> index, Token bracket)
+            : callee(std::move(callee)), index(std::move(index)), bracket(bracket) {}
         void accept(Visitor* visitor) override;
     };
 
@@ -177,8 +178,10 @@ namespace pyle {
         std::unique_ptr<Expr> callee;
         std::unique_ptr<Expr> index;
         std::unique_ptr<Expr> value;
-        IndexAssignExpr(std::unique_ptr<Expr> callee, std::unique_ptr<Expr> index, std::unique_ptr<Expr> value)
-            : callee(std::move(callee)), index(std::move(index)), value(std::move(value)) {}
+        Token bracket;
+
+        IndexAssignExpr(std::unique_ptr<Expr> callee, std::unique_ptr<Expr> index, std::unique_ptr<Expr> value, Token bracket)
+            : callee(std::move(callee)), index(std::move(index)), value(std::move(value)), bracket(bracket) {}
         void accept(Visitor* visitor) override;
     };
 

@@ -28,8 +28,8 @@ namespace pyle {
         return Value(static_cast<int64_t>(result));
     }
 
-    Value os_file_exists(std::string file_path) {
-        return Value(std::filesystem::exists(file_path));
+    bool os_file_exists(std::string file_path) {
+        return std::filesystem::exists(file_path);
     }
 
     pyle::Value os_read_file_async(pyle::VM& vm, pyle::ArgView args) {
@@ -96,7 +96,7 @@ namespace pyle {
         return NativeModule(vm, "os")
             .raw_function("system", os_sys)
             .function<os_time>("time")
-            .function<os_read_file_async>("file_exists")
+            .function<os_file_exists>("file_exists")
             .raw_function("read_file_async", os_read_file_async)
             .raw_function("read_file", os_read_file)
             .build();

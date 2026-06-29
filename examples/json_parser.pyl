@@ -1,0 +1,219 @@
+let os = import("os")
+
+# Recursive Descent JSON Parser in Pyle
+struct JSONParser(_src, _idx) {
+
+    fn _init() {
+        self._src = ""
+        self._idx = 0
+    }
+
+    fn _peek() {
+        if self._idx >= self._src.size() {
+            return ""
+        }
+        return self._src[self._idx]
+    }
+
+    fn _advance() {
+        let char = self._peek()
+        self._idx += 1
+        return char
+    }
+
+    fn _skip_whitespace() {
+        while self._peek().is_space() {
+            self._advance()
+        }
+    }
+
+    fn _parse_value() {
+        self._skip_whitespace()
+        let char = self._peek()
+
+        if char == "" { return none }
+        if char == "{" {  return self._parse_object() } 
+        if char == "[" { return self._parse_array() } 
+        if char == "\"" { return self._parse_string() } 
+        if char == "t" or char == "f" or char == "n" {
+            return self._parse_keyword()
+        }
+        
+        return self._parse_number()
+    }
+
+    fn _parse_string() {
+        self._advance()  
+        let chars = []
+        
+        while self._peek() != "\"" and self._peek() != "" {
+            if self._peek() == "\\" {
+                self._advance()  # skip backslash
+                let esc = self._advance()
+                if esc == "n"  { chars.append("\n") }
+                elif esc == "t"  { chars.append("\t") }
+                elif esc == "r"  { chars.append("\r") }
+                elif esc == "\\" { chars.append("\\") }
+                elif esc == "\"" { chars.append("\"") }
+                else { chars.append(esc) }
+            } else {
+                chars.append(self._advance())
+            }
+        }
+        
+        self._advance()  # skip closing quote
+        return "".join(chars)
+    }
+
+    fn _parse_number() {
+        let start = self._idx
+        if self._peek() == "-" {
+            self._advance()
+        }
+        while self._peek().is_digit() or self._peek() == "." {
+            self._advance()
+        }
+        let end = self._idx
+        let num_str = self._src.slice(start, end)
+        
+        if num_str.size() == 0 {
+            return 0 
+        }
+        return num_str.to_num()
+    }
+
+    fn _parse_keyword() {
+        let start = self._idx
+        
+        while self._peek().is_alpha() {
+            self._advance()
+        }
+        
+        let end = self._idx
+        let kw = self._src.slice(start, end)
+        
+        if kw == "true" {
+            return true
+        }
+        if kw == "false" {
+            return false
+        }
+        return none
+    }
+
+    fn _parse_array() {
+        self._advance()
+        let arr = []
+        self._skip_whitespace()
+
+        if self._peek() == "]" {
+            self._advance()
+            return arr
+        }
+
+        while true {
+            self._skip_whitespace()
+            
+            if self._peek() == "" {
+                print("JSONParser: Unterminated array.")
+                return none
+            }
+
+            arr.append(self._parse_value())
+            self._skip_whitespace()
+            
+            if self._peek() == "]" {
+                self._advance()
+                return arr
+            }
+            if self._peek() == "," {
+                self._advance()
+            } else {
+            
+                if self._peek() != "" {
+                    print("JSONParser: Expected ',' or ']' in array.")
+                    return none
+                }
+            }
+        }
+    }
+
+    fn _parse_object() {
+        self._advance() 
+        let obj = {}
+        self._skip_whitespace()
+
+        if self._peek() == "}" {
+            self._advance()
+            return obj
+        }
+        
+        while true {
+            self._skip_whitespace()
+            
+            if self._peek() == "" {
+                print("JSONParser: Unterminated object.")
+                return none
+            }
+            if self._peek() != "\"" {
+                print("JSONParser: Expected string key.")
+                return none
+            }
+            
+            let key = self._parse_string()
+            self._skip_whitespace()
+            if self._peek() == ":" {
+                self._advance()
+            }
+            let val = self._parse_value()
+            obj[key] = val
+            
+            self._skip_whitespace()
+
+            if self._peek() == "}" {
+                self._advance()
+                return obj
+            } elif self._peek() == "," {
+                self._advance()
+            } else {
+                print("JSONParser: Expected ',' or '}' in object.")
+                return none
+            }
+        }
+    }
+
+    fn parse_file(file_name) {
+        if not os.file_exists(file_name) {
+            printf("JSONParser: file {} doesn't exists", file_name)
+            return none
+        }
+
+        let content = os.read_file(file_name)
+        
+        if content == none {
+            print("JSONParser: Could not read file: " + file_name)
+            return none
+        }
+        
+        self._src = content
+        self._idx = 0
+        return self._parse_value()
+    }
+
+    fn parse_string(jsn_content) {
+        self._src = jsn_content
+        self._idx = 0
+        return self._parse_value()
+    }
+}
+
+let test_jsn = "{\"name\": \"Arthur Pendragon\", \"level\": 42, \"is_online\": true, \"stats\": {\"hp\": 120, \"mana\": 30.5}, \"inventory\": [\"sword\", \"shield\", \"potion\"], \"guild\": null}"
+let parser = JSONParser()
+let parsed_map = parser.parse_string(test_jsn)
+
+if parsed_map {
+    print(parsed_map["name"])
+    print(parsed_map["level"])
+    print(parsed_map["is_online"])
+    print(parsed_map["stats"]["hp"])
+}

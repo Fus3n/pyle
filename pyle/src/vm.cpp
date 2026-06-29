@@ -376,7 +376,7 @@ namespace pyle {
             case Value::Tag::Int: ss << val.as_int; break;
             case Value::Tag::Float: ss << val.as_float; break;
             case Value::Tag::Bool: ss << (val.as_bool ? "true": "false"); break;
-            case Value::Tag::None: ss << "null"; break;
+            case Value::Tag::None: ss << "none"; break;
             case Value::Tag::CoroutineRef: ss << "<coro>"; break;
             case Value::Tag::NativeFuncRef: ss << "<native_function>"; break;
             case Value::Tag::StringRef: {

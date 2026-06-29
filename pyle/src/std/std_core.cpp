@@ -45,7 +45,7 @@ namespace pyle {
                     store.push_back(arg.as_bool);
                     break;
                 case Value::Tag::None:
-                    store.push_back("null");
+                    store.push_back("none");
                     break;
                 default:
                     store.push_back(vm.value_to_string(arg));

@@ -1,0 +1,116 @@
+# Basic printing
+print("Hello world!")
+
+# Format printing
+printf("Hello {}!", "world")
+
+# Format function
+print(format("Hello {}!", "world"))
+
+# Importing works through the `import` function, you can also import other files like: import("math.pyl") or without the .pyl
+let os = import("os") 
+
+# You can add custom import paths to look for pyl files 
+# add_import_path("examples")
+
+print("Basic types & Variables")
+let str = "Hello, world."
+print(str[0]) # access first
+
+let integer = 5
+let float = 6.7
+let array = [str, integer, float, "more", 10, print]
+print(array[0]) # access first
+
+let maps = {
+    # identifier based keys
+    aKey: "aValue",
+
+    "string-keys": 420,
+    5+5: 10
+}
+
+print(maps["aKey"])
+print(maps[10])
+
+
+print("Basic arithmetics")
+print(4+4)
+print(5-4)
+print(5*5)
+print(5.5/5.4) 
+print(5%5)
+
+# Booleans & Logical Operators
+print("\nBooleans & Logic")
+let is_game_running = true
+let is_paused = false
+
+print(is_game_running and not is_paused) # logical AND & NOT
+print(is_paused or false)                 # logical OR
+
+# Comparisons
+print(integer == 5)
+print(float > 10.0)
+print(str != "other")
+
+
+# Control Flow (If / Elif / Else)
+print("\nControl Flow")
+let health = 0
+
+if health <= 0 {
+    print("Player is dead.")
+} elif health < 30 {
+    print("Player is in danger!")
+} else {
+    print("Player is healthy.")
+}
+
+
+# Loops & Ranges (The standard 'for' loop)
+print("\nLoops & Ranges")
+
+# A standard while loop
+let counter = 0
+while counter < 3 {
+    printf("while loop: {}", counter)
+    counter += 1
+}
+
+# The Pyle Range & For-In loop (extremely clean!)
+print("For loop over range:")
+for i in 1..4 {
+    printf("  i = {}", i)
+}
+
+# For loop over array elements
+print("For loop over array:")
+for item in ["sword", "shield", "potion"] {
+    printf("  Item: {}", item)
+}
+
+# Built-In Object Methods
+print("\nBuilt-In Methods")
+
+# String helpers
+let raw_string = "123.45"
+printf("Size: {}, Slice: {}, Number: {}", 
+    raw_string.size(), 
+    raw_string.slice(0, 3), 
+    raw_string.to_num()
+)
+
+# Array helpers
+let inventory = []
+inventory.append("gold")
+inventory.append("key")
+printf("Inventory size: {}, Popped: {}", inventory.size(), inventory.pop())
+
+# Nullability (none)
+print("\nNullability")
+let maybe_item = none
+
+if maybe_item == none {
+    print("You found nothing.")
+}

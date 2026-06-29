@@ -21,7 +21,11 @@ namespace pyle {
             return std::make_unique<GetFieldExpr>(clone_expr(g->obj.get()), g->name);
         }
         if (auto* idx = dynamic_cast<IndexExpr*>(e)) {
-            return std::make_unique<IndexExpr>(clone_expr(idx->callee.get()), clone_expr(idx->index.get()));
+            return std::make_unique<IndexExpr>(
+                clone_expr(idx->callee.get()), 
+                clone_expr(idx->index.get()),
+                idx->bracket
+            );
         }
         return nullptr;
     }
@@ -69,6 +73,8 @@ namespace pyle {
         if (match({TokenType::SEMICOLON})) return;
 
         if (is_at_end()) return;
+
+        if (check(TokenType::RIGHT_BRACE)) return;
 
         if (peek().selection.line > previous().selection.line) return;
 
@@ -323,10 +329,11 @@ namespace pyle {
                 return std::make_unique<SetFieldExpr>(std::move(get_field->obj), get_field->name, std::move(value));
             }
             if (auto* index_expr = dynamic_cast<IndexExpr*>(expr.get())) {
-                return std::make_unique<IndexAssignExpr>(
+                 return std::make_unique<IndexAssignExpr>(
                     std::move(index_expr->callee),
                     std::move(index_expr->index),
-                    std::move(value)
+                    std::move(value),
+                    index_expr->bracket 
                 );
             }
 
@@ -361,7 +368,12 @@ namespace pyle {
                 return std::make_unique<SetFieldExpr>(std::move(get_field->obj), get_field->name, std::move(binary_expr));
             }
             if (auto* index_expr = dynamic_cast<IndexExpr*>(expr.get())) {
-                return std::make_unique<IndexAssignExpr>(std::move(index_expr->callee), std::move(index_expr->index), std::move(binary_expr));
+                return std::make_unique<IndexAssignExpr>(
+                    std::move(index_expr->callee), 
+                    std::move(index_expr->index), 
+                    std::move(binary_expr),
+                    index_expr->bracket
+                );
             }
             
             reporter.report(op_eq.selection, ErrorType::Syntax, "Invalid compound assignment target.");
@@ -506,9 +518,10 @@ namespace pyle {
                     expr = std::make_unique<GetFieldExpr>(std::move(expr), field_name);
                 }
             } else if(match({TokenType::LEFT_BRACKET})) {
+                Token bracket = previous();
                 std::unique_ptr<Expr> index = expression();
                 consume(TokenType::RIGHT_BRACKET, "Expected ']' after index.");
-                expr = std::make_unique<IndexExpr>(std::move(expr), std::move(index));
+                expr = std::make_unique<IndexExpr>(std::move(expr), std::move(index), bracket);
             } else {
                 break;
             }
