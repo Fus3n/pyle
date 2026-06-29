@@ -81,13 +81,7 @@ namespace pyle {
         return Value(Value::Tag::StringRef, idx);
     }
 
-    static std::optional<std::string> try_read_file(const std::string& path) {
-        std::ifstream file(path);
-        if (!file.is_open()) return std::nullopt;
-        std::stringstream ss;
-        ss << file.rdbuf();
-        return ss.str();
-    }
+    
 
     Value native_import(VM& vm, ArgView args) {
         if (args.size() != 1 || args[0].tag != Value::Tag::StringRef) {
@@ -114,6 +108,14 @@ namespace pyle {
         if (filepath.size() < 4 || filepath.substr(filepath.size() - 4) != ".pyl") {
             filepath += ".pyl";
         }
+
+        auto try_read_file =  [](const std::string& path) -> std::optional<std::string>   {
+            std::ifstream file(path);
+            if (!file.is_open()) return std::nullopt;
+            std::stringstream ss;
+            ss << file.rdbuf();
+            return ss.str();
+        };
 
         std::optional<std::string> code_opt = try_read_file(filepath);
         std::string resolved_path = filepath;
@@ -152,7 +154,7 @@ namespace pyle {
         if (!reporter.has_errors()) {
             Parser parser(tokens, reporter);
             auto ast = parser.parse();
-            
+
             if (!reporter.has_errors()) {
                 Compiler compiler(vm, reporter);
                 Chunk chunk = compiler.compile(ast);

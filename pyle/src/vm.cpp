@@ -383,6 +383,17 @@ namespace pyle {
                 ss << std::get<std::string>(heap[val.as_ref].data);
                 break;
             }
+            case Value::Tag::FuncRef: {
+                const auto& func = std::get<Function>(heap[val.as_ref].data);
+                ss << "<function_ref(" << func.name << ")>";
+                break; 
+            }  
+            case Value::Tag::ClosureRef: {
+                const auto& clo = std::get<Closure>(heap[val.as_ref].data);
+                const auto& func = std::get<Function>(heap[clo.function].data);
+                ss << "<function " << func.name << " at 0x" << std::hex << val.as_ref << ">";
+                break; 
+            }
             case Value::Tag::ArrayRef: {
                 HeapIdx idx = val.as_ref;
                 if (visited.count(idx)) {
