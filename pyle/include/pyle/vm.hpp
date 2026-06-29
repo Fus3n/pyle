@@ -129,6 +129,14 @@ namespace pyle {
         }
 
         void init_root_coroutine();
+        std::vector<std::string> import_paths = {"./"};
+
+        void add_import_path(std::string path) {
+            if (!path.empty() && path.back() != '/' && path.back() != '\\') {
+                path += "/";
+            }
+            import_paths.push_back(std::move(path));
+        }
 
     private:
 

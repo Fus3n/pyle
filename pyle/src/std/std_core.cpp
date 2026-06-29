@@ -114,10 +114,23 @@ namespace pyle {
         if (filepath.size() < 4 || filepath.substr(filepath.size() - 4) != ".pyl") {
             filepath += ".pyl";
         }
-        
-        auto code_opt = try_read_file(filepath);
+
+        std::optional<std::string> code_opt = try_read_file(filepath);
+        std::string resolved_path = filepath;
+
         if (!code_opt) {
-            vm.runtime_error(RuntimeError::Name, fmt::format("Module '{}' not found (checked: '{}').", mod_name, filepath));
+            for (const auto& dir : vm.import_paths) {
+                std::string test_path = dir + filepath;
+                code_opt = try_read_file(test_path);
+                if (code_opt) {
+                    resolved_path = test_path; 
+                    break;
+                }
+            }
+        }
+
+        if (!code_opt) {
+            vm.runtime_error(RuntimeError::Name, fmt::format("Module '{}' not found (checked import paths).", mod_name));
             return Value();
         }
         
@@ -230,11 +243,24 @@ namespace pyle {
     }
 
 
+    Value native_add_import_path(VM& vm, ArgView args) {
+        if (args.size() != 1 || args[0].tag != Value::Tag::StringRef) {
+            vm.runtime_error(RuntimeError::ArgumentError, "add_import_path expects 1 string argument.");
+            return Value();
+        }
+
+        std::string new_path = std::get<std::string>(vm.get_heap_object(args[0].as_ref).data);
+        vm.add_import_path(new_path);
+        return Value();
+    }
+
+
     void register_core_natives(VM& vm, bool load_core_modules) {
         pyle::bind_function<native_print>(vm, "print");
         pyle::bind_function<native_printf>(vm, "printf");
         pyle::bind_function<native_format>(vm, "format");
         pyle::bind_function<native_import>(vm, "import");
+        pyle::bind_function<native_add_import_path>(vm, "add_import_path"); 
         pyle::bind_function<native_coro_constructor>(vm, "Coro");
 
         pyle::register_core_future(vm); 
