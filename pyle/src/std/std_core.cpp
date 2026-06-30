@@ -13,7 +13,7 @@
 #include "pyle/std/std_core_modules.hpp"
 #include "pyle/std/std_future.hpp"
 #include <fmt/color.h>
-
+#include "pyle/std/prelude.hpp" 
 
 namespace pyle {
 
@@ -279,26 +279,7 @@ namespace pyle {
 
 
         if (!vm.builtins_finalized) {
-            std::string prelude_source = R"(
-                fn waitfor(task) {
-                    while not task.is_done {
-                        yield
-                    }
-                    if task.has_failed {
-                        print("Error: " + task.error)
-                        return none
-                    }
-                    return task.data
-                }
-
-                fn run_async(func) {
-                    let c = Coro(func)
-                    while c.state() != "dead" {
-                        c.resume()
-                    }
-                }
-            )";
-
+            std::string_view prelude_source = PRELUDE_SOURCE;
             ErrorReporter prelude_reporter(prelude_source, "<prelude>");
             Lexer prelude_lexer(prelude_source, prelude_reporter);
             Parser prelude_parser(prelude_lexer.tokenize(), prelude_reporter);
@@ -306,6 +287,12 @@ namespace pyle {
             
             Compiler prelude_compiler(vm, prelude_reporter);
             Chunk prelude_chunk = prelude_compiler.compile(prelude_ast);
+
+            if (prelude_reporter.has_errors()) {
+                fmt::print(stderr, "\033[1;31mFailed to compile standard library prelude:\033[0m\n");
+                prelude_reporter.print_errors();
+                exit(1);
+            }
             
             vm.execute(prelude_chunk);
 

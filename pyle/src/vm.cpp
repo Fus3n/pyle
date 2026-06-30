@@ -53,6 +53,7 @@ namespace pyle {
     }
 
     HeapIdx VM::intern_string(std::string_view str) {
+        std::lock_guard<std::recursive_mutex> lock(vm_mutex); 
         auto it = interned_strings.find(str);
         if (it != interned_strings.end()) {
             return it->second;
@@ -161,6 +162,7 @@ namespace pyle {
     }
 
     HeapIdx VM::alloc(Object obj) {
+        std::lock_guard<std::recursive_mutex> lock(vm_mutex);
         if (gc_enabled && free_list.empty() && heap.size() >= gc_threshold) {
             gc_collect();
 
@@ -208,34 +210,32 @@ namespace pyle {
         }
     }
 
-    void VM::gc_mark() {
-        std::vector<HeapIdx> worklist;
-
-        auto mark_value = [&](const Value &val) {
-            switch (val.tag) {
-                case Value::Tag::StringRef:
-                case Value::Tag::ArrayRef:
-                case Value::Tag::NativeFuncRef:
-                case Value::Tag::FuncRef:
-                case Value::Tag::IteratorRef: 
-                case Value::Tag::RangeRef: 
-                case Value::Tag::ClosureRef: 
-                case Value::Tag::UpvalueRef: 
-                case Value::Tag::StructRef:
-                case Value::Tag::StructTypeRef: 
-                case Value::Tag::MapRef: 
-                case Value::Tag::CoroutineRef: {
-                    HeapIdx idx = val.as_ref;
-                    if (!heap[idx].gc_marked) {
-                        heap[idx].gc_marked = true;
-                        worklist.push_back(idx);
-                    }
-                    break;
+    void VM::mark_value(const Value& val) {
+        switch (val.tag) {
+            case Value::Tag::StringRef:
+            case Value::Tag::ArrayRef:
+            case Value::Tag::NativeFuncRef:
+            case Value::Tag::FuncRef:
+            case Value::Tag::IteratorRef: 
+            case Value::Tag::RangeRef: 
+            case Value::Tag::ClosureRef: 
+            case Value::Tag::UpvalueRef: 
+            case Value::Tag::StructRef:
+            case Value::Tag::StructTypeRef: 
+            case Value::Tag::MapRef: 
+            case Value::Tag::CoroutineRef: {
+                HeapIdx idx = val.as_ref;
+                if (!heap[idx].gc_marked) {
+                    heap[idx].gc_marked = true;
+                    gc_worklist.push_back(idx);
                 }
-                default: break;
+                break;
             }
-        };
+            default: break;
+        }
+    }
 
+    void VM::gc_mark() {
         if (main_coroutine_idx != 0) {
             mark_value(Value(Value::Tag::CoroutineRef, main_coroutine_idx));
         }
@@ -288,9 +288,9 @@ namespace pyle {
             }
         }
 
-        while (!worklist.empty()) {
-            HeapIdx current = worklist.back();
-            worklist.pop_back();
+        while (!gc_worklist.empty()) {
+            HeapIdx current = gc_worklist.back();
+            gc_worklist.pop_back();
 
             if (const auto *array_ptr = std::get_if<ArrayType>(&heap[current].data)) {
                 for (const Value &val: *array_ptr) {
@@ -357,11 +357,17 @@ namespace pyle {
                         mark_value(Value(Value::Tag::ClosureRef, frame.closure));
                     }
                 }
+            } else if (const auto *native_ptr = std::get_if<NativeObject>(&heap[current].data)) {
+                mark_value(Value(Value::Tag::StructTypeRef, native_ptr->type_idx));
+                if (native_ptr->marker) {
+                    native_ptr->marker(native_ptr->ptr, *this);
+                }
             }
         }
     }
 
     void VM::gc_collect() {
+        std::lock_guard<std::recursive_mutex> lock(vm_mutex); 
         gc_mark();
         gc_sweep();
     }

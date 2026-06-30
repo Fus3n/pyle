@@ -239,6 +239,7 @@ namespace pyle {
     struct NativeObject {
         void* ptr = nullptr;
         void (*deleter)(void*) = nullptr; 
+        void (*marker)(void*, VM&) = nullptr;
         HeapIdx type_idx = 0;
     };
 

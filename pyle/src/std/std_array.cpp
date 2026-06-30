@@ -104,6 +104,40 @@ namespace pyle::ArrayMethods {
         return Value();
     }
 
+    Value reserve(VM& vm, HeapIdx obj_idx, ArgView args) {
+        if (args.size() != 1 || args[0].tag != Value::Tag::Int) {
+            vm.runtime_error(RuntimeError::ArgumentError, "array.reserve() expects 1 integer argument.");
+            return Value();
+        }
+        int64_t cap = args[0].as_int;
+        if (cap < 0) {
+            vm.runtime_error(RuntimeError::ArgumentError, "Capacity cannot be negative.");
+            return Value();
+        }
+        
+        auto& vec = vm.get_heap_object<ArrayType>(obj_idx);
+        vec.reserve(static_cast<size_t>(cap));
+        return Value();
+    }
+
+    Value resize(VM& vm, HeapIdx obj_idx, ArgView args) {
+        if (args.size() < 1 || args.size() > 2 || args[0].tag != Value::Tag::Int) {
+            vm.runtime_error(RuntimeError::ArgumentError, "array.resize() expects (size) and an optional default value.");
+            return Value();
+        }
+        int64_t new_size = args[0].as_int;
+        if (new_size < 0) {
+            vm.runtime_error(RuntimeError::ArgumentError, "Size cannot be negative.");
+            return Value();
+        }
+        
+        Value fill_val = (args.size() == 2) ? args[1] : Value(); 
+        auto& vec = vm.get_heap_object<ArrayType>(obj_idx);
+        
+        vec.resize(static_cast<size_t>(new_size), fill_val);
+        return Value();
+    }
+
     static NativeMethodMap methods = {
         {"append", append},
         {"size", size},
@@ -111,6 +145,8 @@ namespace pyle::ArrayMethods {
         {"reverse", reverse},
         {"slice", slice},
         {"clear", clear},
+        {"reserve", reserve},
+        {"resize", resize}
     };
 
     Value dispatch(VM& vm, HeapIdx obj_idx, const std::string& name, ArgView args) {

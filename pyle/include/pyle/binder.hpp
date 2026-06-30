@@ -110,14 +110,31 @@ namespace pyle {
         }
     }
 
+    template <typename T, typename = void>
+    struct has_gc_mark : std::false_type {};
+
     template <typename T>
-    Value to_value_owned(VM& vm, T* val) {
+    struct has_gc_mark<T, std::void_t<decltype(std::declval<T>().gc_mark(std::declval<VM&>()))>> : std::true_type {};
+
+    template <typename T>
+    Value to_value_owned(VM& vm, T* val, void (*custom_marker)(void*, VM&) = nullptr) {
         NativeObject ud;
         ud.ptr = const_cast<std::remove_const_t<T>*>(val);
         
         ud.deleter = [](void* p) { delete static_cast<T*>(p); };
         
+        if (custom_marker) {
+            ud.marker = custom_marker;
+        } else if constexpr (has_gc_mark<T>::value) {
+            ud.marker = [](void* p, VM& vm) {
+                static_cast<T*>(p)->gc_mark(vm);
+            };
+        } else {
+            ud.marker = nullptr;
+        }
+        
         ud.type_idx = BindRegistry<std::remove_const_t<T>>::type_idx;
+        
         HeapIdx idx = vm.alloc(Object(ud));
         return Value(Value::Tag::NativeObjectRef, idx);
     }

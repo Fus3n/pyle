@@ -33,16 +33,10 @@ namespace pyle {
     }
 
     pyle::Value os_read_file_async(pyle::VM& vm, pyle::ArgView args) {
-        if (args.size() < 1) {
-            vm.runtime_error(pyle::RuntimeError::ArgumentError, "os.read_file_async expects 1 argument (file path).");
-            return pyle::Value();
-        }
-
         std::string path = pyle::from_value<std::string>(vm, args[0]);
-
         auto* sp = new std::shared_ptr<pyle::Future>(std::make_shared<pyle::Future>());
 
-        std::thread([sp_copy = *sp, path]() {
+        std::thread([sp_copy = *sp, path, &vm]() {
             std::ifstream file(path);
             if (!file.is_open()) {
                 sp_copy->error = "Could not open file: " + path;
@@ -53,20 +47,23 @@ namespace pyle {
 
             std::stringstream ss;
             ss << file.rdbuf();
-            
-            sp_copy->raw_string = ss.str();
-            sp_copy->finished.store(true);
+            std::string contents = ss.str();
+
+            {
+                std::lock_guard<std::recursive_mutex> lock(vm.get_mutex());
+                
+                HeapIdx str_idx = vm.intern_string(contents); 
+                sp_copy->raw_value = pyle::Value(pyle::Value::Tag::StringRef, str_idx);
+                sp_copy->finished.store(true);
+            } 
         }).detach();
 
-        pyle::NativeObject ud;
-        ud.ptr = sp;
-        ud.deleter = [](void* p) { 
-            delete static_cast<std::shared_ptr<pyle::Future>*>(p); 
+        auto marker = [](void* p, VM& vm) {
+            auto* sp = static_cast<std::shared_ptr<Future>*>(p);
+            vm.mark_value((*sp)->raw_value); 
         };
-        ud.type_idx = pyle::BindRegistry<std::shared_ptr<pyle::Future>>::type_idx;
-        
-        pyle::HeapIdx idx = vm.alloc(pyle::Object(ud));
-        return pyle::Value(pyle::Value::Tag::NativeObjectRef, idx);
+
+        return to_value_owned(vm, sp, marker); 
     }
 
     pyle::Value os_read_file(pyle::VM& vm, pyle::ArgView args) {
@@ -92,6 +89,30 @@ namespace pyle {
         return pyle::Value(pyle::Value::Tag::StringRef, idx);
     }
 
+    pyle::Value os_sleep(pyle::VM& vm, pyle::ArgView args) {
+        int64_t ms = pyle::from_value<int64_t>(vm, args[0]);
+        std::this_thread::sleep_for(std::chrono::milliseconds(ms));
+        return pyle::Value();
+    }
+
+    pyle::Value os_sleep_async(pyle::VM& vm, pyle::ArgView args) {
+        int64_t ms = pyle::from_value<int64_t>(vm, args[0]);
+        auto* sp = new std::shared_ptr<pyle::Future>(std::make_shared<pyle::Future>());
+        
+        std::thread([sp_copy = *sp, ms]() {
+            std::this_thread::sleep_for(std::chrono::milliseconds(ms));
+            sp_copy->finished.store(true);
+        }).detach();
+        
+        pyle::NativeObject ud;
+        ud.ptr = sp;
+        ud.deleter = [](void* p) { delete static_cast<std::shared_ptr<pyle::Future>*>(p); };
+        ud.type_idx = pyle::BindRegistry<std::shared_ptr<pyle::Future>>::type_idx;
+        
+        pyle::HeapIdx idx = vm.alloc(pyle::Object(ud));
+        return pyle::Value(pyle::Value::Tag::NativeObjectRef, idx);
+    }
+
     Value os_module_factory(VM& vm) {
         return NativeModule(vm, "os")
             .raw_function("system", os_sys)
@@ -99,9 +120,10 @@ namespace pyle {
             .function<os_file_exists>("file_exists")
             .raw_function("read_file_async", os_read_file_async)
             .raw_function("read_file", os_read_file)
+            .raw_function("sleep", os_sleep)
+            .raw_function("sleep_async", os_sleep_async)
             .build();
     }
-    
     
     Value color_module_factory(VM& vm) {
         MapType exports;

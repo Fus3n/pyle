@@ -1,8 +1,9 @@
 #pragma once
-#include "pyle/bytecode.hpp"
-#include "pyle/value.hpp"
 #include <ankerl/unordered_dense.h>
 #include <vector>
+#include <mutex> 
+#include "pyle/bytecode.hpp"
+#include "pyle/value.hpp"
 #include "unordered_set"
 #include "pyle/platform.hpp"
 #include "pyle/error_reporter.hpp"
@@ -152,11 +153,15 @@ namespace pyle {
             gc_roots.pop_back();
         }
 
-    private:
+        void mark_value(const Value& val);
+        std::recursive_mutex& get_mutex() { return vm_mutex; }
 
+    private:
+        std::recursive_mutex vm_mutex; 
         bool gc_enabled = true;
 
         // MEMORY
+        std::vector<HeapIdx> gc_worklist;
         void gc_sweep();
         void gc_mark();
         void gc_collect();
