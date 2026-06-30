@@ -7,6 +7,7 @@
 #include <memory>
 #include <utility>
 #include <vector>
+#include <fmt/format.h>
 
 namespace pyle {
 
@@ -117,6 +118,7 @@ namespace pyle {
             if (match({TokenType::RETURN})) return return_statement();
             if (match({TokenType::BREAK})) return break_statement();
             if (match({TokenType::STRUCT})) return struct_declaration();
+            if (match({TokenType::ENUM})) return enum_declaration();
 
             return expression_statement();
         } catch (ParserError& err) {
@@ -214,6 +216,55 @@ namespace pyle {
         return std::make_unique<StructDeclStmt>(name, std::move(fields), std::move(methods));
     }
 
+    std::unique_ptr<Stmt> Parser::enum_declaration() {
+        Token name = consume(TokenType::IDENTIFIER, "Expected enum name.");
+        consume(TokenType::LEFT_BRACE, "Expected '{' before enum body.");
+        
+        std::vector<std::pair<std::unique_ptr<Expr>, std::unique_ptr<Expr>>> entries;
+        int64_t next_value = 0;
+        bool has_valid_next_value = true; 
+        
+        if (!check(TokenType::RIGHT_BRACE)) {
+            do {
+                if (check(TokenType::RIGHT_BRACE)) break;
+                
+                Token member_name = consume(TokenType::IDENTIFIER, "Expected enum member name.");
+                std::unique_ptr<Expr> key = std::make_unique<ImplicitStringExpr>(member_name);
+                std::unique_ptr<Expr> value;
+                
+                if (match({TokenType::EQUAL})) {
+                    value = expression();
+                    has_valid_next_value = false;
+                    
+                    if (auto* lit = dynamic_cast<LiteralExpr*>(value.get())) {
+                        if (lit->token.type == TokenType::INT) {
+                            next_value = std::stoll(std::string(lit->token.lexeme)) + 1;
+                            has_valid_next_value = true; 
+                        }
+                    }
+                } else {
+                    if (!has_valid_next_value) {
+                        reporter.report(member_name.selection, ErrorType::Compile,
+                            fmt::format("Enum member '{}' must have an explicit initializer because the preceding member is not an integer.", member_name.lexeme));
+                        throw ParserError();
+                    }
+                    
+                    std::string_view lex = save_string(std::to_string(next_value));
+                    Token val_tok(TokenType::INT, lex, member_name.selection);
+                    value = std::make_unique<LiteralExpr>(val_tok);
+                    next_value++;
+                }
+                
+                entries.push_back({std::move(key), std::move(value)});
+                match({TokenType::COMMA});
+            } while (!check(TokenType::RIGHT_BRACE) && !is_at_end());
+        }
+        
+        consume(TokenType::RIGHT_BRACE, "Expected '}' after enum body.");
+        
+        auto map_expr = std::make_unique<MapExpr>(std::move(entries));
+        return std::make_unique<VarDeclStmt>(name, std::move(map_expr));
+    }
 
     std::unique_ptr<Stmt> Parser::return_statement() {
         Token keyword = previous();

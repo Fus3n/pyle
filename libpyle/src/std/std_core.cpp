@@ -14,6 +14,8 @@
 #include "pyle/std/std_future.hpp"
 #include <fmt/color.h>
 #include "pyle/std/prelude.hpp" 
+#include <fmt/color.h>
+
 
 namespace pyle {
 
@@ -289,7 +291,11 @@ namespace pyle {
             Chunk prelude_chunk = prelude_compiler.compile(prelude_ast);
 
             if (prelude_reporter.has_errors()) {
-                fmt::print(stderr, "\033[1;31mFailed to compile standard library prelude:\033[0m\n");
+                fmt::print(
+                    stderr,
+                    fg(fmt::color::red) | fmt::emphasis::bold,
+                    "Failed to compile standard library prelude:\n"
+                );
                 prelude_reporter.print_errors();
                 exit(1);
             }

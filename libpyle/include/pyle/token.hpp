@@ -30,7 +30,7 @@ namespace pyle {
         LET, GLOBAL,              
         STRUCT,                     
         NONE, TRUE, FALSE,    
-        YIELD,   
+        YIELD, ENUM,
 
         // Special
         ERROR,
@@ -71,6 +71,7 @@ namespace pyle {
         {"true",   TokenType::TRUE},
         {"false",  TokenType::FALSE},
         {"yield",  TokenType::YIELD},
+        {"enum",   TokenType::ENUM},
     };
 
 }

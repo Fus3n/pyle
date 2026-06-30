@@ -5,10 +5,12 @@
 #include <string>
 #include <initializer_list>
 #include <memory>
+#include <list>
 
 #include "pyle/token.hpp"
 #include "pyle/error_reporter.hpp"
 #include "pyle/ast.hpp"
+
 
 namespace pyle {
     class Parser {
@@ -49,6 +51,7 @@ namespace pyle {
         std::unique_ptr<Stmt> function_declaration();
         std::unique_ptr<Stmt> return_statement();
         std::unique_ptr<Stmt> struct_declaration();
+        std::unique_ptr<Stmt> enum_declaration();
 
         std::unique_ptr<BlockStmt> block();
 
@@ -72,6 +75,14 @@ namespace pyle {
 
         struct ParserError: public std::exception {};
         void synchronize();
+
+
+        std::list<std::string> string_pool; 
+    
+        std::string_view save_string(std::string str) {
+            string_pool.push_back(std::move(str));
+            return string_pool.back(); // Memory address is now 100% stable!
+        }
 
     public:
         Parser(std::vector<Token> tokens, ErrorReporter& reporter)

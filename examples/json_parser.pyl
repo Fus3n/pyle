@@ -9,9 +9,8 @@ struct JSONParser(_src, _idx) {
     }
 
     fn _peek() {
-        if self._idx >= self._src.size() {
+        if self._idx >= self._src.size()
             return ""
-        }
         return self._src[self._idx]
     }
 
@@ -22,22 +21,20 @@ struct JSONParser(_src, _idx) {
     }
 
     fn _skip_whitespace() {
-        while self._peek().is_space() {
+        while self._peek().is_space()
             self._advance()
-        }
     }
 
     fn _parse_value() {
         self._skip_whitespace()
         let char = self._peek()
 
-        if char == "" { return none }
-        if char == "{" {  return self._parse_object() } 
-        if char == "[" { return self._parse_array() } 
-        if char == "\"" { return self._parse_string() } 
-        if char == "t" or char == "f" or char == "n" {
+        if char == "" return none
+        if char == "{" return self._parse_object() 
+        if char == "[" return self._parse_array() 
+        if char == "\"" return self._parse_string() 
+        if char == "t" or char == "f" or char == "n"
             return self._parse_keyword()
-        }
         
         return self._parse_number()
     }
@@ -50,15 +47,14 @@ struct JSONParser(_src, _idx) {
             if self._peek() == "\\" {
                 self._advance()  # skip backslash
                 let esc = self._advance()
-                if esc == "n"  { chars.append("\n") }
-                elif esc == "t"  { chars.append("\t") }
-                elif esc == "r"  { chars.append("\r") }
-                elif esc == "\\" { chars.append("\\") }
-                elif esc == "\"" { chars.append("\"") }
-                else { chars.append(esc) }
-            } else {
+                if esc == "n"  chars.append("\n") 
+                elif esc == "t" chars.append("\t")
+                elif esc == "r"  chars.append("\r")
+                elif esc == "\\" chars.append("\\")
+                elif esc == "\"" chars.append("\"")
+                else chars.append(esc)
+            } else
                 chars.append(self._advance())
-            }
         }
         
         self._advance()  # skip closing quote
@@ -67,37 +63,28 @@ struct JSONParser(_src, _idx) {
 
     fn _parse_number() {
         let start = self._idx
-        if self._peek() == "-" {
+        if self._peek() == "-"
             self._advance()
-        }
-        while self._peek().is_digit() or self._peek() == "." {
+        while self._peek().is_digit() or self._peek() == "."
             self._advance()
-        }
         let end = self._idx
         let num_str = self._src.slice(start, end)
         
-        if num_str.size() == 0 {
-            return 0 
-        }
+        if num_str.size() == 0 return 0 
         return num_str.to_num()
     }
 
     fn _parse_keyword() {
         let start = self._idx
         
-        while self._peek().is_alpha() {
+        while self._peek().is_alpha()
             self._advance()
-        }
         
         let end = self._idx
         let kw = self._src.slice(start, end)
         
-        if kw == "true" {
-            return true
-        }
-        if kw == "false" {
-            return false
-        }
+        if kw == "true" return true
+        if kw == "false" return false
         return none
     }
 
@@ -126,10 +113,10 @@ struct JSONParser(_src, _idx) {
                 self._advance()
                 return arr
             }
-            if self._peek() == "," {
-                self._advance()
-            } else {
             
+            if self._peek() == ","
+                self._advance()
+            else {
                 if self._peek() != "" {
                     print("JSONParser: Expected ',' or ']' in array.")
                     return none
@@ -162,9 +149,10 @@ struct JSONParser(_src, _idx) {
             
             let key = self._parse_string()
             self._skip_whitespace()
-            if self._peek() == ":" {
+            
+            if self._peek() == ":"
                 self._advance()
-            }
+                
             let val = self._parse_value()
             obj[key] = val
             
@@ -173,9 +161,9 @@ struct JSONParser(_src, _idx) {
             if self._peek() == "}" {
                 self._advance()
                 return obj
-            } elif self._peek() == "," {
+            } elif self._peek() == ","
                 self._advance()
-            } else {
+            else {
                 print("JSONParser: Expected ',' or '}' in object.")
                 return none
             }
