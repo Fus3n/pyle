@@ -51,6 +51,11 @@ namespace pyle {
 
         Object& get_heap_object(const HeapIdx idx) { return heap[idx]; }
 
+        template<typename T>
+        T& get_heap_object(const HeapIdx idx) {
+            return std::get<T>(heap[idx].data);
+        }
+
         void execute(Chunk in_chunk);
         std::string value_to_string(const Value& val);
         void define_native(const std::string& name, NativeFn function);
@@ -138,6 +143,15 @@ namespace pyle {
             import_paths.push_back(std::move(path));
         }
 
+
+        void gc_root_push(HeapIdx idx, Value::Tag tag) {
+            gc_roots.push_back(Value(tag, idx));
+        }
+
+        void gc_root_pop() {
+            gc_roots.pop_back();
+        }
+
     private:
 
         bool gc_enabled = true;
@@ -149,6 +163,8 @@ namespace pyle {
         
         std::vector<Object> heap;
         std::vector<HeapIdx> free_list;
+
+        std::vector<Value> gc_roots;
 
         struct StringHash {
             using is_transparent = void;
@@ -186,5 +202,15 @@ namespace pyle {
 
         HeapIdx build_closure_for_call(HeapIdx fn_idx, CallFrame* caller_frame);
         PYLE_FORCEINLINE bool instantiate_struct(HeapIdx struct_type_idx, int arg_count, CallFrame* current_frame);
+    };
+
+    struct GCRoot {
+        VM& vm;
+        GCRoot(VM& vm, HeapIdx idx, Value::Tag tag) : vm(vm) {
+            vm.gc_root_push(idx, tag);
+        }
+        ~GCRoot() {
+            vm.gc_root_pop();
+        }
     };
 }

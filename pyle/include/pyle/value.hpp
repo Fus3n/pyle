@@ -69,7 +69,9 @@ namespace pyle {
                 case Tag::ArrayRef: return "array";
                 case Tag::StructRef: return "struct";
                 case Tag::NativeFuncRef: return "native_function";
-                case Tag::FuncRef: return "function";
+                case Tag::FuncRef: 
+                case Tag::ClosureRef:
+                    return "function";
                 case Tag::IteratorRef: return "iterator";
                 case Tag::RangeRef: return "range";
                 case Tag::MapRef: return "map";
@@ -363,4 +365,6 @@ namespace pyle {
         explicit Object(Coroutine coro) : data(std::move(coro)) {} 
     };
 
+
+    using NativeMethodMap = ankerl::unordered_dense::map<std::string, NativeMethodFn>; 
 }

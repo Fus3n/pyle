@@ -74,7 +74,7 @@
     },
     {
       "name": "support.function.builtin.pyle",
-      "match": "\\b(print|printf|format|import|add_import_path)\\b"
+      "match": "\\b(print|printf|format|import|add_import_path|typeof|Coro)\\b"
     },
     {
       "comment": "Method/Property access: self.health (highlights 'health')",

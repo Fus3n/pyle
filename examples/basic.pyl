@@ -95,17 +95,32 @@ print("\nBuilt-In Methods")
 
 # String helpers
 let raw_string = "123.45"
-printf("Size: {}, Slice: {}, Number: {}", 
+printf("Size: {}, Slice: {}, Number: {}, Split: {}", 
     raw_string.size(), 
     raw_string.slice(0, 3), 
-    raw_string.to_num()
+    raw_string.to_num(),
+    raw_string.split(".")
 )
 
 # Array helpers
 let inventory = []
 inventory.append("gold")
 inventory.append("key")
-printf("Inventory size: {}, Popped: {}", inventory.size(), inventory.pop())
+printf("Inventory size: {}, Popped: {}, Sliced: {}", inventory.size(), inventory.pop(),  inventory.slice(0..inventory.size()))
+
+# Map helpers
+let data = {"hp": 100, status: "alive"}
+data["inven"] = inventory
+printf(
+    "Player has: {} hp, has gold: {}", 
+    data["hp"], 
+    (data.has("inven") and data["inven"].size() > 0 and data["inven"][0] == "gold")
+)
+print(data.keys())
+print(data.values())
+data.clear()
+inventory.clear() # clear array
+
 
 # Nullability (none)
 print("\nNullability")

@@ -243,6 +243,9 @@ namespace pyle {
             mark_value(Value(Value::Tag::CoroutineRef, active_coroutine_idx));
         }
 
+        for (const Value& val : gc_roots) {
+           mark_value(val);
+        }
 
         for (Value* ptr = stack; ptr < sp; ++ptr) {
             mark_value(*ptr);

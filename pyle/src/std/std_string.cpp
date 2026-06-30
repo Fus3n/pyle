@@ -1,4 +1,5 @@
 #include "pyle/std/std_string.hpp"
+#include "pyle/value.hpp"
 #include "pyle/vm.hpp"
 #include <sstream>
 
@@ -9,9 +10,7 @@ namespace  pyle::StringMethods {
             return Value();
         }
 
-        Object& obj = vm.get_heap_object(obj_idx);
-        auto& str = std::get<std::string>(obj.data);
-
+        auto& str = vm.get_heap_object<std::string>(obj_idx);
         return Value(static_cast<int64_t>(str.size()));
     }
 
@@ -21,8 +20,7 @@ namespace  pyle::StringMethods {
             return pyle::Value();
         }
 
-        Object& obj = vm.get_heap_object(obj_idx);
-        auto& str = std::get<std::string>(obj.data);
+        auto& str = vm.get_heap_object<std::string>(obj_idx);
 
         try {
             if (str.find('.') != std::string::npos) {
@@ -36,17 +34,25 @@ namespace  pyle::StringMethods {
     }
 
     Value slice(VM& vm, HeapIdx obj_idx, ArgView args) {
-        if (args.size() != 2 || args[0].tag != Value::Tag::Int || args[1].tag != Value::Tag::Int) {
-            vm.runtime_error(RuntimeError::ArgumentError, "string.slice expects 2 integer arguments (start, end).");
+        int64_t start, end;
+
+        if (args.size() == 1 && args[0].tag == Value::Tag::RangeRef) {
+            const auto& range = vm.get_heap_object<Range>(args[0].as_ref);
+            start = range.start;
+            end = range.end;
+        } else if (args.size() == 2 && args[0].tag == Value::Tag::Int && args[1].tag == Value::Tag::Int) {
+            start = args[0].as_int;
+            end = args[1].as_int;
+        } else {
+            vm.runtime_error(RuntimeError::ArgumentError, "string.slice() expects either 2 integers (start, end) or 1 range.");
             return Value();
         }
 
-        const auto& str = std::get<std::string>(vm.get_heap_object(obj_idx).data);
-        int64_t start = args[0].as_int;
-        int64_t end = args[1].as_int;
+        const auto& str = vm.get_heap_object<std::string>(obj_idx);
 
         if (start < 0) start = 0;
         if (end > static_cast<int64_t>(str.size())) end = str.size();
+
         if (start >= end) {
             return Value(Value::Tag::StringRef, vm.intern_string(""));
         }
@@ -61,7 +67,7 @@ namespace  pyle::StringMethods {
             return Value();
         }
 
-        const auto& str = std::get<std::string>(vm.get_heap_object(obj_idx).data);
+        const auto& str = vm.get_heap_object<std::string>(obj_idx);
         if (str.empty()) return Value(false);
         
         for (char c : str) {
@@ -78,7 +84,7 @@ namespace  pyle::StringMethods {
             return Value();
         }
 
-        const auto& str = std::get<std::string>(vm.get_heap_object(obj_idx).data);
+        const auto& str = vm.get_heap_object<std::string>(obj_idx);
         if (str.empty()) return Value(false);
         
         for (char c : str) {
@@ -95,7 +101,7 @@ namespace  pyle::StringMethods {
             return Value();
         }
 
-        const auto& str = std::get<std::string>(vm.get_heap_object(obj_idx).data);
+        const auto& str = vm.get_heap_object<std::string>(obj_idx);
         if (str.empty()) return Value(false);
         
         for (char c : str) {
@@ -112,7 +118,7 @@ namespace  pyle::StringMethods {
             return Value();
         }
 
-        const auto& str = std::get<std::string>(vm.get_heap_object(obj_idx).data);
+        const auto& str = vm.get_heap_object<std::string>(obj_idx);
         if (str.empty()) return Value(false);
         
         for (char c : str) {
@@ -129,8 +135,8 @@ namespace  pyle::StringMethods {
             return Value();
         }
 
-        const auto& delim = std::get<std::string>(vm.get_heap_object(obj_idx).data);
-        const auto& arr = std::get<ArrayType>(vm.get_heap_object(args[0].as_ref).data);
+        const auto& delim = vm.get_heap_object<std::string>(obj_idx);
+        const auto& arr = vm.get_heap_object<ArrayType>(args[0].as_ref);
 
         if (arr.empty()) {
             return Value(Value::Tag::StringRef, vm.intern_string(""));
@@ -147,7 +153,67 @@ namespace  pyle::StringMethods {
         return Value(Value::Tag::StringRef, idx);
     }
 
-    static const ankerl::unordered_dense::map<std::string, NativeMethodFn> methods = {
+    Value split(VM& vm, HeapIdx obj_idx, ArgView args) {
+        if (args.size() != 1 || args[0].tag != Value::Tag::StringRef) {
+            vm.runtime_error(RuntimeError::ArgumentError, "string.split() expects exactly 1 string argument (delimiter).");
+            return Value();
+        }
+
+        std::string str = vm.get_heap_object<std::string>(obj_idx);
+        std::string delim = vm.get_heap_object<std::string>(args[0].as_ref);
+
+        // turning off gc as intern might allocate
+        bool was_enabled = vm.is_gc_enabled();
+        vm.set_gc_enabled(false);
+
+        ArrayType parts;
+        if (delim.empty()) {
+            for (char c : str)
+                parts.push_back(Value(Value::Tag::StringRef, vm.intern_string(std::string(1, c))));
+        } else {
+            size_t start = 0, end = str.find(delim);
+            while (end != std::string::npos) {
+                parts.push_back(Value(Value::Tag::StringRef, vm.intern_string(str.substr(start, end - start))));
+                start = end + delim.size();
+                end = str.find(delim, start);
+            }
+            parts.push_back(Value(Value::Tag::StringRef, vm.intern_string(str.substr(start))));
+        }
+
+        vm.set_gc_enabled(was_enabled);
+        HeapIdx arr_idx = vm.alloc(Object(std::move(parts)));
+        return Value(Value::Tag::ArrayRef, arr_idx);
+    }
+
+    Value lower(VM& vm, HeapIdx obj_idx, ArgView args) {
+        if (args.size() != 0) {
+            vm.runtime_error(RuntimeError::ArgumentError, "string.lower() expects 0 arguments.");
+            return Value();
+        }
+
+        const auto& str = vm.get_heap_object<std::string>(obj_idx);
+        std::string result = str;
+        for (char& c : result) {
+            c = std::tolower(static_cast<unsigned char>(c));
+        }
+        return Value(Value::Tag::StringRef, vm.intern_string(result));
+    }
+
+    Value upper(VM& vm, HeapIdx obj_idx, ArgView args) {
+        if (args.size() != 0) {
+            vm.runtime_error(RuntimeError::ArgumentError, "string.upper() expects 0 arguments.");
+            return Value();
+        }
+
+        const auto& str = vm.get_heap_object<std::string>(obj_idx);
+        std::string result = str;
+        for (char& c : result) {
+            c = std::toupper(static_cast<unsigned char>(c));
+        }
+        return Value(Value::Tag::StringRef, vm.intern_string(result));
+    }
+
+    static NativeMethodMap methods = {
         {"size", size},
         {"to_num", to_num},
         {"slice", slice},
@@ -155,7 +221,10 @@ namespace  pyle::StringMethods {
         {"is_alpha", is_alpha},
         {"is_alnum", is_alnum},
         {"is_space", is_space},
-        {"join", join}
+        {"join", join},
+        {"lower", lower},
+        {"upper", upper},
+        {"split", split}
     };
 
     Value dispatch(VM& vm, HeapIdx obj_idx, const std::string& name, ArgView args) {

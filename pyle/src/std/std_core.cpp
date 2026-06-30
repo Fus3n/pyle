@@ -257,6 +257,14 @@ namespace pyle {
         return Value();
     }
 
+    Value native_typeof(VM& vm, ArgView args) {
+        if (args.size() != 1) {
+            vm.runtime_error(RuntimeError::ArgumentError, "typeof expects exactly 1 argument.");
+            return Value();
+        }
+
+        return Value(Value::Tag::StringRef, vm.intern_string(args[0].tag_to_string()));
+    }
 
     void register_core_natives(VM& vm, bool load_core_modules) {
         pyle::bind_function<native_print>(vm, "print");
@@ -264,6 +272,7 @@ namespace pyle {
         pyle::bind_function<native_format>(vm, "format");
         pyle::bind_function<native_import>(vm, "import");
         pyle::bind_function<native_add_import_path>(vm, "add_import_path"); 
+        pyle::bind_function<native_typeof>(vm, "typeof"); 
         pyle::bind_function<native_coro_constructor>(vm, "Coro");
 
         pyle::register_core_future(vm); 

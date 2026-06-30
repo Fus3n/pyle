@@ -1,4 +1,5 @@
 #include "pyle/std/std_map.hpp"
+#include "pyle/value.hpp"
 #include "pyle/vm.hpp"
 #include <fmt/format.h>
 
@@ -10,8 +11,7 @@ namespace pyle::MapMethods {
             return Value();
         }
 
-        Object& obj = vm.get_heap_object(obj_idx);
-        auto& map = std::get<MapType>(obj.data);
+        auto& map = vm.get_heap_object<MapType>(obj_idx);
 
         return Value(static_cast<int64_t>(map.size()));
     }
@@ -28,8 +28,7 @@ namespace pyle::MapMethods {
             return Value();
         }
 
-        Object& obj = vm.get_heap_object(obj_idx);
-        auto& map = std::get<MapType>(obj.data);
+        auto& map = vm.get_heap_object<MapType>(obj_idx);
 
         auto it = map.find(key);
         if (it != map.end()) {
@@ -38,7 +37,7 @@ namespace pyle::MapMethods {
             return val;
         }
 
-        return Value(); // Or should it error? Returning null is common for missing keys.
+        return Value(); 
     }
 
     Value keys(VM& vm, HeapIdx obj_idx, ArgView args) {
@@ -47,8 +46,7 @@ namespace pyle::MapMethods {
             return Value();
         }
 
-        Object& obj = vm.get_heap_object(obj_idx);
-        auto& map = std::get<MapType>(obj.data);
+        auto& map = vm.get_heap_object<MapType>(obj_idx);
 
         ArrayType key_array;
         key_array.reserve(map.size());
@@ -66,8 +64,7 @@ namespace pyle::MapMethods {
             return Value();
         }
 
-        Object& obj = vm.get_heap_object(obj_idx);
-        auto& map = std::get<MapType>(obj.data);
+        auto& map = vm.get_heap_object<MapType>(obj_idx);
 
         ArrayType key_array;
         key_array.reserve(map.size());
@@ -79,11 +76,39 @@ namespace pyle::MapMethods {
         return Value(Value::Tag::ArrayRef, array_idx);
     }
 
-    static const ankerl::unordered_dense::map<std::string, NativeMethodFn> methods = {
+    Value has(VM& vm, HeapIdx obj_idx, ArgView args) {
+        if (args.size() != 1) {
+            vm.runtime_error(RuntimeError::ArgumentError, "map.has() expects exactly 1 argument (key).");
+            return Value();
+        }
+        
+        Value key = args[0];
+        if (!vm.is_hashable(key)) {
+            return Value(false); 
+        }
+
+        const auto& map = vm.get_heap_object<MapType>(obj_idx);
+        return Value(map.find(key) != map.end());
+    }
+
+    Value clear(VM& vm, HeapIdx obj_idx, ArgView args) {
+        if (args.size() != 0) {
+            vm.runtime_error(RuntimeError::ArgumentError, "map.clear() expects 0 arguments.");
+            return Value();
+        }
+
+        auto& map = vm.get_heap_object<MapType>(obj_idx);
+        map.clear();
+        return Value();
+    }
+
+    static NativeMethodMap methods = {
         {"size", size},
         {"remove", remove},
         {"keys", keys},
-        {"values", values}
+        {"values", values},
+        {"has", has},  
+        {"clear", clear}   
     };
 
     bool has_method(const std::string& name) {
