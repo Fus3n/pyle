@@ -431,9 +431,7 @@ namespace pyle {
         begin_scope(); 
         current_state->locals.push_back(Local{stmt->var_name, current_state->scope_depth});
         
-        for (const auto& s : stmt->body->statements) {
-            if (s) s->accept(this);
-        }
+        stmt->body->accept(this);
         
         end_scope(); 
         

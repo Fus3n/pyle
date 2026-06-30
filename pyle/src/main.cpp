@@ -10,6 +10,14 @@
 #include <string>
 #include <pyle/config.hpp>
 
+#ifdef _WIN32
+#include <windows.h>
+#else
+#include <unistd.h>
+#include <limits.h>
+#endif
+
+
 std::string read_file(const std::string& filepath) {
     std::ifstream file(filepath, std::ios::in | std::ios::binary);
     if (!file) {
@@ -26,6 +34,29 @@ void print_assertion_status() {
     #else
         puts("Assertions enabled");
     #endif
+}
+
+
+namespace fs = std::filesystem;
+
+fs::path get_executable_directory() {
+#ifdef _WIN32
+    char buffer[MAX_PATH];
+    GetModuleFileNameA(NULL, buffer, MAX_PATH);
+    return fs::path(buffer).parent_path();
+#elif __APPLE__
+    // Mac implementation (or you can use std::filesystem::canonical)
+    return fs::canonical("/proc/self/exe").parent_path();
+#else
+    // Linux implementation
+    char buffer[PATH_MAX];
+    ssize_t len = readlink("/proc/self/exe", buffer, sizeof(buffer) - 1);
+    if (len != -1) {
+        buffer[len] = '\0';
+        return fs::path(buffer).parent_path();
+    }
+    return fs::current_path();
+#endif
 }
 
 int main(int argc, char* argv[]) {
@@ -61,6 +92,9 @@ int main(int argc, char* argv[]) {
     std::string script_path = program.get<std::string>("script");
     pyle::Pyle pyle;
     pyle::register_core_natives(pyle.vm); // Register core functions and modules
+
+    fs::path exe_dir = get_executable_directory();
+    fs::path std_path = exe_dir / "std";
 
     try {
         std::string source = read_file(script_path);

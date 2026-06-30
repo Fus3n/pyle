@@ -320,8 +320,7 @@ namespace pyle {
         
         std::unique_ptr<Expr> iterable = expression();
         
-        consume(TokenType::LEFT_BRACE, "Expected '{' before body.");
-        std::unique_ptr<BlockStmt> body = block();
+        std::unique_ptr<Stmt> body = statement(); 
         
         return std::make_unique<ForStmt>(loop_var, std::move(iterable), std::move(body));
     }

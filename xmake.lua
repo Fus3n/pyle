@@ -32,7 +32,7 @@ add_rules("plugin.compile_commands.autoupdate")
 
 
 target("libpyle")
-    set_kind("static")
+    set_kind("$(kind)")
     set_languages("c++17")
     add_files("libpyle/src/**.cpp")
     add_includedirs("libpyle/include", {public = true})
@@ -51,6 +51,10 @@ target("pyle")
     if is_mode("release") then
         set_policy("build.optimization.lto", true)
     end
+    after_build(function (target)
+        import("core.project.project")
+        os.cp("$(projectdir)/std", target:targetdir())
+    end)
 
 
 target("example_basic_embedding")

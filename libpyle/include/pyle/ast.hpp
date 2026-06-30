@@ -205,9 +205,9 @@ namespace pyle {
     struct ForStmt: public Stmt {
         Token var_name;
         std::unique_ptr<Expr> iterable;
-        std::unique_ptr<BlockStmt> body;
+        std::unique_ptr<Stmt> body;
         
-        ForStmt(Token name, std::unique_ptr<Expr> iterable, std::unique_ptr<BlockStmt> body)
+        ForStmt(Token name, std::unique_ptr<Expr> iterable, std::unique_ptr<Stmt> body)
             : var_name(name), iterable(std::move(iterable)), body(std::move(body)) {}
         
         void accept(Visitor *visitor) override;
