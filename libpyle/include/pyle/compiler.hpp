@@ -55,6 +55,8 @@ namespace pyle {
 
         HeapIdx compile_function(const std::vector<Token>& params, BlockStmt* body, std::string_view name);
 
+    private:
+        std::string process_str_escapes(const Token& token); 
     public:
         Compiler(VM& vm, ErrorReporter& reporter): reporter(reporter), vm(vm) {};
 

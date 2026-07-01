@@ -41,6 +41,14 @@ namespace pyle {
         }
 
         if (std::isdigit(c)) {
+            if (c == '0' && (peek() == 'x' || peek() == 'X')) {
+                advance();
+                while (std::isxdigit(peek())) {
+                    advance(); 
+                }
+                return Token(TokenType::INT, get_current_lexeme(), token_start_span);
+            }
+            
             bool is_float = false;
             while (std::isdigit(peek())) {
                 advance();

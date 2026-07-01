@@ -14,6 +14,7 @@
 #include "pyle/std/std_future.hpp"
 #include <fmt/color.h>
 #include "pyle/std/prelude.hpp" 
+#include "pyle/std/std_file_module.hpp"
 #include <fmt/color.h>
 
 
@@ -268,6 +269,33 @@ namespace pyle {
         return Value(Value::Tag::StringRef, vm.intern_string(args[0].tag_to_string()));
     }
 
+    pyle::Value native_bytes(pyle::VM& vm, pyle::ArgView args) {
+        if (args.size() != 1 || args[0].tag != pyle::Value::Tag::ArrayRef) {
+            vm.runtime_error(pyle::RuntimeError::ArgumentError, "Bytes() expects 1 Array argument.");
+            return pyle::Value();
+        }
+
+        const auto& arr = std::get<pyle::ArrayType>(vm.get_heap_object(args[0].as_ref).data);
+        pyle::BytesType bytes;
+        bytes.reserve(arr.size());
+
+        for (const auto& val : arr) {
+            if (val.tag != pyle::Value::Tag::Int) {
+                vm.runtime_error(pyle::RuntimeError::Type, "Bytes() array must only contain integers.");
+                return pyle::Value();
+            }
+            int64_t num = val.as_int;
+            if (num < 0 || num > 255) {
+                vm.runtime_error(pyle::RuntimeError::Runtime, "Byte values must be between 0 and 255.");
+                return pyle::Value();
+            }
+            bytes.push_back(static_cast<uint8_t>(num));
+        }
+
+        pyle::HeapIdx idx = vm.alloc(pyle::Object(std::move(bytes)));
+        return pyle::Value(pyle::Value::Tag::BytesRef, idx);
+    }
+
     void register_core_natives(VM& vm, bool load_core_modules) {
         pyle::bind_function<native_print>(vm, "print");
         pyle::bind_function<native_printf>(vm, "printf");
@@ -276,8 +304,10 @@ namespace pyle {
         pyle::bind_function<native_add_import_path>(vm, "add_import_path"); 
         pyle::bind_function<native_typeof>(vm, "typeof"); 
         pyle::bind_function<native_coro_constructor>(vm, "Coro");
+        pyle::bind_function<native_bytes>(vm, "Bytes");
 
         pyle::register_core_future(vm); 
+        pyle::register_file_module(vm);
 
 
         if (!vm.builtins_finalized) {

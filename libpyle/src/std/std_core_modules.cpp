@@ -4,8 +4,6 @@
 #include <chrono>
 #include "pyle/std/std_future.hpp"
 #include <thread>
-#include <fstream>
-#include <sstream>
 #include <filesystem>
 
 namespace pyle {
@@ -30,58 +28,6 @@ namespace pyle {
 
     bool os_file_exists(std::string file_path) {
         return std::filesystem::exists(file_path);
-    }
-
-    pyle::Value os_read_file_async(pyle::VM& vm, pyle::ArgView args) {
-        std::string path = pyle::from_value<std::string>(vm, args[0]);
-        auto* sp = new std::shared_ptr<pyle::Future>(std::make_shared<pyle::Future>());
-
-        std::thread([sp_copy = *sp, path, &vm]() {
-            std::ifstream file(path);
-            if (!file.is_open()) {
-                sp_copy->error = "Could not open file: " + path;
-                sp_copy->failed = true;
-                sp_copy->finished.store(true);
-                return;
-            }
-
-            std::stringstream ss;
-            ss << file.rdbuf();
-            std::string contents = ss.str();
-
-            {
-                std::lock_guard<std::recursive_mutex> lock(vm.get_mutex());
-                
-                HeapIdx str_idx = vm.intern_string(contents); 
-                sp_copy->raw_value = pyle::Value(pyle::Value::Tag::StringRef, str_idx);
-                sp_copy->finished.store(true);
-            } 
-        }).detach();
-
-        return to_value_owned(vm, sp); 
-    }
-
-    pyle::Value os_read_file(pyle::VM& vm, pyle::ArgView args) {
-        if (args.size() < 1) {
-            vm.runtime_error(pyle::RuntimeError::ArgumentError, "os.read_file expects 1 argument (file path).");
-            return pyle::Value();
-        }
-
-        std::string path = pyle::from_value<std::string>(vm, args[0]);
-        if (vm.is_panicked()) {
-            return pyle::Value();
-        }
-
-        std::ifstream file(path);
-        if (!file.is_open()) {
-            return pyle::Value(); 
-        }
-
-        std::stringstream ss;
-        ss << file.rdbuf();
-        std::string contents = ss.str();
-        pyle::HeapIdx idx = vm.intern_string(contents);
-        return pyle::Value(pyle::Value::Tag::StringRef, idx);
     }
 
     pyle::Value os_sleep(pyle::VM& vm, pyle::ArgView args) {
@@ -113,8 +59,6 @@ namespace pyle {
             .raw_function("system", os_sys)
             .function<os_time>("time")
             .function<os_file_exists>("file_exists")
-            .raw_function("read_file_async", os_read_file_async)
-            .raw_function("read_file", os_read_file)
             .raw_function("sleep", os_sleep)
             .raw_function("sleep_async", os_sleep_async)
             .build();

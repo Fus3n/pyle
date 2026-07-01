@@ -8,6 +8,7 @@
 #include "pyle/std/std_string.hpp"
 #include "pyle/std/std_coro.hpp"
 #include "pyle/std/std_map.hpp"
+#include "pyle/std/std_bytes.hpp"
 #include "pyle/value.hpp"
 
 namespace pyle {
@@ -225,7 +226,8 @@ namespace pyle {
             case Value::Tag::StructRef:
             case Value::Tag::StructTypeRef: 
             case Value::Tag::MapRef: 
-            case Value::Tag::CoroutineRef: {
+            case Value::Tag::CoroutineRef: 
+            case Value::Tag::BytesRef: {
                 HeapIdx idx = val.as_ref;
                 if (!heap[idx].gc_marked) {
                     heap[idx].gc_marked = true;
@@ -238,6 +240,8 @@ namespace pyle {
     }
 
     void VM::gc_mark() {
+        gc_worklist.clear(); 
+
         if (main_coroutine_idx != 0) {
             mark_value(Value(Value::Tag::CoroutineRef, main_coroutine_idx));
         }
@@ -320,6 +324,10 @@ namespace pyle {
                     mark_value(Value(Value::Tag::StringRef, setter_name_idx));
                     mark_value(Value(Value::Tag::FuncRef, fn_idx));
                 }
+
+                if (type_ptr->native_constructor_idx != 0) {
+                    mark_value(Value(Value::Tag::FuncRef, type_ptr->native_constructor_idx));
+                }
             } else if (const auto *iter_ptr = std::get_if<Iterator>(&heap[current].data)) {
                 mark_value(iter_ptr->container);
             } else if (const auto *closure_ptr = std::get_if<Closure>(&heap[current].data)) { 
@@ -390,6 +398,11 @@ namespace pyle {
             case Value::Tag::None: ss << "none"; break;
             case Value::Tag::CoroutineRef: ss << "<coro>"; break;
             case Value::Tag::NativeFuncRef: ss << "<native_function>"; break;
+            case Value::Tag::BytesRef: {
+                const auto& vec = std::get<BytesType>(heap[val.as_ref].data);
+                ss << "<bytes " << vec.size() << ">";
+                break;
+            }
             case Value::Tag::StringRef: {
                 ss << std::get<std::string>(heap[val.as_ref].data);
                 break;
@@ -1015,11 +1028,24 @@ namespace pyle {
                             break;
                         }
                         case Value::Tag::StructTypeRef: {
-                            sync_ip(); 
-                            if (instantiate_struct(callee.as_ref, arg_count, frame)) {
-                                frame = &frames[frame_count - 1];
-                                Function& fn_post_clos = get_func_from_frame(*frame);
-                                sync_frame_cache(frame, fn_post_clos, instr_data, ip, ip_end, const_pool, const_pool_size);
+                            StructType& type = std::get<StructType>(heap[callee.as_ref].data);
+                            
+                            if (type.native_constructor_idx != 0) {
+                                NativeFn native = std::get<NativeFn>(heap[type.native_constructor_idx].data);
+                                const Value* args_ptr = arg_count > 0 ? (sp - arg_count) : nullptr;
+                                ArgView args_view{args_ptr, static_cast<size_t>(arg_count)};
+                                
+                                sync_ip();
+                                Value result = native(*this, args_view);
+                                sp -= arg_count;
+                                set_top(result);
+                            } else {
+                                sync_ip(); 
+                                if (instantiate_struct(callee.as_ref, arg_count, frame)) {
+                                    frame = &frames[frame_count - 1];
+                                    Function& fn_post_clos = get_func_from_frame(*frame);
+                                    sync_frame_cache(frame, fn_post_clos, instr_data, ip, ip_end, const_pool, const_pool_size);
+                                }
                             }
                             break;
                         }
@@ -1225,29 +1251,43 @@ namespace pyle {
                             
                             if (it != type.methods.end()) {
                                 HeapIdx fn_idx = it->second;
-                                HeapIdx closure_idx = build_closure_for_call(fn_idx, frame);
-                                Value method_closure(Value::Tag::ClosureRef, closure_idx);
-                                Function& fn = std::get<Function>(heap[fn_idx].data);
+                                Object& method_obj = heap[fn_idx];
                                 
-                                if (fn.arity != arg_count) {
-                                    runtime_error(RuntimeError::ArgumentError, 
-                                        fmt::format("Static method '{}' expected {} arguments, got {}.", 
-                                        method_name, fn.arity, arg_count));
-                                    return;
+                                if (auto* native_method = std::get_if<NativeMethod>(&method_obj.data)) {
+                                    const Value* args_ptr = arg_count > 0 ? (sp - arg_count) : nullptr;
+                                    ArgView args_view{args_ptr, static_cast<size_t>(arg_count)};
+                                    
+                                    sync_ip();
+                                    Value result = native_method->fn(*this, callee.as_ref, args_view);
+                                    if (panicked) return;
+                                    
+                                    sp -= (arg_count + 1); 
+                                    set_top(result);
+                                } else {
+                                    HeapIdx closure_idx = build_closure_for_call(fn_idx, frame);
+                                    Value method_closure(Value::Tag::ClosureRef, closure_idx);
+                                    Function& fn = std::get<Function>(heap[fn_idx].data);
+                                    
+                                    if (fn.arity != arg_count) {
+                                        runtime_error(RuntimeError::ArgumentError, 
+                                            fmt::format("Static method '{}' expected {} arguments, got {}.", 
+                                            method_name, fn.arity, arg_count));
+                                        return;
+                                    }
+
+                                    std::copy(sp - arg_count, sp, sp - arg_count - 1);
+                                    sp--; 
+                                    *(sp - arg_count - 1) = method_closure;
+
+                                    sync_ip();
+                                    CallFrame new_frame;
+                                    new_frame.closure = closure_idx;
+                                    new_frame.ip = 0;
+                                    new_frame.stack_base = stack_size() - arg_count;
+                                    frames[frame_count++] = new_frame;
+                                    frame = &frames[frame_count - 1];
+                                    sync_frame_cache(frame, fn, instr_data, ip, ip_end, const_pool, const_pool_size);
                                 }
-
-                                std::copy(sp - arg_count, sp, sp - arg_count - 1);
-                                sp--; 
-                                *(sp - arg_count - 1) = method_closure;
-
-                                sync_ip();
-                                CallFrame new_frame;
-                                new_frame.closure = closure_idx;
-                                new_frame.ip = 0;
-                                new_frame.stack_base = stack_size() - arg_count;
-                                frames[frame_count++] = new_frame;
-                                frame = &frames[frame_count - 1];
-                                sync_frame_cache(frame, fn, instr_data, ip, ip_end, const_pool, const_pool_size);
                             } else {
                                 runtime_error(RuntimeError::Name, 
                                     fmt::format("Static method '{}' not found on struct '{}'.", 
@@ -1291,7 +1331,6 @@ namespace pyle {
                             }
                             break;
                         }
-
                         case Value::Tag::CoroutineRef: {
                             std::vector<Value> args_copy(sp - arg_count, sp);
                             ArgView args_view{args_copy.data(), args_copy.size()};
@@ -1314,15 +1353,18 @@ namespace pyle {
                         }
 
                         case Value::Tag::ArrayRef:
-                        case Value::Tag::StringRef: {
+                        case Value::Tag::StringRef: 
+                        case Value::Tag::BytesRef: {
                             const Value *args_ptr = arg_count > 0 ? (sp - arg_count) : nullptr;
                             ArgView args_view{args_ptr, static_cast<size_t>(arg_count)};
                             sync_ip();
                             Value result;
                             if (callee.tag == Value::Tag::ArrayRef) {
                                 result = ArrayMethods::dispatch(*this, callee.as_ref, method_name, args_view);
-                            } else {
+                            } else if (callee.tag == Value::Tag::StringRef) {
                                 result = StringMethods::dispatch(*this, callee.as_ref, method_name, args_view);
+                            } else {
+                                result = BytesMethods::dispatch(*this, callee.as_ref, method_name, args_view);
                             }
                             if (panicked) return;
                             sp -= (arg_count + 1);
@@ -1374,6 +1416,19 @@ namespace pyle {
                                 return;
                             }
                             set_top(vec[index.as_int]);
+                            break;
+                        }
+                        case Value::Tag::BytesRef: {
+                            if (index.tag != Value::Tag::Int) {
+                                runtime_error(RuntimeError::Type, "Byte index must be an integer.");
+                                return;
+                            }
+                            const auto& vec = std::get<BytesType>(heap[container.as_ref].data);
+                            if (index.as_int < 0 || index.as_int >= static_cast<int64_t>(vec.size())) {
+                                runtime_error(RuntimeError::Index, "Byte index out of bounds.");
+                                return;
+                            }
+                            set_top(Value(static_cast<int64_t>(vec[index.as_int])));
                             break;
                         }
                         case Value::Tag::StringRef: {
@@ -1519,15 +1574,21 @@ namespace pyle {
 
                 OP(GET_ITER) {
                     Value container = pop();
-                    if (container.tag != Value::Tag::ArrayRef && 
-                        container.tag != Value::Tag::StringRef &&
-                        container.tag != Value::Tag::RangeRef 
-                    ) {
-                        runtime_error(RuntimeError::Type, "Object is not iterable");
-                        return;
+                    switch (container.tag) {
+                        case Value::Tag::ArrayRef:
+                        case Value::Tag::StringRef:
+                        case Value::Tag::RangeRef:
+                        case Value::Tag::BytesRef: {
+                            HeapIdx idx = alloc(Object(Iterator{container, 0}));
+                            push(Value(Value::Tag::IteratorRef, idx));
+                            break;
+                        }
+                        default: {
+                            runtime_error(RuntimeError::Type, "Object is not iterable");
+                            return;
+                        }
+
                     }
-                    HeapIdx idx = alloc(Object(Iterator{container, 0}));
-                    push(Value(Value::Tag::IteratorRef, idx));
                 }
                 DISPATCH();
                 
@@ -1557,6 +1618,12 @@ namespace pyle {
                             iter.index++;
                         } else {
                             ip += ARG;
+                        }
+                    } else if (auto* bytes_ptr = std::get_if<BytesType>(&container_obj.data)) {
+                        if (iter.index < bytes_ptr->size()) {
+                            push(Value(static_cast<int64_t>((*bytes_ptr)[iter.index++])));
+                        } else {
+                            ip += ARG; 
                         }
                     }
                 }

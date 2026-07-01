@@ -10,28 +10,35 @@
 
 
 namespace pyle {
-    std::string process_str_escapes(std::string_view str) {
+    std::string Compiler::process_str_escapes(const Token& token) {
+        std::string_view str = token.lexeme.substr(1, token.lexeme.size() - 2);
         std::string result;
         result.reserve(str.size());
+        
         for (size_t i = 0; i < str.size(); ++i) {
             char c = str[i];
-            if (c == '\\' && i + 1 < str.size()) {
-                char next = str[i + 1];
-                switch (next) {
-                    case 'n':  result += '\n'; break;
-                    case 'e':  result += '\x1b'; break; 
-                    case 't':  result += '\t'; break;
-                    case 'r':  result += '\r'; break;
-                    case '\\': result += '\\'; break;
-                    case '"':  result += '"';  break;
-                    case '\'': result += '\''; break;
-                    case '0':  result += '\0'; break;
-                    default: 
-                        result += '\\'; 
-                        result += next; 
-                        break;
+            if (c == '\\') {
+                if (i + 1 < str.size()) {
+                    char next = str[i + 1];
+                    switch (next) {
+                        case 'n':  result += '\n'; break;
+                        case 'e':  result += '\x1b'; break; 
+                        case 't':  result += '\t'; break;
+                        case 'r':  result += '\r'; break;
+                        case '\\': result += '\\'; break;
+                        case '"':  result += '"';  break;
+                        case '\'': result += '\''; break;
+                        case '0':  result += '\0'; break;
+                        default: 
+                            reporter.report(token.selection, ErrorType::Compile, 
+                                fmt::format("Invalid string escape sequence: '\\{}'", next));
+                            return ""; 
+                    }
+                    i++; 
+                } else {
+                    reporter.report(token.selection, ErrorType::Compile, "String cannot end with a raw backslash.");
+                    return "";
                 }
-                i++; 
             } else {
                 result += c;
             }
@@ -205,13 +212,13 @@ namespace pyle {
 
         if (tok.type == TokenType::INT) {
             v.tag = Value::Tag::Int;
-            v.as_int = std::stoll(std::string(tok.lexeme));
+            std::string lex_str(tok.lexeme);
+            v.as_int = std::stoll(lex_str, nullptr, 0); 
         } else if (tok.type == TokenType::FLOAT) {
             v.tag = Value::Tag::Float;
             v.as_float = std::stod(std::string(tok.lexeme));
         } else if (tok.type == TokenType::STRING) {
-            std::string_view raw_str = tok.lexeme.substr(1, tok.lexeme.size() - 2);
-            std::string processed = process_str_escapes(raw_str);
+            std::string processed = process_str_escapes(tok);
             HeapIdx idx = vm.intern_string(processed);
             v.tag = Value::Tag::StringRef;
             v.as_ref = idx;

@@ -213,6 +213,19 @@ namespace  pyle::StringMethods {
         return Value(Value::Tag::StringRef, vm.intern_string(result));
     }
 
+    Value to_bytes(VM& vm, HeapIdx obj_idx, ArgView args) {
+        if (args.size() != 0) {
+            vm.runtime_error(RuntimeError::ArgumentError, "string.to_bytes() expects 0 arguments.");
+            return Value();
+        }
+
+        const auto& str = vm.get_heap_object<std::string>(obj_idx);
+        BytesType bytes(str.begin(), str.end());
+
+        HeapIdx idx = vm.alloc(Object(std::move(bytes)));
+        return Value(Value::Tag::BytesRef, idx);
+    }
+
     static NativeMethodMap methods = {
         {"size", size},
         {"to_num", to_num},
@@ -224,7 +237,8 @@ namespace  pyle::StringMethods {
         {"join", join},
         {"lower", lower},
         {"upper", upper},
-        {"split", split}
+        {"split", split},
+        {"to_bytes", to_bytes},
     };
 
     Value dispatch(VM& vm, HeapIdx obj_idx, const std::string& name, ArgView args) {

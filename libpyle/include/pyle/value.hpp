@@ -27,7 +27,7 @@ namespace pyle {
         enum class Tag {
             Int, Float, Bool, None, StringRef, ArrayRef, StructRef,
             NativeFuncRef, FuncRef, IteratorRef, RangeRef, ClosureRef, UpvalueRef,
-            StructTypeRef, MapRef, NativeObjectRef, CoroutineRef,
+            StructTypeRef, MapRef, NativeObjectRef, CoroutineRef, BytesRef
         } tag;
         union {
             int64_t as_int;
@@ -56,7 +56,8 @@ namespace pyle {
                    t == Tag::ClosureRef ||
                    t == Tag::MapRef ||
                    t == Tag::NativeObjectRef ||
-                   t == Tag::CoroutineRef);
+                   t == Tag::CoroutineRef ||
+                   t == Tag::BytesRef);
         }
 
         std::string tag_to_string() const {
@@ -68,6 +69,7 @@ namespace pyle {
                 case Tag::StringRef: return "string";
                 case Tag::ArrayRef: return "array";
                 case Tag::StructRef: return "struct";
+                case Tag::BytesRef: return "bytes";
                 case Tag::NativeFuncRef: return "native_function";
                 case Tag::FuncRef: 
                 case Tag::ClosureRef:
@@ -150,7 +152,7 @@ namespace pyle {
     using NativeFn = Value (*)(VM& vm, ArgView args);
     using NativeMethodFn = Value (*)(VM& vm, HeapIdx obj_idx, ArgView args); // native function definition signature
     using MapType = ankerl::unordered_dense::map<Value, Value, ValueHash, ValueEqual>;
-
+    using BytesType = std::vector<uint8_t>;
 
     enum class SpecialMethod : size_t {
         Init,  
@@ -184,6 +186,8 @@ namespace pyle {
 
         ankerl::unordered_dense::map<HeapIdx, HeapIdx> getters; 
         ankerl::unordered_dense::map<HeapIdx, HeapIdx> setters;
+
+        HeapIdx native_constructor_idx = 0; 
 
         size_t get_offset(HeapIdx field_id) const {
             if (field_names.size() <= 8) {
@@ -346,7 +350,8 @@ namespace pyle {
             MapType,
             NativeObject,
             NativeMethod,
-            Coroutine
+            Coroutine,
+            BytesType 
         > data;
 
         Object() = default;
@@ -364,6 +369,7 @@ namespace pyle {
         explicit Object(NativeObject u) : data(u) {}
         explicit Object(NativeMethod nm) : data(nm) {}           
         explicit Object(Coroutine coro) : data(std::move(coro)) {} 
+        explicit Object(BytesType b) : data(std::move(b)) {}
     };
 
 

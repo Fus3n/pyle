@@ -413,15 +413,25 @@ namespace pyle {
     template <typename T>
     class ClassBinder {
         VM& vm;
-        Value ctor_val; 
+        Value type_val; 
+        bool was_gc_enabled = true;
 
     public:
         ClassBinder(VM& vm, const std::string& name) : vm(vm) {
+            was_gc_enabled = vm.is_gc_enabled();
+            vm.set_gc_enabled(false); 
             BindRegistry<T>::class_name = name;
             
             StructType type_meta;
             BindRegistry<T>::type_idx = vm.alloc(Object(type_meta));
+            
+            type_val = Value(Value::Tag::StructTypeRef, BindRegistry<T>::type_idx);
         }
+
+        ~ClassBinder() {
+            vm.set_gc_enabled(was_gc_enabled); 
+        }
+    
 
         template <typename... Args>
         ClassBinder& constructor() {
@@ -435,27 +445,39 @@ namespace pyle {
                 T* instance = invoke_constructor_helper<T, Args...>(vm, args, std::make_index_sequence<param_count>{});
                 if (!instance) return Value();
 
-                NativeObject ud;
-                ud.ptr = instance;
-                ud.deleter = [](void* p) { delete static_cast<T*>(p); };
-                ud.type_idx = BindRegistry<T>::type_idx;
-
-                HeapIdx idx = vm.alloc(Object(ud));
-                return Value(Value::Tag::NativeObjectRef, idx);
+                return to_value_owned(vm, instance);
             };
 
             HeapIdx ctor_idx = vm.alloc(Object(ctor_wrapper));
-            ctor_val = Value(Value::Tag::NativeFuncRef, ctor_idx);
+            
+            auto& meta = std::get<StructType>(vm.get_heap_object(BindRegistry<T>::type_idx).data);
+            meta.native_constructor_idx = ctor_idx;
+
+            return *this;
+        }
+
+        template <auto Fn>
+        ClassBinder& static_method(const std::string& name) {
+            NativeMethodFn wrapped = [](VM& vm, HeapIdx obj_idx, ArgView args) -> Value {
+                return FreeFnDeducer<Fn>::wrap(vm, args);
+            };
+
+            HeapIdx method_idx = vm.alloc(Object(NativeMethod{wrapped}));
+            HeapIdx name_id = vm.intern_string(name);
+
+            auto& meta = std::get<StructType>(vm.get_heap_object(BindRegistry<T>::type_idx).data);
+            meta.methods[name_id] = method_idx;
+
             return *this;
         }
 
         ClassBinder& register_globally() {
             int slot = vm.declare_global(vm.intern_string(BindRegistry<T>::class_name));
-            vm.global_slots[slot] = ctor_val;
+            vm.global_slots[slot] = type_val; 
             return *this;
         }
 
-        Value get_constructor() const { return ctor_val; }
+        Value get_constructor() const { return type_val; }
 
         template <auto MemFn>
         ClassBinder& method(const std::string& name) {
@@ -498,7 +520,10 @@ namespace pyle {
 
         ClassBinder& custom_constructor(NativeFn custom_ctor) {
             HeapIdx ctor_idx = vm.alloc(Object(custom_ctor));
-            ctor_val = Value(Value::Tag::NativeFuncRef, ctor_idx);
+            
+            auto& meta = std::get<StructType>(vm.get_heap_object(BindRegistry<T>::type_idx).data);
+            meta.native_constructor_idx = ctor_idx;
+
             return *this;
         }
 
