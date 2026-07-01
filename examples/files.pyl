@@ -1,0 +1,52 @@
+let os = import("os")
+
+fn test_text_io() {
+    let path = "test.txt"
+    let f = File.open(path, "w")
+    f.write("line 1\nline 2\n")
+    f.close()
+
+    let app = File.open(path, "a")
+    app.write("line 3\n")
+    app.close()
+
+    let r = File.open(path, "r")
+    print(r.size())
+
+    # read_line returns none once EOF is reached
+    let line = r.read_line()
+    while line != none {
+        print(line)
+        line = r.read_line()
+    }
+    r.close()
+}
+
+fn test_binary_io() {
+    let path = "test.bin"
+    let f = File.open(path, "wb")
+    
+    f.write_bytes(Bytes([0x41, 0x42, 255, 0, 128]))
+    print(f.tell())
+    f.close()
+
+    let r = File.open(path, "rb")
+    
+    # 0 represents seeking relative to the beginning of the file (SEEK_SET)
+    r.seek(2, 0)
+    print(r.tell())
+    
+    # read_bytes with no arguments reads all remaining bytes
+    let bytes = r.read_bytes()
+    for b in bytes {
+        print(b)
+    }
+    r.close()
+}
+
+fn main() {
+    test_text_io()
+    test_binary_io()
+}
+
+main()

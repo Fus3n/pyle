@@ -1,5 +1,9 @@
 let os = import("os")
 
+
+# There is a json parser module in the frontend code but the embdeded target does not include it
+# Either way this is just to demonstrate pyle not for use.
+
 # Recursive Descent JSON Parser in Pyle
 struct JSONParser(_src, _idx) {
 
