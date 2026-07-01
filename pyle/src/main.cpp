@@ -1,8 +1,6 @@
 #include <exception>
 #include <iostream>
 #include <fmt/printf.h>
-#include "pyle/pyle.hpp"
-#include "pyle/std/std_core.hpp" 
 #include <fstream>
 #include <sstream>
 #include <stdexcept>
@@ -10,12 +8,18 @@
 #include <string>
 #include <pyle/config.hpp>
 
+#include "pyle/pyle.hpp"
+#include "pyle/std/std_core.hpp" 
+#include "pyle/binder.hpp"
+
 #ifdef _WIN32
 #include <windows.h>
 #else
 #include <unistd.h>
 #include <limits.h>
 #endif
+
+pyle::Value register_json_module(pyle::VM& vm);
 
 
 std::string read_file(const std::string& filepath) {
@@ -91,7 +95,8 @@ int main(int argc, char* argv[]) {
 
     std::string script_path = program.get<std::string>("script");
     pyle::Pyle pyle;
-    pyle::register_core_natives(pyle.vm); // Register core functions and modules
+    pyle::register_core_natives(pyle.vm); 
+    pyle::register_module(pyle.vm, "json", register_json_module);
 
     fs::path exe_dir = get_executable_directory();
     fs::path std_path = exe_dir / "std";

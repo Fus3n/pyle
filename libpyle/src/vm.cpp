@@ -95,11 +95,13 @@ namespace pyle {
         instance.fields.resize(type.field_names.size());
         for (int i = 0; i < arg_count; i++) {
             const std::string& field_name = std::get<std::string>(heap[type.field_names[i]].data);
-            if (!field_name.empty() && field_name[0] == '_') {
-                runtime_error(RuntimeError::ArgumentError, fmt::format("Cannot initialize private field '{}' during construction.", field_name));
+
+            if (!has_init && !field_name.empty() && field_name[0] == '_') {
+                runtime_error(RuntimeError::ArgumentError, 
+                    fmt::format("Cannot initialize private field '{}' during construction.", field_name));
                 return false;
             }
-            
+                    
             instance.fields[i] = peek(arg_count - i);
         }
 
@@ -1191,7 +1193,6 @@ namespace pyle {
                             }
                             break;
                         }
-                        
                         case Value::Tag::NativeObjectRef: {
                             NativeObject& ud = std::get<NativeObject>(heap[callee.as_ref].data);
                             StructType& type = std::get<StructType>(heap[ud.type_idx].data);
@@ -1218,7 +1219,43 @@ namespace pyle {
                             }
                             break;
                         }
+                        case Value::Tag::StructTypeRef: {
+                            StructType& type = std::get<StructType>(heap[callee.as_ref].data);
+                            auto it = type.methods.find(name_val.as_ref);
+                            
+                            if (it != type.methods.end()) {
+                                HeapIdx fn_idx = it->second;
+                                HeapIdx closure_idx = build_closure_for_call(fn_idx, frame);
+                                Value method_closure(Value::Tag::ClosureRef, closure_idx);
+                                Function& fn = std::get<Function>(heap[fn_idx].data);
+                                
+                                if (fn.arity != arg_count) {
+                                    runtime_error(RuntimeError::ArgumentError, 
+                                        fmt::format("Static method '{}' expected {} arguments, got {}.", 
+                                        method_name, fn.arity, arg_count));
+                                    return;
+                                }
 
+                                std::copy(sp - arg_count, sp, sp - arg_count - 1);
+                                sp--; 
+                                *(sp - arg_count - 1) = method_closure;
+
+                                sync_ip();
+                                CallFrame new_frame;
+                                new_frame.closure = closure_idx;
+                                new_frame.ip = 0;
+                                new_frame.stack_base = stack_size() - arg_count;
+                                frames[frame_count++] = new_frame;
+                                frame = &frames[frame_count - 1];
+                                sync_frame_cache(frame, fn, instr_data, ip, ip_end, const_pool, const_pool_size);
+                            } else {
+                                runtime_error(RuntimeError::Name, 
+                                    fmt::format("Static method '{}' not found on struct '{}'.", 
+                                    method_name, value_to_string(callee)));
+                                return;
+                            }
+                            break;
+                        }
                         case Value::Tag::StructRef: {
                             Struct& s = std::get<Struct>(heap[callee.as_ref].data);
                             StructType& type = std::get<StructType>(heap[s.type_idx].data);

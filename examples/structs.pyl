@@ -2,7 +2,6 @@
 # although it doesnt have any special function all it will contain are data
 struct Pos(x, y) {} 
 
-
 # A struct in Pyle is a fixed shape structure
 # Struct with properties must be defined at the top
 # If something is not defined it cannot be accessed through self. or from outside
@@ -44,13 +43,23 @@ struct Player(name, health, pos, _private_prop) {
     fn status() {
         return format("Name: {}\nHealth: {}", self.name, self.health)
     }
+
+    # static methods are attached to the type
+    static fn update_players(players_arr, player) {
+        players_arr.append(player)
+    }
 }
 
-fn main() {
-    let p = Player("John")
-    print(p.status())
-    p.damageBy(20)
-    printf("{} has {} hp left.", p.name, p.health)
-    print(p.distanceFrom(Pos(x: 0, y: 5)))
+let players = []
+let p = Player("John")
 
-}
+print(p.status())
+
+p.damageBy(20)
+
+printf("{} has {} hp left.", p.name, p.health)
+
+print(p.distanceFrom(Pos(x: 0, y: 5)))
+
+Player.update_players(players, p)
+print(players.size())

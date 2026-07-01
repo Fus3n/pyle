@@ -3,6 +3,7 @@
 #include <utility>
 #include <string>
 #include <vector>
+#include <memory.h>
 #include "pyle/vm.hpp"
 #include "pyle/value.hpp"
 
@@ -116,6 +117,46 @@ namespace pyle {
     template <typename T>
     struct has_gc_mark<T, std::void_t<decltype(std::declval<T>().gc_mark(std::declval<VM&>()))>> : std::true_type {};
 
+
+    // recursive helper to unpack smart pointers at compile-time
+    template <typename T, typename = void>
+    struct gc_marker_helper {
+        static void mark(void* p, VM& vm) {
+            if constexpr (has_gc_mark<T>::value) {
+                static_cast<T*>(p)->gc_mark(vm);
+            }
+        }
+        static constexpr bool can_mark = has_gc_mark<T>::value;
+    };
+
+    // specialization for std::shared_ptr<U>
+    template <typename U>
+    struct gc_marker_helper<std::shared_ptr<U>> {
+        static void mark(void* p, VM& vm) {
+            auto* sp = static_cast<std::shared_ptr<U>*>(p);
+            if (sp && *sp) {
+                if constexpr (has_gc_mark<U>::value) {
+                    (*sp)->gc_mark(vm); 
+                }
+            }
+        }
+        static constexpr bool can_mark = has_gc_mark<U>::value;
+    };
+
+    template <typename U>
+    struct gc_marker_helper<std::unique_ptr<U>> {
+        static void mark(void* p, VM& vm) {
+            auto* up = static_cast<std::unique_ptr<U>*>(p);
+            if (up && *up) {
+                if constexpr (has_gc_mark<U>::value) {
+                    (*up)->gc_mark(vm);
+                }
+            }
+        }
+        static constexpr bool can_mark = has_gc_mark<U>::value;
+    };
+
+
     template <typename T>
     Value to_value_owned(VM& vm, T* val, void (*custom_marker)(void*, VM&) = nullptr) {
         NativeObject ud;
@@ -125,10 +166,8 @@ namespace pyle {
         
         if (custom_marker) {
             ud.marker = custom_marker;
-        } else if constexpr (has_gc_mark<T>::value) {
-            ud.marker = [](void* p, VM& vm) {
-                static_cast<T*>(p)->gc_mark(vm);
-            };
+        } else if constexpr (gc_marker_helper<T>::can_mark) {
+            ud.marker = &gc_marker_helper<T>::mark; 
         } else {
             ud.marker = nullptr;
         }

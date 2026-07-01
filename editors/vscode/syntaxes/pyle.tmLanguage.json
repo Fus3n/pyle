@@ -62,7 +62,7 @@
     },
     {
       "name": "keyword.control.pyle",
-      "match": "\\b(if|else|elif|for|in|while|loop|return|break|yield|or|and|not|enum)\\b"
+      "match": "\\b(if|else|elif|for|in|while|loop|return|break|yield|or|and|not|enum|static)\\b"
     },
     {
       "name": "variable.language.self.pyle",

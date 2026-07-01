@@ -58,12 +58,7 @@ namespace pyle {
             } 
         }).detach();
 
-        auto marker = [](void* p, VM& vm) {
-            auto* sp = static_cast<std::shared_ptr<Future>*>(p);
-            vm.mark_value((*sp)->raw_value); 
-        };
-
-        return to_value_owned(vm, sp, marker); 
+        return to_value_owned(vm, sp); 
     }
 
     pyle::Value os_read_file(pyle::VM& vm, pyle::ArgView args) {

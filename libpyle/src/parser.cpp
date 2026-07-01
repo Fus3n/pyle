@@ -185,16 +185,28 @@ namespace pyle {
             }
             consume(TokenType::RIGHT_PAREN, "Expected ')' after struct fields.");
         }
+
         consume(TokenType::LEFT_BRACE, "Expected '{' before struct body.");
         std::vector<std::unique_ptr<FuncDeclStmt>> methods;
         while (!check(TokenType::RIGHT_BRACE) && !is_at_end()) {
+            bool is_static = match({TokenType::STATIC}); 
+
             consume(TokenType::FN, "Expected 'fn' for method declaration inside struct.");
             Token method_name = consume(TokenType::IDENTIFIER, "Expected method name.");
             consume(TokenType::LEFT_PAREN, "Expected '(' after method name.");
             
             std::vector<Token> params;
             Token self_tok(TokenType::IDENTIFIER, "self", method_name.selection);
-            params.push_back(self_tok);
+
+            if (!is_static) {
+                params.push_back(self_tok);
+            } else {
+                if (method_name.lexeme == "_init") {
+                    reporter.report(method_name.selection, ErrorType::Compile, 
+                        "Constructor '_init' cannot be declared as a static method.");
+                    throw ParserError();
+                }
+            }
             
             if (!check(TokenType::RIGHT_PAREN)) {
                 do {
@@ -206,7 +218,7 @@ namespace pyle {
             consume(TokenType::LEFT_BRACE, "Expected '{' before method body.");
             std::unique_ptr<BlockStmt> body = block();
             
-            if (method_name.lexeme == "_init") {
+            if (!is_static && method_name.lexeme == "_init") {
                 auto return_self = std::make_unique<ReturnStmt>(std::make_unique<VariableExpr>(self_tok));
                 body->statements.push_back(std::move(return_self));
             }
