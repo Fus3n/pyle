@@ -1,0 +1,32 @@
+# Cooperative Concurrency Example
+# Demonstrates non-blocking I/O and concurrent task execution in Pyle
+
+let os = import("os")
+
+fn task_a() {
+    # sleep_async returns a Future. waitfor() yields control back to 
+    # scheduler, allowing other tasks to run while C++ sleeps.
+    waitfor(os.sleep_async(1000)) 
+    print("Sleeping A completed")
+}
+
+fn task_b() {
+    waitfor(os.sleep_async(1000)) 
+    print("Sleeping B completed")
+}
+
+fn main() {
+    let start = os.time()
+    
+    print("Starting tasks concurrently...")
+    
+    # async.all yields and schedules both tasks to run concurrently.
+    # Total time taken will be ~1.0 second, not 2.0 seconds!
+    async.all([task_a, task_b]) 
+    
+    let end = os.time()
+    printf("All tasks completed in: {:.2f}s", end - start)
+}
+
+# Bootstraps the async event loop and runs the main coroutine to completion
+async.run(main)
