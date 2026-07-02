@@ -156,7 +156,16 @@ namespace pyle {
         void mark_value(const Value& val);
         std::recursive_mutex& get_mutex() { return vm_mutex; }
 
+        pyle::Value get_global(const std::string& name);
+
+        pyle::Value call_func_raw(pyle::Value closure, const std::vector<pyle::Value>& args);
+
+        template <typename... Args>
+        Value call_func(Value closure, Args&&... args);
+
     private:
+        Value last_result;
+
         std::recursive_mutex vm_mutex; 
         bool gc_enabled = true;
 
@@ -191,7 +200,15 @@ namespace pyle {
             *sp++ = value;
         }
 
-        PYLE_FORCEINLINE Value pop() { return *(--sp); }
+        PYLE_FORCEINLINE Value pop() { 
+            #ifndef NDEBUG
+                if (sp <= stack) {
+                    runtime_error(RuntimeError::StackUnderflow, "Internal VM Error: Stack underflow.");
+                    return Value(); 
+                }
+            #endif
+            return *(--sp);
+        }
         PYLE_FORCEINLINE size_t stack_size() const { return sp - stack; }
         PYLE_FORCEINLINE Value peek(size_t distance = 1) const { return *(sp - distance); }
         PYLE_FORCEINLINE void set_top(Value val) { *(sp - 1) = val;}

@@ -606,4 +606,15 @@ namespace pyle {
         HeapIdx name_id = vm.intern_string(name);
         vm.module_registry[name_id] = factory;
     }
+
+
+    template <typename... Args>
+    Value VM::call_func(Value closure, Args&&... args) {
+        std::vector<Value> converted_args;
+        converted_args.reserve(sizeof...(Args));
+        
+        (converted_args.push_back(to_value(*this, std::forward<Args>(args))), ...);
+        
+        return this->call_func_raw(closure, converted_args);
+    }
 }

@@ -513,8 +513,56 @@ namespace pyle {
         }
     }
 
+    pyle::Value VM::get_global(const std::string& name) {
+        std::lock_guard<std::recursive_mutex> lock(vm_mutex);
+        
+        HeapIdx name_idx = intern_string(name);
+        auto it = global_slot_map.find(name_idx);
+        if (it != global_slot_map.end()) {
+            return global_slots[it->second];
+        }
+        return pyle::Value(); 
+    }
+
+    pyle::Value VM::call_func_raw(pyle::Value closure, const std::vector<pyle::Value>& args) {
+        if (closure.tag != Value::Tag::ClosureRef && closure.tag != Value::Tag::FuncRef) {
+            runtime_error(RuntimeError::Type, "Provided Value is not a callable Pyle function.");
+            return pyle::Value();
+        }
+
+        Chunk call_chunk;
+        
+        call_chunk.const_pool.push_back(closure);
+        call_chunk.instr.push_back(encode(OpCode::LOAD_CONST, 0));
+        call_chunk.lines.push_back(0);
+        
+        for (size_t i = 0; i < args.size(); ++i) {
+            call_chunk.const_pool.push_back(args[i]);
+            call_chunk.instr.push_back(encode(OpCode::LOAD_CONST, i + 1));
+            call_chunk.lines.push_back(0);
+        }
+        
+        call_chunk.instr.push_back(encode(OpCode::CALL, args.size()));
+        call_chunk.lines.push_back(0);
+        
+        call_chunk.instr.push_back(encode(OpCode::HALT, 0));
+        call_chunk.lines.push_back(0);
+        
+        execute(std::move(call_chunk));
+         
+        pyle::Value result = last_result; 
+        last_result = pyle::Value();     
+        
+        return result; 
+    }
+
     void VM::runtime_error(const RuntimeError &type, const std::string &msg) {
         panicked = true;
+        if (frame_count == 0) {
+            fmt::print(stderr, "\033[1;31m{}:\033[0m {}\n\n", err_to_string(type), msg);
+            return;
+        }
+
         size_t line = 0;
         CallFrame& frame = frames[frame_count - 1];
         Function& func = get_func_from_frame(frame);
@@ -1841,6 +1889,11 @@ namespace pyle {
                 DISPATCH();
 
                 OP(HALT) {
+                    if (sp > stack) {
+                        last_result = peek(); 
+                    } else {
+                        last_result = Value();
+                    }
                     return;
                 }
 
