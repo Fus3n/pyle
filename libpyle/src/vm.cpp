@@ -1208,7 +1208,10 @@ namespace pyle {
 
                     switch (callee.tag) {
                         case Value::Tag::MapRef: {
-                            if (MapMethods::has_method(method_name)) {
+                            auto& _map = std::get<MapType>(heap[callee.as_ref].data);
+                            auto _it = _map.find(name_val);
+                            
+                            if (_it == _map.end() && MapMethods::has_method(method_name)) {
                                 const Value *args_ptr = arg_count > 0 ? (sp - arg_count) : nullptr;
                                 ArgView args_view{args_ptr, static_cast<size_t>(arg_count)};
                                 sync_ip();
