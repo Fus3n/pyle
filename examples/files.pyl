@@ -44,9 +44,35 @@ fn test_binary_io() {
     r.close()
 }
 
-fn main() {
-    test_text_io()
-    test_binary_io()
+fn test_async_io() {
+    let path = "test_async.txt"
+    let f = File.open(path, "w")
+    
+    # write_async returns a Future, we yield until it completes
+    waitfor(f.write_async("async line 1\nasync line 2\n"))
+    f.close()
+
+    let r = File.open(path, "r")
+    
+    # read_all_async reads the whole file asynchronously
+    let content = waitfor(r.read_all_async())
+    print("Async Read Content:")
+    print(content)
+    r.close()
 }
 
-main()
+fn main() {
+    print("--- Testing Text IO ---")
+    test_text_io()
+    test_binary_io()
+    print("\n--- Testing Async IO ---")
+    test_async_io()
+
+    print("\n--- Cleaning up files ---")
+    print("remove test.txt: ", os.remove("test.txt"))
+    print("remove test.bin: ", os.remove("test.bin"))
+    print("remove test_async.txt: ", os.remove("test_async.txt"))
+}
+
+# Use async.run to allow waitfor inside our coroutines
+async.run(main)

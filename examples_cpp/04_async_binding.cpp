@@ -9,9 +9,9 @@
 
 
 pyle::Value fetch_data_async(pyle::VM& vm, pyle::ArgView args) {
-    auto* sp = new std::shared_ptr<pyle::Future>(std::make_shared<pyle::Future>());
+    auto [val, future] = pyle::Future::create(vm);
 
-    std::thread([sp_copy = *sp, &vm]() {
+    std::thread([future, &vm]() {
         // Do slow database query / web request here ...
 
         std::string database_result = "result";
@@ -19,12 +19,12 @@ pyle::Value fetch_data_async(pyle::VM& vm, pyle::ArgView args) {
 
         {
             std::lock_guard<std::recursive_mutex> lock(vm.get_mutex());
-            sp_copy->raw_value = pyle::Value(pyle::Value::Tag::StringRef, vm.intern_string(database_result));
-            sp_copy->finished.store(true); 
+            future->raw_value = pyle::Value(pyle::Value::Tag::StringRef, vm.intern_string(database_result));
+            future->finished.store(true); 
         }
     }).detach();
 
-    return to_value_owned(vm, sp); 
+    return val; 
 }
 
 int main() {

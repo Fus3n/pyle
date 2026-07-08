@@ -558,6 +558,215 @@ namespace pyle {
         }
     };
 
+    template <auto MemFn, typename T = decltype(MemFn)>
+    struct SharedMethodDeducer;
+
+    template <auto MemFn, typename Class, typename Ret, typename... Args>
+    struct SharedMethodDeducer<MemFn, Ret (Class::*)(Args...)> {
+        static Value wrap(VM& vm, HeapIdx obj_idx, ArgView args) {
+            Object& obj = vm.get_heap_object(obj_idx);
+            auto* sp = static_cast<std::shared_ptr<Class>*>(std::get<NativeObject>(obj.data).ptr);
+            auto* instance = sp->get();
+            constexpr size_t param_count = sizeof...(Args);
+            if (args.size() != param_count) {
+                vm.runtime_error(RuntimeError::ArgumentError, fmt::format("Expected {} arguments, got {}.", param_count, args.size()));
+                return Value();
+            }
+            return MethodDeducer<MemFn, Ret (Class::*)(Args...)>::invoke(vm, instance, args, std::make_index_sequence<param_count>{});
+        }
+    };
+
+    template <auto MemFn, typename Class, typename Ret, typename... Args>
+    struct SharedMethodDeducer<MemFn, Ret (Class::*)(VM&, Args...)> {
+        static Value wrap(VM& vm, HeapIdx obj_idx, ArgView args) {
+            Object& obj = vm.get_heap_object(obj_idx);
+            auto* sp = static_cast<std::shared_ptr<Class>*>(std::get<NativeObject>(obj.data).ptr);
+            auto* instance = sp->get();
+            constexpr size_t param_count = sizeof...(Args);
+            if (args.size() != param_count) {
+                vm.runtime_error(RuntimeError::ArgumentError, fmt::format("Expected {} arguments, got {}.", param_count, args.size()));
+                return Value();
+            }
+            return MethodDeducer<MemFn, Ret (Class::*)(VM&, Args...)>::invoke(vm, instance, args, std::make_index_sequence<param_count>{});
+        }
+    };
+
+    template <auto MemFn, typename Class, typename Ret, typename... Args>
+    struct SharedMethodDeducer<MemFn, Ret (Class::*)(Args...) const> {
+        static Value wrap(VM& vm, HeapIdx obj_idx, ArgView args) {
+            Object& obj = vm.get_heap_object(obj_idx);
+            const auto* sp = static_cast<const std::shared_ptr<Class>*>(std::get<NativeObject>(obj.data).ptr);
+            const auto* instance = sp->get();
+            constexpr size_t param_count = sizeof...(Args);
+            if (args.size() != param_count) {
+                vm.runtime_error(RuntimeError::ArgumentError, fmt::format("Expected {} arguments, got {}.", param_count, args.size()));
+                return Value();
+            }
+            return MethodDeducer<MemFn, Ret (Class::*)(Args...) const>::invoke(vm, instance, args, std::make_index_sequence<param_count>{});
+        }
+    };
+
+    template <auto MemFn, typename Class, typename Ret, typename... Args>
+    struct SharedMethodDeducer<MemFn, Ret (Class::*)(VM&, Args...) const> {
+        static Value wrap(VM& vm, HeapIdx obj_idx, ArgView args) {
+            Object& obj = vm.get_heap_object(obj_idx);
+            const auto* sp = static_cast<const std::shared_ptr<Class>*>(std::get<NativeObject>(obj.data).ptr);
+            const auto* instance = sp->get();
+            constexpr size_t param_count = sizeof...(Args);
+            if (args.size() != param_count) {
+                vm.runtime_error(RuntimeError::ArgumentError, fmt::format("Expected {} arguments, got {}.", param_count, args.size()));
+                return Value();
+            }
+            return MethodDeducer<MemFn, Ret (Class::*)(VM&, Args...) const>::invoke(vm, instance, args, std::make_index_sequence<param_count>{});
+        }
+    };
+
+    template <auto MemFn, typename Class, typename Ret>
+    struct SharedMethodDeducer<MemFn, Ret (Class::*)(VM&, ArgView)> {
+        static Value wrap(VM& vm, HeapIdx obj_idx, ArgView args) {
+            Object& obj = vm.get_heap_object(obj_idx);
+            if (!std::holds_alternative<NativeObject>(obj.data)) {
+                vm.runtime_error(RuntimeError::Type, "Expected native object instance.");
+                return Value();
+            }
+            auto* sp = static_cast<std::shared_ptr<Class>*>(std::get<NativeObject>(obj.data).ptr);
+            auto* instance = sp->get();
+            try {
+                if constexpr (std::is_same_v<Ret, void>) {
+                    (instance->*MemFn)(vm, args);
+                    return Value();
+                } else {
+                    return to_value(vm, (instance->*MemFn)(vm, args));
+                }
+            } catch (const std::exception& e) {
+                vm.runtime_error(RuntimeError::Runtime, e.what());
+                return Value();
+            }
+        }
+    };
+
+    template <typename T>
+    class SharedClassBinder {
+        VM& vm;
+        Value type_val; 
+        bool was_gc_enabled = true;
+
+    public:
+        SharedClassBinder(VM& vm, const std::string& name) : vm(vm) {
+            was_gc_enabled = vm.is_gc_enabled();
+            vm.set_gc_enabled(false); 
+            BindRegistry<std::shared_ptr<T>>::class_name = name;
+            
+            StructType type_meta;
+            BindRegistry<std::shared_ptr<T>>::type_idx = vm.alloc(Object(type_meta));
+            
+            type_val = Value(Value::Tag::StructTypeRef, BindRegistry<std::shared_ptr<T>>::type_idx);
+        }
+
+        ~SharedClassBinder() {
+            vm.set_gc_enabled(was_gc_enabled); 
+        }
+
+        SharedClassBinder& register_globally() {
+            int slot = vm.declare_global(vm.intern_string(BindRegistry<std::shared_ptr<T>>::class_name));
+            vm.global_slots[slot] = type_val; 
+            return *this;
+        }
+
+        Value get_constructor() const { return type_val; }
+
+        template <auto MemFn>
+        SharedClassBinder& method(const std::string& name) {
+            NativeMethodFn wrapped = SharedMethodDeducer<MemFn>::wrap;
+            
+            HeapIdx method_idx = vm.alloc(Object(NativeMethod{wrapped}));
+            HeapIdx name_id = vm.intern_string(name);
+            
+            auto& registered_meta = std::get<StructType>(vm.get_heap_object(BindRegistry<std::shared_ptr<T>>::type_idx).data);
+            registered_meta.methods[name_id] = method_idx;
+            
+            return *this;
+        }
+
+        template <auto MemFn>
+        SharedClassBinder& getter(const std::string& name) {
+            NativeMethodFn wrapped = SharedMethodDeducer<MemFn>::wrap;
+            
+            HeapIdx getter_idx = vm.alloc(Object(NativeMethod{wrapped}));
+            HeapIdx name_id = vm.intern_string(name);
+            
+            auto& registered_meta = std::get<StructType>(vm.get_heap_object(BindRegistry<std::shared_ptr<T>>::type_idx).data);
+            registered_meta.getters[name_id] = getter_idx;
+            
+            return *this;
+        }
+
+        template <typename FieldType, FieldType T::*FieldPtr>
+        SharedClassBinder& member(const std::string& name) {
+
+            NativeMethodFn getter = [](VM& vm, HeapIdx obj_idx, ArgView args) -> Value {
+                auto* sp = static_cast<std::shared_ptr<T>*>(std::get<NativeObject>(vm.get_heap_object(obj_idx).data).ptr);
+                return to_value(vm, (*sp)->*FieldPtr);
+            };
+
+            NativeMethodFn setter = [](VM& vm, HeapIdx obj_idx, ArgView args) -> Value {
+                auto* sp = static_cast<std::shared_ptr<T>*>(std::get<NativeObject>(vm.get_heap_object(obj_idx).data).ptr);
+                (*sp)->*FieldPtr = from_value<FieldType>(vm, args[0]);
+                return args[0];
+            };
+
+            HeapIdx getter_idx = vm.alloc(Object(NativeMethod{getter}));
+            HeapIdx setter_idx = vm.alloc(Object(NativeMethod{setter}));
+            HeapIdx name_id = vm.intern_string(name);
+
+            auto& registered_meta = std::get<StructType>(vm.get_heap_object(BindRegistry<std::shared_ptr<T>>::type_idx).data);
+            
+            registered_meta.getters[name_id] = getter_idx; 
+            registered_meta.setters[name_id] = setter_idx;
+
+            return *this;
+        }
+
+        SharedClassBinder& custom_constructor(NativeFn custom_ctor) {
+            HeapIdx ctor_idx = vm.alloc(Object(custom_ctor));
+            
+            auto& meta = std::get<StructType>(vm.get_heap_object(BindRegistry<std::shared_ptr<T>>::type_idx).data);
+            meta.native_constructor_idx = ctor_idx;
+
+            return *this;
+        }
+
+        SharedClassBinder& custom_method(const std::string& name, NativeMethodFn custom_fn) {
+            HeapIdx method_idx = vm.alloc(Object(NativeMethod{custom_fn}));
+            HeapIdx name_id = vm.intern_string(name);
+
+            auto& registered_meta = std::get<StructType>(vm.get_heap_object(BindRegistry<std::shared_ptr<T>>::type_idx).data);
+            registered_meta.methods[name_id] = method_idx;
+
+            return *this;
+        }
+
+        SharedClassBinder& custom_getter(const std::string& name, NativeMethodFn getter_fn) {
+            HeapIdx getter_idx = vm.alloc(Object(NativeMethod{getter_fn}));
+            HeapIdx name_id = vm.intern_string(name);
+
+            auto& registered_meta = std::get<StructType>(vm.get_heap_object(BindRegistry<std::shared_ptr<T>>::type_idx).data);
+            registered_meta.getters[name_id] = getter_idx;
+
+            return *this;
+        }
+
+        SharedClassBinder& custom_setter(const std::string& name, NativeMethodFn setter_fn) {
+            HeapIdx setter_idx = vm.alloc(Object(NativeMethod{setter_fn}));
+            HeapIdx name_id = vm.intern_string(name);
+
+            auto& registered_meta = std::get<StructType>(vm.get_heap_object(BindRegistry<std::shared_ptr<T>>::type_idx).data);
+            registered_meta.setters[name_id] = setter_idx;
+
+            return *this;
+        }
+    };
+
     template <auto Fn>
     void bind_function(VM& vm, const std::string& name) {
         NativeFn wrapped = FreeFnDeducer<Fn>::wrap;

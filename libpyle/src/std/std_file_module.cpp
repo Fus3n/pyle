@@ -1,6 +1,7 @@
 #include "pyle/std/std_file_module.hpp"
 #include "pyle/binder.hpp"
 #include <sstream>
+#include <thread>
 
 namespace pyle {
     
@@ -213,6 +214,137 @@ namespace pyle {
         }
     }
 
+    pyle::Value FileInstance::read_line_async(VM& vm) {
+        if (!stream.is_open()) {
+            vm.runtime_error(pyle::RuntimeError::Runtime, "File: cannot read from a closed file.");
+            return pyle::Value();
+        }
+        auto [val, future] = pyle::Future::create(vm);
+        std::thread([this, future, &vm]() {
+            std::string line;
+            if (std::getline(stream, line)) {
+                std::lock_guard<std::recursive_mutex> lock(vm.get_mutex());
+                future->resolve(pyle::to_value(vm, line));
+            } else {
+                std::lock_guard<std::recursive_mutex> lock(vm.get_mutex());
+                future->resolve(pyle::Value());
+            }
+        }).detach();
+        return val;
+    }
+
+    pyle::Value FileInstance::read_all_async(VM& vm) {
+        if (!stream.is_open()) {
+            vm.runtime_error(pyle::RuntimeError::Runtime, "File: cannot read from a closed file.");
+            return pyle::Value();
+        }
+        auto [val, future] = pyle::Future::create(vm);
+        std::thread([this, future, &vm]() {
+            std::stringstream ss;
+            ss << stream.rdbuf();
+            std::string content = ss.str();
+            std::lock_guard<std::recursive_mutex> lock(vm.get_mutex());
+            future->resolve(pyle::to_value(vm, content));
+        }).detach();
+        return val;
+    }
+
+    pyle::Value FileInstance::write_async(VM& vm, const std::string& text) {
+        if (!stream.is_open()) {
+            vm.runtime_error(pyle::RuntimeError::Runtime, "File: cannot write to a closed file.");
+            return pyle::Value();
+        }
+        auto [val, future] = pyle::Future::create(vm);
+        std::thread([this, text, future, &vm]() {
+            stream << text;
+            bool fail = stream.fail();
+            std::lock_guard<std::recursive_mutex> lock(vm.get_mutex());
+            if (fail) {
+                future->reject(vm, pyle::to_value(vm, "File: failed to write data to file: " + path));
+            } else {
+                future->resolve(pyle::Value());
+            }
+        }).detach();
+        return val;
+    }
+
+    pyle::Value FileInstance::read_bytes_async(VM& vm, pyle::ArgView args) {
+        if (!stream.is_open()) {
+            vm.runtime_error(RuntimeError::Runtime, "Cannot read from a closed file.");
+            return pyle::Value();
+        }
+        int64_t count = -1;
+        if (args.size() == 1) {
+            if (args[0].tag != pyle::Value::Tag::Int) {
+                vm.runtime_error(RuntimeError::ArgumentError, "file.read_bytes expects an integer size argument.");
+                return pyle::Value();
+            }
+            count = args[0].as_int;
+            if (count < 0) {
+                vm.runtime_error(RuntimeError::ArgumentError, "Byte count cannot be negative.");
+                return pyle::Value();
+            }
+        } else if (args.size() > 1) {
+            vm.runtime_error(RuntimeError::ArgumentError, "file.read_bytes expects 0 or 1 arguments.");
+            return pyle::Value();
+        }
+
+        auto [val, future] = pyle::Future::create(vm);
+        std::thread([this, count, future, &vm]() mutable {
+            if (count == -1) {
+                auto current_pos = stream.tellg();
+                stream.seekg(0, std::ios::end); 
+                auto end_pos = stream.tellg(); 
+                stream.seekg(current_pos, std::ios::beg); 
+                count = end_pos - current_pos;
+            }
+            if (count <= 0) {
+                std::lock_guard<std::recursive_mutex> lock(vm.get_mutex());
+                future->resolve(pyle::Value());
+                return;
+            }
+            pyle::BytesType buffer(count);
+            stream.read(reinterpret_cast<char*>(buffer.data()), count);
+            std::streamsize bytes_read = stream.gcount();
+            if (bytes_read == 0) {
+                std::lock_guard<std::recursive_mutex> lock(vm.get_mutex());
+                future->resolve(pyle::Value());
+                return;
+            }
+            buffer.resize(bytes_read);
+            std::lock_guard<std::recursive_mutex> lock(vm.get_mutex());
+            HeapIdx idx = vm.alloc(Object(std::move(buffer)));
+            future->resolve(pyle::Value(pyle::Value::Tag::BytesRef, idx));
+        }).detach();
+        return val;
+    }
+
+    pyle::Value FileInstance::write_bytes_async(VM& vm, pyle::ArgView args) {
+        if (!stream.is_open()) {
+            vm.runtime_error(RuntimeError::Runtime, "Cannot write to a closed file.");
+            return pyle::Value();
+        }
+        if (args.size() != 1 || args[0].tag != pyle::Value::Tag::BytesRef) {
+            vm.runtime_error(RuntimeError::ArgumentError, "write_bytes expects 1 bytes object argument.");
+            return pyle::Value();
+        }
+        const auto& buffer_ref = std::get<pyle::BytesType>(vm.get_heap_object(args[0].as_ref).data);
+        pyle::BytesType buffer = buffer_ref; 
+        
+        auto [val, future] = pyle::Future::create(vm);
+        std::thread([this, buffer = std::move(buffer), future, &vm]() {
+            stream.write(reinterpret_cast<const char*>(buffer.data()), buffer.size());
+            bool fail = stream.fail();
+            std::lock_guard<std::recursive_mutex> lock(vm.get_mutex());
+            if (fail) {
+                future->reject(vm, pyle::to_value(vm, "Failed to write bytes to file."));
+            } else {
+                future->resolve(pyle::Value());
+            }
+        }).detach();
+        return val;
+    }
+
     void register_file_module(VM& vm) {
         pyle::ClassBinder<FileInstance>(vm, "File")
             .static_method<&pyle_file_open>("open") 
@@ -221,6 +353,11 @@ namespace pyle {
             .method<&FileInstance::write>("write")
             .method<&FileInstance::read_bytes>("read_bytes")
             .method<&FileInstance::write_bytes>("write_bytes")
+            .method<&FileInstance::read_line_async>("read_line_async")
+            .method<&FileInstance::read_all_async>("read_all_async")
+            .method<&FileInstance::write_async>("write_async")
+            .method<&FileInstance::read_bytes_async>("read_bytes_async")
+            .method<&FileInstance::write_bytes_async>("write_bytes_async")
             .method<&FileInstance::seek>("seek")
             .method<&FileInstance::tell>("tell")
             .method<&FileInstance::close>("close")

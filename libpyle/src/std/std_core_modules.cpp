@@ -30,6 +30,19 @@ namespace pyle {
         return std::filesystem::exists(file_path);
     }
 
+    pyle::Value os_remove(pyle::VM& vm, pyle::ArgView args) {
+        if (args.size() != 1 || args[0].tag != Value::Tag::StringRef) {
+            vm.runtime_error(RuntimeError::ArgumentError, "os.remove expects 1 string arugment");
+            return Value();
+        }
+
+        std::string file_path = std::get<std::string>(vm.get_heap_object(args[0].as_ref).data);
+
+        std::error_code ec;
+        bool result = std::filesystem::remove(file_path, ec);
+        return Value(result && !ec);
+    }
+
     pyle::Value os_sleep(pyle::VM& vm, pyle::ArgView args) {
         int64_t ms = pyle::from_value<int64_t>(vm, args[0]);
         std::this_thread::sleep_for(std::chrono::milliseconds(ms));
@@ -38,20 +51,14 @@ namespace pyle {
 
     pyle::Value os_sleep_async(pyle::VM& vm, pyle::ArgView args) {
         int64_t ms = pyle::from_value<int64_t>(vm, args[0]);
-        auto* sp = new std::shared_ptr<pyle::Future>(std::make_shared<pyle::Future>());
+        auto [val, future] = pyle::Future::create(vm);
         
-        std::thread([sp_copy = *sp, ms]() {
+        std::thread([future, ms]() {
             std::this_thread::sleep_for(std::chrono::milliseconds(ms));
-            sp_copy->finished.store(true);
+            future->finished.store(true);
         }).detach();
         
-        pyle::NativeObject ud;
-        ud.ptr = sp;
-        ud.deleter = [](void* p) { delete static_cast<std::shared_ptr<pyle::Future>*>(p); };
-        ud.type_idx = pyle::BindRegistry<std::shared_ptr<pyle::Future>>::type_idx;
-        
-        pyle::HeapIdx idx = vm.alloc(pyle::Object(ud));
-        return pyle::Value(pyle::Value::Tag::NativeObjectRef, idx);
+        return val;
     }
 
     Value os_module_factory(VM& vm) {
@@ -59,6 +66,7 @@ namespace pyle {
             .raw_function("system", os_sys)
             .function<os_time>("time")
             .function<os_file_exists>("file_exists")
+            .raw_function("remove", os_remove)
             .raw_function("sleep", os_sleep)
             .raw_function("sleep_async", os_sleep_async)
             .build();

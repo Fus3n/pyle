@@ -2,6 +2,7 @@
 #include "pyle/value.hpp"
 #include <fstream>
 #include <string>
+#include "pyle/std/std_future.hpp"
 
 namespace pyle {
 
@@ -29,6 +30,12 @@ namespace pyle {
 
         pyle::Value read_bytes(VM& vm, pyle::ArgView args);
         void write_bytes(VM& vm, pyle::ArgView args);
+
+        pyle::Value read_line_async(VM& vm);
+        pyle::Value read_all_async(VM& vm);
+        pyle::Value write_async(VM& vm, const std::string& text);
+        pyle::Value read_bytes_async(VM& vm, pyle::ArgView args);
+        pyle::Value write_bytes_async(VM& vm, pyle::ArgView args);
     };
 
     void register_file_module(VM& vm);
