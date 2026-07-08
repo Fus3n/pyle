@@ -148,7 +148,7 @@ bool pyle_to_json_string(pyle::VM& vm, const pyle::Value& val, std::string& out)
         
         case pyle::Value::Tag::MapRef: {
             out += "{";
-            const auto& map = std::get<pyle::MapType>(vm.get_heap_object(val.as_ref).data);
+            const auto& map = std::get<pyle::MapObject>(vm.get_heap_object(val.as_ref).data).entries;
             size_t i = 0;
             for (const auto& [k, v] : map) {
                 escape_json_string(vm.value_to_string(k), out);

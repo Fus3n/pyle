@@ -152,6 +152,12 @@ namespace pyle {
     using NativeFn = Value (*)(VM& vm, ArgView args);
     using NativeMethodFn = Value (*)(VM& vm, HeapIdx obj_idx, ArgView args); // native function definition signature
     using MapType = ankerl::unordered_dense::map<Value, Value, ValueHash, ValueEqual>;
+
+    struct MapObject {
+        MapType entries;
+        bool is_module = false;
+    };
+
     using BytesType = std::vector<uint8_t>;
 
     enum class SpecialMethod : size_t {
@@ -347,7 +353,7 @@ namespace pyle {
             Range,
             Closure,
             Upvalue,
-            MapType,
+            MapObject,
             NativeObject,
             NativeMethod,
             Coroutine,
@@ -365,7 +371,7 @@ namespace pyle {
         explicit Object(Upvalue uv)   : data(uv) {}
         explicit Object(StructType strt) : data(std::move(strt)) {} 
         explicit Object(Struct strc)     : data(std::move(strc)) {}
-        explicit Object(MapType m): data(std::move(m)) {}
+        explicit Object(MapType m): data(MapObject{std::move(m), false}) {}
         explicit Object(NativeObject u) : data(u) {}
         explicit Object(NativeMethod nm) : data(nm) {}           
         explicit Object(Coroutine coro) : data(std::move(coro)) {} 

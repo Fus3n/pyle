@@ -11,7 +11,7 @@ namespace pyle::MapMethods {
             return Value();
         }
 
-        auto& map = vm.get_heap_object<MapType>(obj_idx);
+        auto& map = vm.get_heap_object<MapObject>(obj_idx).entries;
 
         return Value(static_cast<int64_t>(map.size()));
     }
@@ -28,7 +28,7 @@ namespace pyle::MapMethods {
             return Value();
         }
 
-        auto& map = vm.get_heap_object<MapType>(obj_idx);
+        auto& map = vm.get_heap_object<MapObject>(obj_idx).entries;
 
         auto it = map.find(key);
         if (it != map.end()) {
@@ -46,7 +46,7 @@ namespace pyle::MapMethods {
             return Value();
         }
 
-        auto& map = vm.get_heap_object<MapType>(obj_idx);
+        auto& map = vm.get_heap_object<MapObject>(obj_idx).entries;
 
         ArrayType key_array;
         key_array.reserve(map.size());
@@ -64,7 +64,7 @@ namespace pyle::MapMethods {
             return Value();
         }
 
-        auto& map = vm.get_heap_object<MapType>(obj_idx);
+        auto& map = vm.get_heap_object<MapObject>(obj_idx).entries;
 
         ArrayType key_array;
         key_array.reserve(map.size());
@@ -87,7 +87,7 @@ namespace pyle::MapMethods {
             return Value(false); 
         }
 
-        const auto& map = vm.get_heap_object<MapType>(obj_idx);
+        const auto& map = vm.get_heap_object<MapObject>(obj_idx).entries;
         return Value(map.find(key) != map.end());
     }
 
@@ -97,7 +97,7 @@ namespace pyle::MapMethods {
             return Value();
         }
 
-        auto& map = vm.get_heap_object<MapType>(obj_idx);
+        auto& map = vm.get_heap_object<MapObject>(obj_idx).entries;
         map.clear();
         return Value();
     }

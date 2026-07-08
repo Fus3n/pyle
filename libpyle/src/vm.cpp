@@ -339,8 +339,8 @@ namespace pyle {
                 if (uv_ptr->location == &uv_ptr->closed) {
                    mark_value(uv_ptr->closed); 
                 }
-            } else if (const auto *map_ptr = std::get_if<MapType>(&heap[current].data)) {
-                for (const auto& [key, val] : *map_ptr) {
+            } else if (const auto *map_ptr = std::get_if<MapObject>(&heap[current].data)) {
+                for (const auto& [key, val] : map_ptr->entries) {
                     mark_value(key);
                     mark_value(val);
                 }
@@ -486,7 +486,7 @@ namespace pyle {
                 }
                 visited.insert(idx);
 
-                const auto& map = std::get<MapType>(heap[idx].data);
+                const auto& map = std::get<MapObject>(heap[idx].data).entries;
                 ss << "{";
                 size_t i = 0;
 
@@ -1208,61 +1208,76 @@ namespace pyle {
 
                     switch (callee.tag) {
                         case Value::Tag::MapRef: {
-                            auto& _map = std::get<MapType>(heap[callee.as_ref].data);
-                            auto _it = _map.find(name_val);
-                            
-                            if (_it == _map.end() && MapMethods::has_method(method_name)) {
-                                const Value *args_ptr = arg_count > 0 ? (sp - arg_count) : nullptr;
-                                ArgView args_view{args_ptr, static_cast<size_t>(arg_count)};
-                                sync_ip();
-                                Value result = MapMethods::dispatch(*this, callee.as_ref, method_name, args_view);
-                                if (panicked) return;
-                                sp -= (arg_count + 1);
-                                set_top(result);
-                            } else {
-                                auto& map = std::get<MapType>(heap[callee.as_ref].data);
-                                auto it = map.find(name_val);
-                                if (it != map.end()) {
-                                    Value resolved_fn = it->second;
-                                    
-                                    std::copy(sp - arg_count, sp, sp - arg_count - 1);
-                                    sp--; 
-                                    *(sp - arg_count - 1) = resolved_fn;
+                            auto& mobj = std::get<MapObject>(heap[callee.as_ref].data);
+                            auto it = mobj.entries.find(name_val);
+                            bool key_found = (it != mobj.entries.end());
 
-                                    if (resolved_fn.tag == Value::Tag::ClosureRef) {
-                                        Closure& closure = std::get<Closure>(heap[resolved_fn.as_ref].data);
-                                        Function& fn = std::get<Function>(heap[closure.function].data);
-                                        if (fn.arity != arg_count) {
-                                            runtime_error(RuntimeError::ArgumentError, fmt::format("Expected {} args, got {}.", fn.arity, arg_count)); 
-                                            return;
-                                        }
-                                        sync_ip();
-                                        CallFrame new_frame;
-                                        new_frame.closure = resolved_fn.as_ref;
-                                        new_frame.ip = 0;
-                                        new_frame.stack_base = stack_size() - arg_count;
-                                        frames[frame_count++] = new_frame;
-                                        frame = &frames[frame_count - 1];
-                                        sync_frame_cache(frame, fn, instr_data, ip, ip_end, const_pool, const_pool_size);
-                                    } else if (resolved_fn.tag == Value::Tag::NativeFuncRef) {
-                                        NativeFn native = std::get<NativeFn>(heap[resolved_fn.as_ref].data);
-                                        const Value* args_ptr = arg_count > 0 ? (sp - arg_count) : nullptr;
-                                        ArgView args_view{args_ptr, static_cast<size_t>(arg_count)};
-                                        sync_ip();
-                                        Value result = native(*this, args_view);
-                                        sp -= arg_count; 
-                                        set_top(result);
-                                    } else if (resolved_fn.tag == Value::Tag::StructTypeRef) {
-                                        sync_ip();
-                                        if (instantiate_struct(resolved_fn.as_ref, arg_count, frame)) {
-                                            frame = &frames[frame_count - 1];
-                                            Function& fn_post_clos = get_func_from_frame(*frame);
-                                            sync_frame_cache(frame, fn_post_clos, instr_data, ip, ip_end, const_pool, const_pool_size);
-                                        }
-                                    } else {
-                                        runtime_error(RuntimeError::Type, "Resolved value is not callable.");
+                            auto resolve_key = [&](Value resolved_fn) {
+                                std::copy(sp - arg_count, sp, sp - arg_count - 1);
+                                sp--;
+                                *(sp - arg_count - 1) = resolved_fn;
+                                if (resolved_fn.tag == Value::Tag::ClosureRef) {
+                                    Closure& closure = std::get<Closure>(heap[resolved_fn.as_ref].data);
+                                    Function& fn = std::get<Function>(heap[closure.function].data);
+                                    if (fn.arity != arg_count) {
+                                        runtime_error(RuntimeError::ArgumentError, fmt::format("Expected {} args, got {}.", fn.arity, arg_count));
                                         return;
                                     }
+                                    sync_ip();
+                                    CallFrame new_frame;
+                                    new_frame.closure = resolved_fn.as_ref;
+                                    new_frame.ip = 0;
+                                    new_frame.stack_base = stack_size() - arg_count;
+                                    frames[frame_count++] = new_frame;
+                                    frame = &frames[frame_count - 1];
+                                    sync_frame_cache(frame, fn, instr_data, ip, ip_end, const_pool, const_pool_size);
+                                } else if (resolved_fn.tag == Value::Tag::NativeFuncRef) {
+                                    NativeFn native = std::get<NativeFn>(heap[resolved_fn.as_ref].data);
+                                    const Value* args_ptr = arg_count > 0 ? (sp - arg_count) : nullptr;
+                                    ArgView args_view{args_ptr, static_cast<size_t>(arg_count)};
+                                    sync_ip();
+                                    Value result = native(*this, args_view);
+                                    sp -= arg_count;
+                                    set_top(result);
+                                } else if (resolved_fn.tag == Value::Tag::StructTypeRef) {
+                                    sync_ip();
+                                    if (instantiate_struct(resolved_fn.as_ref, arg_count, frame)) {
+                                        frame = &frames[frame_count - 1];
+                                        Function& fn_post_clos = get_func_from_frame(*frame);
+                                        sync_frame_cache(frame, fn_post_clos, instr_data, ip, ip_end, const_pool, const_pool_size);
+                                    }
+                                } else {
+                                    runtime_error(RuntimeError::Type, "Resolved value is not callable.");
+                                    return;
+                                }
+                            };
+
+                            if (mobj.is_module) {
+                                if (key_found) {
+                                    resolve_key(it->second);
+                                } else if (MapMethods::has_method(method_name)) {
+                                    const Value *args_ptr = arg_count > 0 ? (sp - arg_count) : nullptr;
+                                    ArgView args_view{args_ptr, static_cast<size_t>(arg_count)};
+                                    sync_ip();
+                                    Value result = MapMethods::dispatch(*this, callee.as_ref, method_name, args_view);
+                                    if (panicked) return;
+                                    sp -= (arg_count + 1);
+                                    set_top(result);
+                                } else {
+                                    runtime_error(RuntimeError::Name, fmt::format("Map has no static method or key '{}'.", method_name));
+                                    return;
+                                }
+                            } else {
+                                if (MapMethods::has_method(method_name)) {
+                                    const Value *args_ptr = arg_count > 0 ? (sp - arg_count) : nullptr;
+                                    ArgView args_view{args_ptr, static_cast<size_t>(arg_count)};
+                                    sync_ip();
+                                    Value result = MapMethods::dispatch(*this, callee.as_ref, method_name, args_view);
+                                    if (panicked) return;
+                                    sp -= (arg_count + 1);
+                                    set_top(result);
+                                } else if (key_found) {
+                                    resolve_key(it->second);
                                 } else {
                                     runtime_error(RuntimeError::Name, fmt::format("Map has no static method or key '{}'.", method_name));
                                     return;
@@ -1502,7 +1517,7 @@ namespace pyle {
                                 runtime_error(RuntimeError::Type, fmt::format("Unhashable type '{}' cannot be used as a map key.", index.tag_to_string()));
                                 return;
                             }
-                            auto& map = std::get<MapType>(heap[container.as_ref].data);
+                            auto& map = std::get<MapObject>(heap[container.as_ref].data).entries;
                             auto it = map.find(index);
                             if (it != map.end()) {
                                 set_top(it->second);
@@ -1550,7 +1565,7 @@ namespace pyle {
                             runtime_error(RuntimeError::Type, fmt::format("Unhashable type '{}' cannot be used as a map key.", index.tag_to_string()));
                             return;
                         }
-                        auto& map = std::get<MapType>(heap[container.as_ref].data);
+                        auto& map = std::get<MapObject>(heap[container.as_ref].data).entries;
                         map[index] = value;
                         sp -= 2;
                         set_top(value);
@@ -1685,7 +1700,7 @@ namespace pyle {
                     Value obj_val = pop();
                     
                     if (obj_val.tag == Value::Tag::MapRef) {
-                        auto& map = std::get<MapType>(heap[obj_val.as_ref].data);
+                        auto& map = std::get<MapObject>(heap[obj_val.as_ref].data).entries;
                         Value key(Value::Tag::StringRef, field_id);
                         auto it = map.find(key);
                         if (it != map.end()) {

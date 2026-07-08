@@ -807,6 +807,7 @@ namespace pyle {
 
         Value build() {
             HeapIdx map_idx = vm.alloc(Object(std::move(exports)));
+            vm.get_heap_object<MapObject>(map_idx).is_module = true;
             return Value(Value::Tag::MapRef, map_idx);
         }
     };

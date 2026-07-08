@@ -195,6 +195,7 @@ namespace pyle {
         vm.saved_slot_maps_stack.pop_back();
         
         HeapIdx map_idx = vm.alloc(Object(std::move(module_map)));
+        vm.get_heap_object<MapObject>(map_idx).is_module = true;
         Value val(Value::Tag::MapRef, map_idx);
         vm.loaded_modules[mod_name_idx] = val;
         return val;
