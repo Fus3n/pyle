@@ -32,11 +32,13 @@ namespace pyle {
         if constexpr (std::is_same_v<DecayedT, Value>) {
             return val;
         } else if constexpr (std::is_same_v<DecayedT, int64_t> || std::is_integral_v<DecayedT>) {
-            if (val.tag != Value::Tag::Int) {
-                vm.runtime_error(RuntimeError::Type, "Expected integer.");
-                return static_cast<DecayedT>(0);
+            if (val.tag == Value::Tag::Int) {
+                return static_cast<DecayedT>(val.as_int);
+            } else if (val.tag == Value::Tag::Float) {
+                return static_cast<DecayedT>(val.as_float);
             }
-            return static_cast<DecayedT>(val.as_int);
+            vm.runtime_error(RuntimeError::Type, "Expected integer.");
+            return static_cast<DecayedT>(0);
         } else if constexpr (std::is_floating_point_v<DecayedT>) {
             if (val.tag == Value::Tag::Float) return static_cast<DecayedT>(val.as_float);
             if (val.tag == Value::Tag::Int) return static_cast<DecayedT>(val.as_int);

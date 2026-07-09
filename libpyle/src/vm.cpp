@@ -225,6 +225,7 @@ namespace pyle {
             case Value::Tag::UpvalueRef: 
             case Value::Tag::StructRef:
             case Value::Tag::StructTypeRef: 
+            case Value::Tag::NativeObjectRef:
             case Value::Tag::MapRef: 
             case Value::Tag::CoroutineRef: 
             case Value::Tag::BytesRef: {
@@ -322,6 +323,10 @@ namespace pyle {
                 }
                 for (auto [setter_name_idx, fn_idx] : type_ptr->setters) {
                     mark_value(Value(Value::Tag::StringRef, setter_name_idx));
+                    mark_value(Value(Value::Tag::FuncRef, fn_idx));
+                }
+                for (auto [getter_name_idx, fn_idx] : type_ptr->getters) {
+                    mark_value(Value(Value::Tag::StringRef, getter_name_idx));
                     mark_value(Value(Value::Tag::FuncRef, fn_idx));
                 }
 
@@ -1240,11 +1245,22 @@ namespace pyle {
                                     sp -= arg_count;
                                     set_top(result);
                                 } else if (resolved_fn.tag == Value::Tag::StructTypeRef) {
-                                    sync_ip();
-                                    if (instantiate_struct(resolved_fn.as_ref, arg_count, frame)) {
-                                        frame = &frames[frame_count - 1];
-                                        Function& fn_post_clos = get_func_from_frame(*frame);
-                                        sync_frame_cache(frame, fn_post_clos, instr_data, ip, ip_end, const_pool, const_pool_size);
+                                    StructType& type = std::get<StructType>(heap[resolved_fn.as_ref].data);
+                                    if (type.native_constructor_idx != 0) {
+                                        NativeFn native = std::get<NativeFn>(heap[type.native_constructor_idx].data);
+                                        const Value* args_ptr = arg_count > 0 ? (sp - arg_count) : nullptr;
+                                        ArgView args_view{args_ptr, static_cast<size_t>(arg_count)};
+                                        sync_ip();
+                                        Value result = native(*this, args_view);
+                                        sp -= arg_count;
+                                        set_top(result);
+                                    } else {
+                                        sync_ip();
+                                        if (instantiate_struct(resolved_fn.as_ref, arg_count, frame)) {
+                                            frame = &frames[frame_count - 1];
+                                            Function& fn_post_clos = get_func_from_frame(*frame);
+                                            sync_frame_cache(frame, fn_post_clos, instr_data, ip, ip_end, const_pool, const_pool_size);
+                                        }
                                     }
                                 } else {
                                     runtime_error(RuntimeError::Type, "Resolved value is not callable.");
@@ -1696,9 +1712,9 @@ namespace pyle {
                 DISPATCH();
 
                 OP(GET_FIELD) {
-                    HeapIdx field_id = ARG; 
+                    HeapIdx field_id = ARG;
                     Value obj_val = pop();
-                    
+
                     if (obj_val.tag == Value::Tag::MapRef) {
                         auto& map = std::get<MapObject>(heap[obj_val.as_ref].data).entries;
                         Value key(Value::Tag::StringRef, field_id);
@@ -1712,8 +1728,8 @@ namespace pyle {
                     else if (obj_val.tag == Value::Tag::NativeObjectRef) {
                         NativeObject& ud = std::get<NativeObject>(heap[obj_val.as_ref].data);
                         StructType& type = std::get<StructType>(heap[ud.type_idx].data);
-                        
-                        auto it = type.getters.find(field_id); 
+
+                        auto it = type.getters.find(field_id);
                         if (it != type.getters.end()) {
                             HeapIdx getter_idx = it->second;
                             NativeMethod& method = std::get<NativeMethod>(heap[getter_idx].data);
