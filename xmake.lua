@@ -11,8 +11,9 @@ if is_mode("release") then
 end
 
 if is_mode("debug") then
-    add_cxflags("-fsanitize=address,undefined", "-fno-omit-frame-pointer", {force = true})
-    add_ldflags("-fsanitize=address,undefined", {force = true})
+    set_policy("build.sanitizer.address", true)      
+    set_policy("build.sanitizer.undefined", true)    
+    -- set_policy("build.sanitizer.leak", true)         
 end
 
 add_requires("fmt 12.2.0", {configs = {header_only = true}})
