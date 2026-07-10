@@ -1842,10 +1842,14 @@ namespace pyle {
                     HeapIdx fn_idx = type.special_methods[static_cast<size_t>(SpecialMethod::Init)];
                     bool has_init = (fn_idx != 0);
 
+                    size_t field_count = std::get<StructType>(heap[callee.as_ref].data).field_names.size();
                     Struct instance;
                     instance.type_idx = callee.as_ref;
-                    instance.fields.resize(type.field_names.size(), Value());
-                    
+                    instance.fields.resize(field_count, Value());
+
+                    HeapIdx idx = alloc(Object(instance));
+                    Value instance_val(Value::Tag::StructRef, idx);
+                    Struct& s = std::get<Struct>(get_heap_object(idx).data);
                     for (int i = 0; i < pair_count; i++) {
                         Value val = pop();
                         Value key = pop();
@@ -1860,11 +1864,9 @@ namespace pyle {
                             runtime_error(RuntimeError::Name, "Invalid field name passed in named constructor."); 
                             return;
                         }
-                        instance.fields[offset] = val;
+                        s.fields[offset] = val;
                     }
-                    
-                    HeapIdx idx = alloc(Object(instance));
-                    Value instance_val(Value::Tag::StructRef, idx);
+
                     set_top(instance_val);
                     
                     if (has_init) {

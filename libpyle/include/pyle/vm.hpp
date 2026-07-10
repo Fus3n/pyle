@@ -1,6 +1,7 @@
 #pragma once
 #include <ankerl/unordered_dense.h>
 #include <vector>
+#include <deque>
 #include <mutex> 
 #include "pyle/bytecode.hpp"
 #include "pyle/value.hpp"
@@ -175,7 +176,7 @@ namespace pyle {
         void gc_mark();
         void gc_collect();
         
-        std::vector<Object> heap;
+        std::deque<Object> heap;
         std::vector<HeapIdx> free_list;
 
         std::vector<Value> gc_roots;
