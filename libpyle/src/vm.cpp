@@ -112,7 +112,7 @@ namespace pyle {
 
         HeapIdx idx = alloc(Object(instance));
         Value instance_val(Value::Tag::StructRef, idx);
-
+        GCRoot _root(*this, idx, Value::Tag::StructRef);
         if (has_init) {
             Function& fn = std::get<Function>(heap[fn_idx].data);
             if (fn.arity != arg_count + 1) {
