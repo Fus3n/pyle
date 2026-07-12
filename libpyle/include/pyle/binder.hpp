@@ -790,6 +790,13 @@ namespace pyle {
             return *this;
         }
 
+        template <typename T>
+        NativeModule& constant(const std::string& name, T value) {
+            Value key(Value::Tag::StringRef, vm.intern_string(name));
+            exports[key] = to_value(vm, value);
+            return *this;
+        }
+
         template <auto Fn>
         NativeModule& function(const std::string& func_name) {
             NativeFn wrapped = FreeFnDeducer<Fn>::wrap;

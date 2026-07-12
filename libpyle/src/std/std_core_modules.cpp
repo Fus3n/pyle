@@ -137,5 +137,6 @@ namespace pyle {
     void register_core_modules(VM& vm) {
         pyle::register_module(vm, "os", os_module_factory);
         pyle::register_module(vm, "color", color_module_factory);
+        pyle::register_module(vm, "math", math_module_factory);
     }
 }
