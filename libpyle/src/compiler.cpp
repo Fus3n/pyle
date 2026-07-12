@@ -579,6 +579,8 @@ namespace pyle {
     }
 
     void Compiler::visit_struct_decl(StructDeclStmt* stmt) {
+        int slot = vm.declare_global(vm.intern_string(stmt->name.lexeme));
+
         StructType type;
         for (size_t i = 0; i < stmt->fields.size(); ++i) {
             HeapIdx field_id = vm.intern_string(stmt->fields[i].lexeme);
@@ -599,7 +601,6 @@ namespace pyle {
         HeapIdx type_idx = vm.alloc(Object(type));
         Value type_val(Value::Tag::StructTypeRef, type_idx);
         uint32_t const_idx = make_constant(type_val);
-        int slot = vm.declare_global(vm.intern_string(stmt->name.lexeme));
         emit_instruction(OpCode::LOAD_CONST, const_idx, stmt->name.selection.line);
         emit_instruction(OpCode::DEFINE_GLOBAL_SLOT, slot, stmt->name.selection.line);
     }
