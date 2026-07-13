@@ -95,7 +95,6 @@ namespace pyle {
                 case TokenType::WHILE:
                 case TokenType::FN:
                 case TokenType::LET:
-                case TokenType::GLOBAL:
                 case TokenType::STRUCT:
                 case TokenType::RETURN:
                     return;
