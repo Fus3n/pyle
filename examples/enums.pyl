@@ -1,0 +1,11 @@
+enum Direction {
+    NORTH,
+    SOUTH,
+    EAST,
+    WEST,
+}
+
+print(Direction.NORTH)
+print(Direction.SOUTH)
+print(Direction.EAST)
+print(Direction.WEST)
