@@ -475,7 +475,7 @@ namespace pyle {
 
         ClassBinder& register_globally() {
             int slot = vm.declare_global(vm.intern_string(BindRegistry<T>::class_name));
-            vm.global_slots[slot] = type_val; 
+            (*vm.global_slots)[slot] = type_val; 
             return *this;
         }
 
@@ -671,7 +671,7 @@ namespace pyle {
 
         SharedClassBinder& register_globally() {
             int slot = vm.declare_global(vm.intern_string(BindRegistry<std::shared_ptr<T>>::class_name));
-            vm.global_slots[slot] = type_val; 
+            (*vm.global_slots)[slot] = type_val; 
             return *this;
         }
 

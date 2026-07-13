@@ -25,7 +25,7 @@ namespace pyle {
         }
 
         if (!vm.builtins_finalized) {
-            vm.builtin_count = vm.global_slots.size();
+            vm.builtin_count = vm.global_slots->size();
             vm.builtin_slot_map = vm.global_slot_map; 
             vm.builtins_finalized = true;
         }

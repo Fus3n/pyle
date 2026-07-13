@@ -141,12 +141,18 @@ namespace pyle {
         
         std::string source = std::move(*code_opt);
         
-        vm.saved_globals_stack.push_back(std::move(vm.global_slots));
+        // Save the caller's active global storage (as a pointer) and give the
+        // module its own storage seeded with the caller's builtins.
+        vm.saved_globals_stack.push_back(vm.global_slots);
         vm.saved_slot_maps_stack.push_back(std::move(vm.global_slot_map));
-        
-        const auto& saved_slots = vm.saved_globals_stack.back();
-        vm.global_slots.assign(saved_slots.begin(), saved_slots.begin() + vm.builtin_count);
-        
+
+        ArrayType module_storage;
+        if (vm.global_slots) {
+            module_storage.assign(vm.global_slots->begin(),
+                                  vm.global_slots->begin() + vm.builtin_count);
+        }
+        HeapIdx module_storage_idx = vm.alloc(Object(std::move(module_storage)));
+        vm.global_slots = &std::get<ArrayType>(vm.get_heap_object(module_storage_idx).data);
         vm.global_slot_map = vm.builtin_slot_map;
         
         ErrorReporter reporter(source, filepath);
@@ -171,7 +177,7 @@ namespace pyle {
         }
         
         if (!success) {
-            vm.global_slots = std::move(vm.saved_globals_stack.back());
+            vm.global_slots = vm.saved_globals_stack.back();
             vm.saved_globals_stack.pop_back();
             vm.global_slot_map = std::move(vm.saved_slot_maps_stack.back());
             vm.saved_slot_maps_stack.pop_back();
@@ -180,16 +186,31 @@ namespace pyle {
             return Value();
         }
         
+        // Tag every module-level function/closure with this module's persistent
+        // global storage (module_storage_idx) so that when the function runs, the
+        // VM aliases its globals instead of the caller's.
+        for (const auto& [var_name_idx, slot_idx] : vm.global_slot_map) {
+            if (slot_idx >= static_cast<int>(vm.builtin_count)) {
+                Value v = (*vm.global_slots)[slot_idx];
+                if (v.tag == Value::Tag::FuncRef) {
+                    std::get<Function>(vm.get_heap_object(v.as_ref).data).module_env = module_storage_idx;
+                } else if (v.tag == Value::Tag::ClosureRef) {
+                    Closure& clo = std::get<Closure>(vm.get_heap_object(v.as_ref).data);
+                    std::get<Function>(vm.get_heap_object(clo.function).data).module_env = module_storage_idx;
+                }
+            }
+        }
+
         MapType module_map;
         for (const auto& [var_name_idx, slot_idx] : vm.global_slot_map) {
             if (slot_idx >= static_cast<int>(vm.builtin_count)) {
                 Value key(Value::Tag::StringRef, var_name_idx);
-                module_map[key] = vm.global_slots[slot_idx];
+                module_map[key] = (*vm.global_slots)[slot_idx];
             }
         }
-        
-        // Restore parent environment on success
-        vm.global_slots = std::move(vm.saved_globals_stack.back());
+
+        // Restore caller's active global storage on success.
+        vm.global_slots = vm.saved_globals_stack.back();
         vm.saved_globals_stack.pop_back();
         vm.global_slot_map = std::move(vm.saved_slot_maps_stack.back());
         vm.saved_slot_maps_stack.pop_back();
@@ -317,7 +338,7 @@ namespace pyle {
             Lexer prelude_lexer(prelude_source, prelude_reporter);
             Parser prelude_parser(prelude_lexer.tokenize(), prelude_reporter);
             auto prelude_ast = prelude_parser.parse();
-            
+
             Compiler prelude_compiler(vm, prelude_reporter);
             Chunk prelude_chunk = prelude_compiler.compile(prelude_ast);
 
@@ -330,16 +351,23 @@ namespace pyle {
                 prelude_reporter.print_errors();
                 exit(1);
             }
-            
-            vm.execute(prelude_chunk);
 
-            vm.builtin_count = vm.global_slots.size();
-            vm.builtin_slot_map = vm.global_slot_map;
+            vm.execute(prelude_chunk);
             vm.builtins_finalized = true;
         }
 
         if (load_core_modules) {
             pyle::register_core_modules(vm);
+        }
+
+        // Capture the full set of builtin/stdlib globals (prelude + core modules)
+        // so that every imported module inherits them as its initial storage. This
+        // MUST run after all stdlib registration, otherwise functions like `print`
+        // or `import` would live at slots beyond the inherited range and module
+        // functions would read out-of-bounds globals.
+        if (vm.builtin_count == 0) {
+            vm.builtin_count = vm.global_slots->size();
+            vm.builtin_slot_map = vm.global_slot_map;
         }
     }
 }

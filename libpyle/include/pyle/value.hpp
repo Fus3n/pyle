@@ -21,6 +21,9 @@ namespace pyle {
         HeapIdx closure;
         size_t ip;
         size_t stack_base;
+        bool module_swap = false;            
+        std::vector<Value>* saved_globals = nullptr; 
+        int module_env_idx = 0;           
     };
 
     struct Value {
@@ -229,6 +232,12 @@ namespace pyle {
         };
 
         std::vector<UpvalueInfo> upvalues;
+
+        // If non-zero, HeapIdx of an ArrayType holding THIS module's global
+        // slots. When this function runs, the VM swaps global_slots to that
+        // snapshot so module-level `let` globals resolve correctly instead of
+        // reading the caller's globals.
+        int module_env = 0;
     };
 
     struct Iterator {

@@ -258,12 +258,16 @@ namespace pyle {
             mark_value(*ptr);
         }
 
-        for (const Value& val : global_slots) {
+        for (const Value& val : *global_slots) {
             mark_value(val);
         }
 
-        for (const auto& saved_slots : saved_globals_stack) {
-            for (const Value& val : saved_slots) {
+        for (const Value& val : root_globals) {
+            mark_value(val);
+        }
+
+        for (const auto* saved_slots : saved_globals_stack) {
+            for (const Value& val : *saved_slots) {
                 mark_value(val);
             }
         }
@@ -352,6 +356,11 @@ namespace pyle {
             } else if (const auto *fn_ptr = std::get_if<Function>(&heap[current].data)) {
                 for (const Value &val: fn_ptr->chunk.const_pool) {
                     mark_value(val);
+                }
+
+                // Keep this functions module global storage alive.
+                if (fn_ptr->module_env != 0) {
+                    mark_value(Value(Value::Tag::ArrayRef, fn_ptr->module_env));
                 }
             } else if (const auto *coro_ptr = std::get_if<Coroutine>(&heap[current].data)) {
                 if (coro_ptr->closure_idx != 0) {
@@ -524,7 +533,7 @@ namespace pyle {
         HeapIdx name_idx = intern_string(name);
         auto it = global_slot_map.find(name_idx);
         if (it != global_slot_map.end()) {
-            return global_slots[it->second];
+            return (*global_slots)[it->second];
         }
         return pyle::Value(); 
     }
@@ -1011,29 +1020,29 @@ namespace pyle {
 
                 OP(LOAD_GLOBAL_SLOT) {
                     #ifndef NDEBUG
-                    if (ARG >= global_slots.size()) {
+                    if (ARG >= global_slots->size()) {
                         runtime_error(RuntimeError::OutOfBounds, "Global slot out of bounds.");
                         return;
                     }
                     #endif
-                    push(global_slots[ARG]);
-                } 
+                    push((*global_slots)[ARG]);
+                }
                 DISPATCH();
 
                 OP(SET_GLOBAL_SLOT) {
                     #ifndef NDEBUG
-                    if (ARG >= global_slots.size()) {
+                    if (ARG >= global_slots->size()) {
                         runtime_error(RuntimeError::OutOfBounds, "Global slot out of bounds.");
                         return;
                     }
                     #endif
-                    global_slots[ARG] = peek();
-                } 
+                    (*global_slots)[ARG] = peek();
+                }
                 DISPATCH();
 
                 OP(DEFINE_GLOBAL_SLOT) {
-                    while (ARG >= global_slots.size()) global_slots.push_back(Value());
-                    global_slots[ARG] = pop();
+                    while (ARG >= global_slots->size()) global_slots->push_back(Value());
+                    (*global_slots)[ARG] = pop();
                 }
                 DISPATCH();
 
@@ -1043,7 +1052,7 @@ namespace pyle {
                 DISPATCH();
 
                 OP(SET_GLOBAL_SLOT_POP) {
-                    global_slots[ARG] = pop();
+                    (*global_slots)[ARG] = pop();
                 }
                 DISPATCH();
 
@@ -1065,6 +1074,12 @@ namespace pyle {
                             new_frame.closure = callee.as_ref;
                             new_frame.ip = 0;
                             new_frame.stack_base = stack_size() - arg_count;
+                            if (fn.module_env != 0) {
+                                new_frame.module_swap = true;
+                                new_frame.saved_globals = global_slots;
+                                new_frame.module_env_idx = fn.module_env;
+                                global_slots = &std::get<ArrayType>(heap[fn.module_env].data);
+                            }
                             frames[frame_count++] = new_frame;
                             frame = &frames[frame_count - 1];
                             sync_frame_cache(frame, fn, instr_data, ip, ip_end, const_pool, const_pool_size);
@@ -1111,7 +1126,11 @@ namespace pyle {
                 OP(RETURN) {
                     Value ret_val = peek();
                     size_t stack_base = frame->stack_base; 
+                    bool was_module_frame = frame->module_swap;
                     close_upvalues(&stack[stack_base]);
+                    if (was_module_frame) {
+                        global_slots = frame->saved_globals;
+                    }
                     frame_count--;
 
                     if (frame_count == 0) {
@@ -1233,6 +1252,12 @@ namespace pyle {
                                     new_frame.closure = resolved_fn.as_ref;
                                     new_frame.ip = 0;
                                     new_frame.stack_base = stack_size() - arg_count;
+                                    if (fn.module_env != 0) {
+                                        new_frame.module_swap = true;
+                                        new_frame.saved_globals = global_slots;
+                                        new_frame.module_env_idx = fn.module_env;
+                                        global_slots = &std::get<ArrayType>(heap[fn.module_env].data);
+                                    }
                                     frames[frame_count++] = new_frame;
                                     frame = &frames[frame_count - 1];
                                     sync_frame_cache(frame, fn, instr_data, ip, ip_end, const_pool, const_pool_size);
@@ -1949,7 +1974,7 @@ namespace pyle {
         if (it != global_slot_map.end()) return it->second;
 
         int slot = static_cast<int>(global_slot_map.size());
-        global_slots.push_back(Value());
+        global_slots->push_back(Value());
         global_slot_map[name_idx] = slot;
         return slot;
     }
@@ -1961,7 +1986,7 @@ namespace pyle {
         Value fn_val(Value::Tag::NativeFuncRef, fn_idx);
         int slot = declare_global(name_idx);
 
-        global_slots[slot] = fn_val;
+        (*global_slots)[slot] = fn_val;
     }
 
 

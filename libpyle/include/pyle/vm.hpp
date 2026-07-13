@@ -40,7 +40,11 @@ namespace pyle {
         HeapIdx capture_upvalue(size_t stack_index);
         void close_upvalues(Value* limit);
 
-        std::vector<Value> global_slots;
+        // Root (top-level script) global storage. `global_slots` is a pointer to
+        // the *currently active* global storage: either this root, or a module's
+        // own persistent storage while a module function is running.
+        std::vector<Value> root_globals;
+        std::vector<Value>* global_slots = nullptr;
         ankerl::unordered_dense::map<HeapIdx, int> global_slot_map;
 
         HeapIdx alloc(Object obj);
@@ -84,7 +88,9 @@ namespace pyle {
             frame_capacity = config.frame_capacity;
             frames = new CallFrame[frame_capacity];
             frame_count = 0;
-            
+
+            global_slots = &root_globals;
+
             set_gc_enabled(config.gc_enabled);
         }
 
@@ -106,7 +112,9 @@ namespace pyle {
 
         size_t builtin_count = 0;
         bool builtins_finalized = false;
-        std::vector<std::vector<Value>> saved_globals_stack;
+        // Pointers into root_globals or a module's heap storage (never freed
+        // during execution), so the active storage can be restored on return.
+        std::vector<std::vector<Value>*> saved_globals_stack;
 
         ankerl::unordered_dense::map<HeapIdx, int> builtin_slot_map;
         std::vector<ankerl::unordered_dense::map<HeapIdx, int>> saved_slot_maps_stack;
