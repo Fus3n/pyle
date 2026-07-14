@@ -166,12 +166,16 @@ namespace pyle {
             auto ast = parser.parse();
 
             if (!reporter.has_errors()) {
+                std::string_view saved_source_code = vm.source_code;
+                std::string_view saved_script_name = vm.script_name;
+                vm.source_code = source;
+                vm.script_name = filepath;
                 Compiler compiler(vm, reporter);
                 Chunk chunk = compiler.compile(ast);
                 if (!reporter.has_errors()) {
-                    vm.source_code = source;
-                    vm.script_name = filepath;
                     vm.execute(chunk);
+                    vm.script_name = saved_script_name;
+                    vm.source_code = saved_source_code;
                     success = !vm.is_panicked();
                 }
             }
@@ -195,7 +199,10 @@ namespace pyle {
         // VM aliases its globals instead of the caller's.
         auto tag_function = [&](HeapIdx fn_idx) {
             if (fn_idx != 0) {
-                std::get<Function>(vm.get_heap_object(fn_idx).data).module_env = module_storage_idx;
+                Function& fn = std::get<Function>(vm.get_heap_object(fn_idx).data);
+                if (fn.module_env == 0) {
+                    fn.module_env = module_storage_idx;
+                }
             }
         };
         for (const auto& [var_name_idx, slot_idx] : vm.global_slot_map) {
@@ -381,11 +388,6 @@ namespace pyle {
             pyle::register_core_modules(vm);
         }
 
-        // Capture the full set of builtin/stdlib globals (prelude + core modules)
-        // so that every imported module inherits them as its initial storage. This
-        // MUST run after all stdlib registration, otherwise functions like `print`
-        // or `import` would live at slots beyond the inherited range and module
-        // functions would read out-of-bounds globals.
         if (vm.builtin_count == 0) {
             vm.builtin_count = vm.global_slots->size();
             vm.builtin_slot_map = vm.global_slot_map;

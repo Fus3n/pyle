@@ -30,6 +30,9 @@ namespace pyle {
             vm.builtins_finalized = true;
         }
 
+        bool saved_gc = vm.is_gc_enabled();
+        vm.set_gc_enabled(false);
+
         Compiler compiler(vm, reporter);
         Chunk chunk = compiler.compile(ast);
         if (reporter.has_errors()) {
@@ -45,6 +48,7 @@ namespace pyle {
         vm.script_name = script_name;
 
         vm.execute(chunk);
+        vm.set_gc_enabled(saved_gc);
         return true;
     }
 }

@@ -303,6 +303,10 @@ namespace pyle {
             mark_value(val);
         }
 
+        for (const auto& [str, idx] : interned_strings) {
+            mark_value(Value(Value::Tag::StringRef, idx));
+        }
+
         for (size_t i = 0; i < frame_count; ++i) {
             const auto& frame = frames[i];
             mark_value(Value(Value::Tag::ClosureRef, frame.closure)); 
@@ -800,6 +804,8 @@ namespace pyle {
 
         panicked = false;
 
+        set_gc_enabled(false);
+
         init_root_coroutine();
 
         Function main_fn;
@@ -820,6 +826,8 @@ namespace pyle {
         }
 
         frames[frame_count++] = root_frame;
+
+        gc_enabled = true;
 
         CallFrame* frame = &frames[frame_count - 1];
         
@@ -1130,8 +1138,9 @@ namespace pyle {
                             }
                             break;
                         }
-                        default:
+                        default: {
                             runtime_error(RuntimeError::Type, "Object is not callable."); return;
+                        }
                     }
                 }
                 DISPATCH();
@@ -1244,10 +1253,16 @@ namespace pyle {
                         return;
                     }
                     
+                    if (!std::holds_alternative<std::string>(heap[name_val.as_ref].data)) {
+                        runtime_error(RuntimeError::Runtime, "method name not string");
+                        return;
+                    }
                     std::string method_name = std::get<std::string>(heap[name_val.as_ref].data);
 
-                    switch (callee.tag) {
+                            switch (callee.tag) {
                         case Value::Tag::MapRef: {
+                            if (callee.as_ref >= heap.size()) { runtime_error(RuntimeError::Runtime, "MapRef heap OOB"); return; }
+                            if (!std::holds_alternative<MapObject>(heap[callee.as_ref].data)) { runtime_error(RuntimeError::Runtime, "callee not MapObject"); return; }
                             auto& mobj = std::get<MapObject>(heap[callee.as_ref].data);
                             auto it = mobj.entries.find(name_val);
                             bool key_found = (it != mobj.entries.end());
@@ -1287,8 +1302,16 @@ namespace pyle {
                                     sp -= arg_count;
                                     set_top(result);
                                 } else if (resolved_fn.tag == Value::Tag::StructTypeRef) {
+                                    if (!std::holds_alternative<StructType>(heap[resolved_fn.as_ref].data)) {
+                                        runtime_error(RuntimeError::Runtime, "resolved is not StructType");
+                                        return;
+                                    }
                                     StructType& type = std::get<StructType>(heap[resolved_fn.as_ref].data);
                                     if (type.native_constructor_idx != 0) {
+                                        if (!std::holds_alternative<NativeFn>(heap[type.native_constructor_idx].data)) {
+                                            runtime_error(RuntimeError::Runtime, "ctor not NativeFn");
+                                            return;
+                                        }
                                         NativeFn native = std::get<NativeFn>(heap[type.native_constructor_idx].data);
                                         const Value* args_ptr = arg_count > 0 ? (sp - arg_count) : nullptr;
                                         ArgView args_view{args_ptr, static_cast<size_t>(arg_count)};
@@ -1515,6 +1538,7 @@ namespace pyle {
                             return;
                         }
                     }
+
                 }
                 DISPATCH();
 
@@ -1788,6 +1812,10 @@ namespace pyle {
                         auto it = type.getters.find(field_id);
                         if (it != type.getters.end()) {
                             HeapIdx getter_idx = it->second;
+                            if (!std::holds_alternative<NativeMethod>(heap[getter_idx].data)) {
+                                runtime_error(RuntimeError::Runtime, "getter not NativeMethod");
+                                return;
+                            }
                             NativeMethod& method = std::get<NativeMethod>(heap[getter_idx].data);
                             sync_ip();
                             Value result = method.fn(*this, obj_val.as_ref, ArgView{nullptr, 0});
@@ -1809,7 +1837,7 @@ namespace pyle {
                         size_t offset = type.get_offset(field_id);
                         if (offset == size_t(-1)) {
                             sync_ip();
-                            runtime_error(RuntimeError::Name, "Struct has no field with that name.");
+                            runtime_error(RuntimeError::Name, "Struct has no field with name.");
                             return;
                         }
                         push(s.fields[offset]);
