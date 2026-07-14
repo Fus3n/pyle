@@ -399,6 +399,7 @@ namespace pyle {
         loop_locals_start.push_back(current_state->locals.size());
 
         size_t loop_start = current_chunk->instr.size();
+        loop_continue_targets.push_back(loop_start);
         stmt->condition->accept(this);
         
         size_t exit_jump = emit_jump(OpCode::JUMP_IF_FALSE, 0);
@@ -417,6 +418,7 @@ namespace pyle {
 
         loop_breaks.pop_back();
         loop_locals_start.pop_back();
+        loop_continue_targets.pop_back();
     }
 
     void Compiler::visit_for(ForStmt* stmt) {
@@ -432,6 +434,7 @@ namespace pyle {
         current_state->locals.push_back(Local{dummy_token, current_state->scope_depth});
 
         size_t loop_start = current_chunk->instr.size();
+        loop_continue_targets.push_back(loop_start);
         
         size_t exit_jump = emit_jump(OpCode::FOR_ITER, stmt->var_name.selection.line);
         
@@ -453,6 +456,7 @@ namespace pyle {
 
         loop_breaks.pop_back();
         loop_locals_start.pop_back();
+        loop_continue_targets.pop_back();
     }
 
     void Compiler::visit_break(BreakStmt* stmt) {
@@ -470,6 +474,25 @@ namespace pyle {
         // temporary jump we will patch this in loop later
         size_t break_jump = emit_jump(OpCode::JUMP, stmt->token.selection.line);
         loop_breaks.back().push_back(break_jump);
+    }
+
+    void Compiler::visit_continue(ContinueStmt* stmt) {
+        if (loop_breaks.empty()) {
+            reporter.report(stmt->token.selection, ErrorType::Compile, 
+                        "Cannot use 'continue' outside of a loop.");
+            return;
+        }
+
+        // Emit POPs for all locals above loop_locals_start, preserving @iterator
+        for (size_t i = current_state->locals.size(); i > loop_locals_start.back(); --i) {
+            const Local& local = current_state->locals[i - 1];
+            if (local.name.lexeme == "@iterator") break;
+            if (local.on_stack) {
+                emit_instruction(OpCode::POP, 0, stmt->token.selection.line);
+            }
+        }
+
+        emit_loop(loop_continue_targets.back(), stmt->token.selection.line);
     }
 
     void Compiler::visit_logical(LogicalExpr* expr) {

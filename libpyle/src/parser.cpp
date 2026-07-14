@@ -116,6 +116,7 @@ namespace pyle {
             if (match({TokenType::FN})) return function_declaration();
             if (match({TokenType::RETURN})) return return_statement();
             if (match({TokenType::BREAK})) return break_statement();
+            if (match({TokenType::CONTINUE})) return continue_statement();
             if (match({TokenType::STRUCT})) return struct_declaration();
             if (match({TokenType::ENUM})) return enum_declaration();
 
@@ -323,6 +324,12 @@ namespace pyle {
         Token token = previous();
         consume_statement_end();
         return std::make_unique<BreakStmt>(token);
+    }
+
+    std::unique_ptr<Stmt> Parser::continue_statement() {
+        Token token = previous();
+        consume_statement_end();
+        return std::make_unique<ContinueStmt>(token);
     }
 
     std::unique_ptr<Stmt> Parser::for_statement() {

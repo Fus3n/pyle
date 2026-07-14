@@ -50,6 +50,9 @@ namespace pyle {
             if (message.find("Cannot use 'break'") != std::string::npos) {
                 return "Move this 'break' statement inside a 'while' or 'for' loop body.";
             }
+            if (message.find("Cannot use 'continue'") != std::string::npos) {
+                return "Move this 'continue' statement inside a 'while' or 'for' loop body.";
+            }
         }
         return "";
     }

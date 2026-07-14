@@ -25,7 +25,7 @@ namespace pyle {
 
         AND, OR, NOT,         
         IF, ELSE, ELIF,            
-        FOR, WHILE, IN, LOOP, BREAK,        
+        FOR, WHILE, IN, LOOP, BREAK, CONTINUE,        
         FN, RETURN,             
         LET,
         STRUCT,                     
@@ -62,6 +62,7 @@ namespace pyle {
         {"while",  TokenType::WHILE},
         {"loop", TokenType::LOOP},
         {"break", TokenType::BREAK},
+        {"continue", TokenType::CONTINUE},
         {"fn",   TokenType::FN},
         {"return", TokenType::RETURN},
         {"let",    TokenType::LET},

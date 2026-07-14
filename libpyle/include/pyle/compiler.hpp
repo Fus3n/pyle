@@ -13,6 +13,7 @@ namespace pyle {
     struct Local {
         Token name;
         int depth = 0;
+        bool on_stack = true;
     };
 
     struct CompileState {
@@ -52,6 +53,7 @@ namespace pyle {
 
         std::vector<std::vector<size_t>> loop_breaks;
         std::vector<size_t> loop_locals_start;
+        std::vector<size_t> loop_continue_targets;
 
         HeapIdx compile_function(const std::vector<Token>& params, BlockStmt* body, std::string_view name);
 
@@ -83,6 +85,7 @@ namespace pyle {
         void visit_func_decl(FuncDeclStmt* stmt) override;
         void visit_for(ForStmt* stmt) override;
         void visit_break(BreakStmt* stmt) override;
+        void visit_continue(ContinueStmt* stmt) override;
         void visit_func_expr(FuncExpr* expr) override;
         void visit_struct_decl(StructDeclStmt* stmt) override;
         void visit_get_field(GetFieldExpr* expr) override;

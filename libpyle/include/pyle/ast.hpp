@@ -219,6 +219,12 @@ namespace pyle {
         void accept(Visitor* visitor) override;
     };
 
+    struct ContinueStmt : public Stmt {
+        Token token;
+        explicit ContinueStmt(Token token) : token(token) {}
+        void accept(Visitor* visitor) override;
+    };
+
     struct FuncExpr : public Expr {
         std::vector<Token> params;
         std::unique_ptr<BlockStmt> body;
@@ -307,7 +313,8 @@ namespace pyle {
         virtual void visit_return(ReturnStmt* stmt) = 0;
         virtual void visit_func_decl(FuncDeclStmt* stmt) = 0;
         virtual void visit_for(ForStmt* stmt) = 0;
-        virtual void visit_break(BreakStmt* stmt) = 0; 
+        virtual void visit_break(BreakStmt* stmt) = 0;
+        virtual void visit_continue(ContinueStmt* stmt) = 0; 
         virtual void visit_func_expr(FuncExpr* expr) = 0; 
         virtual void visit_struct_decl(StructDeclStmt* stmt) = 0;
         virtual void visit_get_field(GetFieldExpr* expr) = 0;
@@ -339,6 +346,7 @@ namespace pyle {
     inline void FuncDeclStmt::accept(Visitor *visitor) { visitor->visit_func_decl(this); }
     inline void ForStmt::accept(Visitor* visitor) { visitor->visit_for(this); }
     inline void BreakStmt::accept(Visitor* visitor) { visitor->visit_break(this); }
+    inline void ContinueStmt::accept(Visitor* visitor) { visitor->visit_continue(this); }
     inline void FuncExpr::accept(Visitor* visitor) { visitor->visit_func_expr(this); }
     inline void StructDeclStmt::accept(Visitor* visitor) { visitor->visit_struct_decl(this); }
     inline void GetFieldExpr::accept(Visitor* visitor) { visitor->visit_get_field(this); }
