@@ -72,6 +72,23 @@ namespace pyle {
         return Value();
     }
 
+    Value native_input(VM& vm, ArgView args) {
+        if (args.size() > 1) {
+            vm.runtime_error(RuntimeError::ArgumentError, "input() takes at most 1 argument (optional prompt).");
+            return Value();
+        }
+        if (args.size() == 1) {
+            std::cout << vm.value_to_string(args[0]);
+        }
+        std::string line;
+        if (!std::getline(std::cin, line)) {
+            vm.runtime_error(RuntimeError::Runtime, "Failed to read from stdin.");
+            return Value();
+        }
+        HeapIdx idx = vm.intern_string(line);
+        return Value(Value::Tag::StringRef, idx);
+    }
+
     Value native_printf(VM& vm, ArgView args) {
         std::string result = format_string_impl(vm, args);
         std::cout << result << std::endl;
@@ -350,6 +367,7 @@ namespace pyle {
         pyle::bind_function<native_print>(vm, "print");
         pyle::bind_function<native_printf>(vm, "printf");
         pyle::bind_function<native_format>(vm, "format");
+        pyle::bind_function<native_input>(vm, "input");
         pyle::bind_function<native_import>(vm, "import");
         pyle::bind_function<native_add_import_path>(vm, "add_import_path"); 
         pyle::bind_function<native_typeof>(vm, "typeof"); 
