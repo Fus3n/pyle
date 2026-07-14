@@ -182,6 +182,12 @@ namespace pyle {
 
         const HeapIdx idx = heap.size();
         heap.push_back(std::move(obj));
+        // `heap` may have been reallocated, invalidating any raw pointer into it
+        // (such as `global_slots`, which points at a module's storage vector that
+        // lives inside a heap Object). Re-derive the active globals pointer.
+        if (globals_idx != HeapIdx(-1)) {
+            global_slots = &std::get<ArrayType>(heap[globals_idx].data);
+        }
         return idx;
     }
 
@@ -266,10 +272,16 @@ namespace pyle {
             mark_value(val);
         }
 
-        for (const auto* saved_slots : saved_globals_stack) {
-            for (const Value& val : *saved_slots) {
-                mark_value(val);
+        auto mark_storage = [this](HeapIdx s) {
+            if (s == HeapIdx(-1)) return;
+            if (!heap[s].gc_marked) {
+                heap[s].gc_marked = true;
+                gc_worklist.push_back(s);
             }
+        };
+        mark_storage(globals_idx);
+        for (HeapIdx gi : saved_globals_stack) {
+            mark_storage(gi);
         }
 
         for (const auto& [name_idx, slot_idx] : global_slot_map) {
@@ -1074,12 +1086,13 @@ namespace pyle {
                             new_frame.closure = callee.as_ref;
                             new_frame.ip = 0;
                             new_frame.stack_base = stack_size() - arg_count;
-                            if (fn.module_env != 0) {
-                                new_frame.module_swap = true;
-                                new_frame.saved_globals = global_slots;
-                                new_frame.module_env_idx = fn.module_env;
-                                global_slots = &std::get<ArrayType>(heap[fn.module_env].data);
-                            }
+                                    if (fn.module_env != 0) {
+                                        new_frame.module_swap = true;
+                                        new_frame.saved_globals_idx = globals_idx;
+                                        new_frame.module_env_idx = fn.module_env;
+                                        global_slots = &std::get<ArrayType>(heap[fn.module_env].data);
+                            globals_idx = fn.module_env;
+                                    }
                             frames[frame_count++] = new_frame;
                             frame = &frames[frame_count - 1];
                             sync_frame_cache(frame, fn, instr_data, ip, ip_end, const_pool, const_pool_size);
@@ -1129,7 +1142,10 @@ namespace pyle {
                     bool was_module_frame = frame->module_swap;
                     close_upvalues(&stack[stack_base]);
                     if (was_module_frame) {
-                        global_slots = frame->saved_globals;
+                        globals_idx = frame->saved_globals_idx;
+                        global_slots = (globals_idx == HeapIdx(-1))
+                            ? &root_globals
+                            : &std::get<ArrayType>(heap[globals_idx].data);
                     }
                     frame_count--;
 
@@ -1254,9 +1270,10 @@ namespace pyle {
                                     new_frame.stack_base = stack_size() - arg_count;
                                     if (fn.module_env != 0) {
                                         new_frame.module_swap = true;
-                                        new_frame.saved_globals = global_slots;
+                                        new_frame.saved_globals_idx = globals_idx;
                                         new_frame.module_env_idx = fn.module_env;
                                         global_slots = &std::get<ArrayType>(heap[fn.module_env].data);
+                    globals_idx = fn.module_env;
                                     }
                                     frames[frame_count++] = new_frame;
                                     frame = &frames[frame_count - 1];
@@ -1391,6 +1408,13 @@ namespace pyle {
                                     new_frame.closure = closure_idx;
                                     new_frame.ip = 0;
                                     new_frame.stack_base = stack_size() - arg_count;
+                                    if (fn.module_env != 0) {
+                                        new_frame.module_swap = true;
+                                        new_frame.saved_globals_idx = globals_idx;
+                                        new_frame.module_env_idx = fn.module_env;
+                                        global_slots = &std::get<ArrayType>(heap[fn.module_env].data);
+                    globals_idx = fn.module_env;
+                                    }
                                     frames[frame_count++] = new_frame;
                                     frame = &frames[frame_count - 1];
                                     sync_frame_cache(frame, fn, instr_data, ip, ip_end, const_pool, const_pool_size);
@@ -1425,6 +1449,13 @@ namespace pyle {
                                 new_frame.closure = closure_idx;
                                 new_frame.ip = 0;
                                 new_frame.stack_base = stack_size() - total_args;
+                                if (fn.module_env != 0) {
+                                    new_frame.module_swap = true;
+                                    new_frame.saved_globals_idx = globals_idx;
+                                    new_frame.module_env_idx = fn.module_env;
+                                    global_slots = &std::get<ArrayType>(heap[fn.module_env].data);
+                    globals_idx = fn.module_env;
+                                }
                                 if (frame_count == frame_capacity) [[unlikely]] {
                                     runtime_error(RuntimeError::Runtime, "Stack overflow."); 
                                     return;

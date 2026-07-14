@@ -141,9 +141,9 @@ namespace pyle {
         
         std::string source = std::move(*code_opt);
         
-        // Save the caller's active global storage (as a pointer) and give the
+        // Save the caller's active global storage (as an index) and give the
         // module its own storage seeded with the caller's builtins.
-        vm.saved_globals_stack.push_back(vm.global_slots);
+        vm.saved_globals_stack.push_back(vm.globals_idx);
         vm.saved_slot_maps_stack.push_back(std::move(vm.global_slot_map));
 
         ArrayType module_storage;
@@ -152,6 +152,7 @@ namespace pyle {
                                   vm.global_slots->begin() + vm.builtin_count);
         }
         HeapIdx module_storage_idx = vm.alloc(Object(std::move(module_storage)));
+        vm.globals_idx = module_storage_idx;
         vm.global_slots = &std::get<ArrayType>(vm.get_heap_object(module_storage_idx).data);
         vm.global_slot_map = vm.builtin_slot_map;
         
@@ -177,7 +178,10 @@ namespace pyle {
         }
         
         if (!success) {
-            vm.global_slots = vm.saved_globals_stack.back();
+            vm.globals_idx = vm.saved_globals_stack.back();
+            vm.global_slots = (vm.globals_idx == HeapIdx(-1))
+                ? &vm.root_globals
+                : &std::get<ArrayType>(vm.get_heap_object(vm.globals_idx).data);
             vm.saved_globals_stack.pop_back();
             vm.global_slot_map = std::move(vm.saved_slot_maps_stack.back());
             vm.saved_slot_maps_stack.pop_back();
@@ -189,14 +193,28 @@ namespace pyle {
         // Tag every module-level function/closure with this module's persistent
         // global storage (module_storage_idx) so that when the function runs, the
         // VM aliases its globals instead of the caller's.
+        auto tag_function = [&](HeapIdx fn_idx) {
+            if (fn_idx != 0) {
+                std::get<Function>(vm.get_heap_object(fn_idx).data).module_env = module_storage_idx;
+            }
+        };
         for (const auto& [var_name_idx, slot_idx] : vm.global_slot_map) {
             if (slot_idx >= static_cast<int>(vm.builtin_count)) {
                 Value v = (*vm.global_slots)[slot_idx];
                 if (v.tag == Value::Tag::FuncRef) {
-                    std::get<Function>(vm.get_heap_object(v.as_ref).data).module_env = module_storage_idx;
+                    tag_function(v.as_ref);
                 } else if (v.tag == Value::Tag::ClosureRef) {
                     Closure& clo = std::get<Closure>(vm.get_heap_object(v.as_ref).data);
-                    std::get<Function>(vm.get_heap_object(clo.function).data).module_env = module_storage_idx;
+                    tag_function(clo.function);
+                } else if (v.tag == Value::Tag::StructTypeRef) {
+                    // Struct methods are compiled as standalone functions stored on
+                    // the type; they also need their module's globals so they run
+                    // with the correct globals when invoked cross-module.
+                    StructType& type = std::get<StructType>(vm.get_heap_object(v.as_ref).data);
+                    for (auto& [_, fn_idx] : type.methods) tag_function(fn_idx);
+                    for (HeapIdx fn_idx : type.special_methods) tag_function(fn_idx);
+                    for (auto& [_, fn_idx] : type.setters) tag_function(fn_idx);
+                    for (auto& [_, fn_idx] : type.getters) tag_function(fn_idx);
                 }
             }
         }
@@ -210,7 +228,10 @@ namespace pyle {
         }
 
         // Restore caller's active global storage on success.
-        vm.global_slots = vm.saved_globals_stack.back();
+        vm.globals_idx = vm.saved_globals_stack.back();
+        vm.global_slots = (vm.globals_idx == HeapIdx(-1))
+            ? &vm.root_globals
+            : &std::get<ArrayType>(vm.get_heap_object(vm.globals_idx).data);
         vm.saved_globals_stack.pop_back();
         vm.global_slot_map = std::move(vm.saved_slot_maps_stack.back());
         vm.saved_slot_maps_stack.pop_back();

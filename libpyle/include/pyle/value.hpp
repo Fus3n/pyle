@@ -22,7 +22,7 @@ namespace pyle {
         size_t ip;
         size_t stack_base;
         bool module_swap = false;            
-        std::vector<Value>* saved_globals = nullptr; 
+        HeapIdx saved_globals_idx = HeapIdx(-1);
         int module_env_idx = 0;           
     };
 
