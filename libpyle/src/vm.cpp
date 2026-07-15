@@ -272,6 +272,10 @@ namespace pyle {
             mark_value(val);
         }
 
+        for (HeapIdx uv_idx : open_upvalues) {
+            mark_value(Value(Value::Tag::UpvalueRef, uv_idx));
+        }
+
         auto mark_storage = [this](HeapIdx s) {
             if (s == HeapIdx(-1)) return;
             if (!heap[s].gc_marked) {
@@ -1735,21 +1739,21 @@ namespace pyle {
                 DISPATCH(); 
 
                 OP(GET_ITER) {
-                    Value container = pop();
+                    Value container = peek(); 
                     switch (container.tag) {
                         case Value::Tag::ArrayRef:
                         case Value::Tag::StringRef:
                         case Value::Tag::RangeRef:
                         case Value::Tag::BytesRef: {
                             HeapIdx idx = alloc(Object(Iterator{container, 0}));
-                            push(Value(Value::Tag::IteratorRef, idx));
+                            set_top(Value(Value::Tag::IteratorRef, idx)); // Replace the container 
                             break;
                         }
                         default: {
+                            sync_ip();
                             runtime_error(RuntimeError::Type, "Object is not iterable");
                             return;
                         }
-
                     }
                 }
                 DISPATCH();
@@ -1889,22 +1893,28 @@ namespace pyle {
                 DISPATCH();
 
                 OP(NEW_MAP) {
-                    int pair_count = static_cast<int>(ARG);
-                    MapType map;
-                    for (int i = 0; i < pair_count; i++) {
-                        Value val = pop();
-                        Value key = pop();
-
-                        if (!is_hashable(key)) {
-                            runtime_error(RuntimeError::Type, fmt::format("Unhashable type '{}' cannot be used as a map key.", key.tag_to_string()));
-                            return;
-                        }
-
-                        map[key] = val;
+                int pair_count = static_cast<int>(ARG);
+                MapType map;
+                
+                for (int i = 0; i < pair_count; i++) {
+                    int offset = (pair_count - i) * 2;
+                    
+                    Value key = peek(offset);
+                    Value val = peek(offset - 1);
+                    
+                    if (!is_hashable(key)) {
+                        sync_ip();
+                        runtime_error(RuntimeError::Type, fmt::format("Unhashable type '{}' cannot be used as a map key.", key.tag_to_string()));
+                        return;
                     }
-                    HeapIdx idx = alloc(Object(std::move(map)));
-                    push(Value(Value::Tag::MapRef, idx));
+                    map[key] = val;
                 }
+                
+                HeapIdx idx = alloc(Object(std::move(map)));
+                
+                sp -= (pair_count * 2);
+                push(Value(Value::Tag::MapRef, idx));
+            }
                 DISPATCH();
 
                 OP(CALL_KW) {
