@@ -1,0 +1,150 @@
+let rl = import("raylib")
+let m = import("math")
+
+let WIDTH = 900
+let HEIGHT = 600
+
+struct Particle(x, y, vx, vy, col, life, maxlife) {}
+
+rl.InitWindow(WIDTH, HEIGHT, "Pyle FX - click to launch")
+rl.SetTargetFPS(60)
+
+let palette = [
+    rl.RED, rl.ORANGE, rl.GOLD, rl.YELLOW, rl.GREEN,
+    rl.SKYBLUE, rl.BLUE, rl.PURPLE, rl.VIOLET, rl.PINK, rl.MAGENTA
+]
+
+let particles = []
+let MAX_PARTICLES = 8000
+let CELL = 100.0
+let cols = m.floor(WIDTH / CELL)
+let rows = m.floor(HEIGHT / CELL)
+let cell_count = cols * rows
+let CONN2 = 90.0 * 90.0
+
+let fps = 60.0
+let peak = 0
+let lines = 0
+let last_time = rl.GetTime()
+
+fn burst(x, y, count, power) {
+    for i in 0..count {
+        let base = palette[rl.GetRandomValue(0, palette.size() - 1)]
+        let vx = rl.GetRandomValue(-power, power)
+        let vy = rl.GetRandomValue(-power, power)
+        particles.append(Particle(
+            x: x, y: y, vx: vx, vy: vy,
+            col: rl.Color(base.r, base.g, base.b, 255),
+            life: 1.4, maxlife: 1.4))
+    }
+}
+
+while not rl.WindowShouldClose() {
+    let now = rl.GetTime()
+    let rdt = now - last_time
+    last_time = now
+    if rdt > 0.05 { rdt = 0.05 }
+    let inst = 0.0
+    if rdt > 0 { inst = 1.0 / rdt }
+    fps = fps * 0.9 + inst * 0.1
+
+    if rl.IsMouseButtonPressed(0) {
+        burst(rl.GetMouseX(), rl.GetMouseY(), 160, 360)
+    }
+    if rl.IsMouseButtonDown(0) {
+        burst(rl.GetMouseX(), rl.GetMouseY(), 8, 360)
+    }
+
+    if particles.size() > MAX_PARTICLES {
+        let trimmed = []
+        for ti in 0..MAX_PARTICLES {
+            trimmed.append(particles[ti])
+        }
+        particles = trimmed
+    }
+
+    let new_p = []
+    for p in particles {
+        p.vy = p.vy + 140 * rdt
+        p.vx = p.vx * 0.985
+        p.vy = p.vy * 0.985
+        p.x = p.x + p.vx * rdt
+        p.y = p.y + p.vy * rdt
+        p.life = p.life - rdt
+        if p.life > 0 { new_p.append(p) }
+    }
+    particles = new_p
+
+    if particles.size() > peak { peak = particles.size() }
+
+    let n = particles.size()
+    lines = 0
+    rl.BeginDrawing()
+    rl.ClearBackground(rl.BLACK)
+
+    if n > 0 {
+        let grid = []
+        for c in 0..cell_count {
+            grid.append([])
+        }
+        for bi in 0..n {
+            let p = particles[bi]
+            let cx = m.floor(p.x / CELL)
+            let cy = m.floor(p.y / CELL)
+            if cx < 0 { cx = 0 }
+            if cx > cols - 1 { cx = cols - 1 }
+            if cy < 0 { cy = 0 }
+            if cy > rows - 1 { cy = rows - 1 }
+            let ci = cx + cy * cols
+            let cell = grid[ci]
+            cell.append(bi)
+        }
+
+        for i in 0..n {
+            let p = particles[i]
+            let cx = m.floor(p.x / CELL)
+            let cy = m.floor(p.y / CELL)
+            if cx < 0 { cx = 0 }
+            if cx > cols - 1 { cx = cols - 1 }
+            if cy < 0 { cy = 0 }
+            if cy > rows - 1 { cy = rows - 1 }
+            for dy in -1..2 {
+                for dx in -1..2 {
+                    let ncx = cx + dx
+                    let ncy = cy + dy
+                    if ncx >= 0 and ncx < cols and ncy >= 0 and ncy < rows {
+                        let cell = grid[ncx + ncy * cols]
+                        let m = cell.size()
+                        for k in 0..m {
+                            let j = cell[k]
+                            if j > i {
+                                let q = particles[j]
+                                let ddx = p.x - q.x
+                                let ddy = p.y - q.y
+                                if ddx * ddx + ddy * ddy < CONN2 {
+                                    rl.DrawLine(p.x, p.y, q.x, q.y, p.col)
+                                    lines = lines + 1
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        for p in particles {
+            let a = p.life / p.maxlife * 255
+            if a < 0 { a = 0 }
+            if a > 255 { a = 255 }
+            p.col.a = a
+            let radius = 2 + (p.life / p.maxlife) * 4
+            rl.DrawCircle(p.x, p.y, radius, p.col)
+        }
+    }
+
+    rl.DrawText("Pyle FX - click / hold to launch (no auto-spawn)", 14, 12, 26, rl.RAYWHITE)
+    rl.DrawText(format("FPS: {:.1f}   frame: {:.2f} ms   particles: {}   lines: {}", fps, rdt * 1000, n, lines), 14, 44, 16, rl.LIGHTGRAY)
+    rl.EndDrawing()
+}
+
+rl.CloseWindow()

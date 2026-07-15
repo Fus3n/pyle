@@ -1,0 +1,52 @@
+# fruit.pyl - the Fruit entity: construction, query, and rendering.
+
+let rl = import("raylib")
+let m = import("math")
+
+struct Fruit(x, y, vx, vy, tier, id, merge_cd, dead, angle, omega) {
+    fn _init(x, y, vx, vy, tier, id, merge_cd, dead, angle, omega) {
+        self.x = x
+        self.y = y
+        self.vx = vx
+        self.vy = vy
+        self.tier = tier
+        self.id = id
+        self.merge_cd = merge_cd
+        self.dead = dead
+        self.angle = angle
+        self.omega = omega
+    }
+
+    fn radius(cfg) {
+        return cfg.tier_r[self.tier]
+    }
+
+    # Factory for player spawns: adds a little random jitter and spin.
+    static fn create(tier, id, x, y, cfg) {
+        let jitter = (rl.GetRandomValue(0, 100) - 50) * 0.4
+        let spin = (rl.GetRandomValue(0, 100) - 50) * 0.01
+        return Fruit(x, y, jitter, 0.0, tier, id, cfg.merge_cd, 0, 0.0, spin)
+    }
+
+    fn draw(cfg) {
+        let r = cfg.tier_r[self.tier]
+        let col = cfg.tier_col[self.tier]
+        let oc = rl.Color(m.floor(col.r * 0.55), m.floor(col.g * 0.55), m.floor(col.b * 0.55), 255)
+        rl.DrawCircle(m.floor(self.x), m.floor(self.y), r, col)
+        rl.DrawCircleLines(m.floor(self.x), m.floor(self.y), r, oc)
+        let er = m.max(m.floor(r * 0.12), 2)
+        let eye = rl.Color(45, 35, 30, 255)
+        let ca = m.cos(self.angle)
+        let sa = m.sin(self.angle)
+        let lx = -r * 0.35
+        let ly = -r * 0.22
+        let rx = r * 0.35
+        let ry = -r * 0.22
+        let e1x = self.x + lx * ca - ly * sa
+        let e1y = self.y + lx * sa + ly * ca
+        let e2x = self.x + rx * ca - ry * sa
+        let e2y = self.y + rx * sa + ry * ca
+        rl.DrawCircle(m.floor(e1x), m.floor(e1y), er, eye)
+        rl.DrawCircle(m.floor(e2x), m.floor(e2y), er, eye)
+    }
+}

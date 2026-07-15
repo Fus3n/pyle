@@ -1,0 +1,184 @@
+# game.pyl - Game state plus the per-frame update and render orchestration.
+
+let rl = import("raylib")
+let m = import("math")
+let physics = import("examples/raylib/suika/physics")
+let fruit_mod = import("examples/raylib/suika/fruit")
+let Fruit = fruit_mod.Fruit
+
+struct Game(fruits, score, best, next_tier, next_next_tier, spawn_x,
+            drop_timer, danger_timer, game_over, combo_timer, combo_count,
+            combo_display_timer, combo_x, combo_y, highest_tier, next_id, frame) {
+    fn _init(cfg) {
+        self.reset(cfg)
+    }
+
+    fn reset(cfg) {
+        self.fruits = []
+        self.score = 0
+        self.best = 0
+        self.drop_timer = 0.0
+        self.danger_timer = 0.0
+        self.combo_timer = 0.0
+        self.combo_count = 0
+        self.combo_display_timer = 0.0
+        self.highest_tier = 0
+        self.next_id = 1
+        self.game_over = false
+        self.spawn_x = (cfg.left + cfg.right) / 2
+        self.next_tier = self.rand_tier()
+        self.next_next_tier = self.rand_tier()
+        self.frame = 0
+    }
+
+    fn rand_tier() {
+        let max_t = 4
+        if self.highest_tier > 6 { max_t = 5 }
+        if self.highest_tier > 8 { max_t = 6 }
+        return rl.GetRandomValue(0, max_t)
+    }
+
+    fn spawn(tier, x, cfg) {
+        let f = Fruit.create(tier, self.next_id, x, cfg.spawn_y, cfg)
+        self.next_id = self.next_id + 1
+        self.fruits.append(f)
+        if tier > self.highest_tier { self.highest_tier = tier }
+    }
+
+    fn update(dt, cfg) {
+        if self.combo_timer > 0 { self.combo_timer = self.combo_timer - dt }
+        if self.combo_display_timer > 0 { self.combo_display_timer = self.combo_display_timer - dt }
+
+        if self.game_over {
+            if rl.IsKeyPressed(rl.KEY_R) { self.reset(cfg) }
+            return
+        }
+
+        let r = cfg.tier_r[self.next_tier]
+        let mx = rl.GetMouseX()
+        if mx < cfg.left + r { mx = cfg.left + r }
+        if mx > cfg.right - r { mx = cfg.right - r }
+        self.spawn_x = mx
+
+        if (rl.IsMouseButtonPressed(rl.MOUSE_LEFT_BUTTON) or rl.IsKeyPressed(rl.KEY_SPACE)) and self.drop_timer <= 0 {
+            self.spawn(self.next_tier, self.spawn_x, cfg)
+            self.next_tier = self.next_next_tier
+            self.next_next_tier = self.rand_tier()
+            self.drop_timer = cfg.drop_cooldown
+        }
+        if self.drop_timer > 0 { self.drop_timer = self.drop_timer - dt }
+
+        let merges = physics.step(self, dt, cfg, m)
+
+        if merges.size() > 0 {
+            let mk = 0
+            while mk < merges.size() {
+                let pair = merges[mk]
+                let fa = self.fruits[pair[0]]
+                let fb = self.fruits[pair[1]]
+                let t = fa.tier
+                if self.combo_timer > 0 { self.combo_count = self.combo_count + 1 } else { self.combo_count = 1 }
+                self.combo_timer = cfg.combo_window
+                if t < 10 {
+                    let nx = (fa.x + fb.x) / 2
+                    let ny = (fa.y + fb.y) / 2
+                    let nvx = (fa.vx + fb.vx) / 2
+                    let nvy = (fa.vy + fb.vy) / 2
+                    let nf = Fruit(nx, ny, nvx, nvy, t + 1, self.next_id, cfg.merge_cd, 0, 0.0, 0.0)
+                    self.next_id = self.next_id + 1
+                    self.fruits.append(nf)
+                    self.score = self.score + cfg.tier_score[t + 1] * self.combo_count
+                    if t + 1 > self.highest_tier { self.highest_tier = t + 1 }
+                    if self.combo_count >= 2 {
+                        self.combo_display_timer = 0.5
+                        self.combo_x = nx
+                        self.combo_y = ny
+                    }
+                } else {
+                    self.score = self.score + cfg.bonus * self.combo_count
+                }
+                mk = mk + 1
+            }
+            let survivors = []
+            let s = 0
+            while s < self.fruits.size() {
+                let f = self.fruits[s]
+                if f.dead == 0 { survivors.append(f) }
+                s = s + 1
+            }
+            self.fruits = survivors
+        }
+
+        if self.score > self.best { self.best = self.score }
+
+        let any_over = false
+        let gi = 0
+        while gi < self.fruits.size() {
+            let f = self.fruits[gi]
+            let fr = cfg.tier_r[f.tier]
+            if f.y - fr < cfg.danger {
+                let sp = m.sqrt(f.vx * f.vx + f.vy * f.vy)
+                if sp < cfg.settle_speed { any_over = true; break }
+            }
+            gi = gi + 1
+        }
+        if any_over { self.danger_timer = self.danger_timer + dt } else { self.danger_timer = 0 }
+        if self.danger_timer >= cfg.game_over_hold { self.game_over = true }
+    }
+
+    fn draw(cfg) {
+        rl.BeginDrawing()
+        rl.ClearBackground(rl.Color(250, 240, 220, 255))
+        rl.DrawRectangle(cfg.left, 0, cfg.right - cfg.left, cfg.bottom, rl.Color(255, 252, 245, 255))
+
+        let wall_col = rl.Color(120, 90, 70, 255)
+        rl.DrawRectangle(cfg.left - cfg.wall, 0, cfg.wall, cfg.bottom, wall_col)
+        rl.DrawRectangle(cfg.right, 0, cfg.wall, cfg.bottom, wall_col)
+        rl.DrawRectangle(cfg.left - cfg.wall, cfg.bottom, (cfg.right - cfg.left) + 2 * cfg.wall, cfg.wall, wall_col)
+        rl.DrawLine(cfg.left, cfg.danger, cfg.right, cfg.danger, rl.Color(220, 80, 80, 200))
+
+        let i = 0
+        while i < self.fruits.size() {
+            let f = self.fruits[i]
+            f.draw(cfg)
+            i = i + 1
+        }
+
+        if not self.game_over and self.drop_timer <= 0 {
+            let pr = cfg.tier_r[self.next_tier]
+            let pcol = cfg.tier_col[self.next_tier]
+            rl.DrawLine(m.floor(self.spawn_x), cfg.spawn_y, m.floor(self.spawn_x), cfg.bottom, rl.Color(80, 80, 80, 120))
+            rl.DrawCircle(m.floor(self.spawn_x), cfg.spawn_y, pr, pcol)
+            rl.DrawCircleLines(m.floor(self.spawn_x), cfg.spawn_y, pr, rl.Color(m.floor(pcol.r * 0.55), m.floor(pcol.g * 0.55), m.floor(pcol.b * 0.55), 255))
+        }
+
+        rl.DrawText(format("Fruit Merge"), 12, 6, 16, rl.Color(70, 55, 45, 255))
+        rl.DrawText(format("SCORE"), 12, 64, 16, rl.Color(70, 55, 45, 255))
+        rl.DrawText(format("{}", self.score), 12, 84, 26, rl.Color(30, 30, 30, 255))
+        rl.DrawText(format("BEST"), 12, 132, 16, rl.Color(70, 55, 45, 255))
+        rl.DrawText(format("{}", self.best), 12, 152, 22, rl.Color(90, 70, 60, 255))
+
+        let pscale = 34.0 / 112.0
+        let bx = cfg.right + 18
+        rl.DrawText(format("NEXT"), bx, 64, 16, rl.Color(70, 55, 45, 255))
+        let nr = cfg.tier_r[self.next_tier] * pscale
+        rl.DrawCircle(m.floor(bx + 25), 120, nr, cfg.tier_col[self.next_tier])
+        rl.DrawText(format("THEN"), bx, 168, 16, rl.Color(70, 55, 45, 255))
+        let tr = cfg.tier_r[self.next_next_tier] * pscale
+        rl.DrawCircle(m.floor(bx + 25), 224, tr, cfg.tier_col[self.next_next_tier])
+
+        if self.combo_display_timer > 0 and self.combo_count >= 2 {
+            rl.DrawText(format("Combo x{}", self.combo_count), m.floor(self.combo_x) - 30, m.floor(self.combo_y) - 70, 22, rl.Color(200, 60, 60, 255))
+        }
+
+        if self.game_over {
+            rl.DrawRectangleRec(rl.Rectangle(cfg.left - cfg.wall, 0, (cfg.right - cfg.left) + 2 * cfg.wall, cfg.bottom), rl.Color(0, 0, 0, 150))
+            rl.DrawText(format("GAME OVER"), cfg.left + 70, 360, 40, rl.RAYWHITE)
+            rl.DrawText(format("Score: {}", self.score), cfg.left + 80, 420, 24, rl.RAYWHITE)
+            rl.DrawText(format("Best:  {}", self.best), cfg.left + 80, 454, 24, rl.RAYWHITE)
+            rl.DrawText(format("Press R to restart"), cfg.left + 48, 510, 22, rl.LIGHTGRAY)
+        }
+
+        rl.EndDrawing()
+    }
+}

@@ -1,0 +1,29 @@
+# fruit_merge.pyl - Fruit Merge game entry point.
+
+let rl = import("raylib")
+let m = import("math")
+let cfg_mod = import("examples/raylib/suika/cfg")
+let fruit_mod = import("examples/raylib/suika/fruit")
+let physics = import("examples/raylib/suika/physics")
+let game_mod = import("examples/raylib/suika/game")
+
+let Cfg = cfg_mod.Cfg
+let Fruit = fruit_mod.Fruit
+let Game = game_mod.Game
+
+rl.SetConfigFlags(rl.FLAG_MSAA_4X_HINT)
+rl.InitWindow(720, 960, "Fruit Merge")
+rl.SetTargetFPS(60)
+
+let cfg = Cfg.make()
+let game = Game(cfg)
+
+while not rl.WindowShouldClose() {
+    let dt = rl.GetFrameTime()
+    if dt > 0.05 { dt = 0.05 }
+    game.update(dt, cfg)
+    game.draw(cfg)
+    game.frame = game.frame + 1
+}
+
+rl.CloseWindow()

@@ -1,0 +1,75 @@
+# render.pyl - all drawing for the Suika game.
+
+fn draw(rl, m, g, cfg) {
+    rl.BeginDrawing()
+    rl.ClearBackground(rl.Color(250, 240, 220, 255))
+    rl.DrawRectangle(cfg.left, 0, cfg.right - cfg.left, cfg.bottom, rl.Color(255, 252, 245, 255))
+
+    let wall_col = rl.Color(120, 90, 70, 255)
+    rl.DrawRectangle(cfg.left - cfg.wall, 0, cfg.wall, cfg.bottom, wall_col)
+    rl.DrawRectangle(cfg.right, 0, cfg.wall, cfg.bottom, wall_col)
+    rl.DrawRectangle(cfg.left - cfg.wall, cfg.bottom, (cfg.right - cfg.left) + 2 * cfg.wall, cfg.wall, wall_col)
+    rl.DrawLine(cfg.left, cfg.danger, cfg.right, cfg.danger, rl.Color(220, 80, 80, 200))
+
+    let i = 0
+    while i < g.fruits.size() {
+        let f = g.fruits[i]
+        let r = cfg.tier_r[f.tier]
+        let col = cfg.tier_col[f.tier]
+        let oc = rl.Color(m.floor(col.r * 0.55), m.floor(col.g * 0.55), m.floor(col.b * 0.55), 255)
+        rl.DrawCircle(m.floor(f.x), m.floor(f.y), r, col)
+        rl.DrawCircleLines(m.floor(f.x), m.floor(f.y), r, oc)
+        let er = m.max(m.floor(r * 0.12), 2)
+        let eye = rl.Color(45, 35, 30, 255)
+        let ca = m.cos(f.angle)
+        let sa = m.sin(f.angle)
+        let lx = -r * 0.35
+        let ly = -r * 0.22
+        let rx = r * 0.35
+        let ry = -r * 0.22
+        let e1x = f.x + lx * ca - ly * sa
+        let e1y = f.y + lx * sa + ly * ca
+        let e2x = f.x + rx * ca - ry * sa
+        let e2y = f.y + rx * sa + ry * ca
+        rl.DrawCircle(m.floor(e1x), m.floor(e1y), er, eye)
+        rl.DrawCircle(m.floor(e2x), m.floor(e2y), er, eye)
+        i = i + 1
+    }
+
+    if not g.game_over and g.drop_timer <= 0 {
+        let pr = cfg.tier_r[g.next_tier]
+        let pcol = cfg.tier_col[g.next_tier]
+        rl.DrawLine(m.floor(g.spawn_x), cfg.spawn_y, m.floor(g.spawn_x), cfg.bottom, rl.Color(80, 80, 80, 120))
+        rl.DrawCircle(m.floor(g.spawn_x), cfg.spawn_y, pr, pcol)
+        rl.DrawCircleLines(m.floor(g.spawn_x), cfg.spawn_y, pr, rl.Color(m.floor(pcol.r * 0.55), m.floor(pcol.g * 0.55), m.floor(pcol.b * 0.55), 255))
+    }
+
+    rl.DrawText(format("Fruit Merge"), 12, 6, 16, rl.Color(70, 55, 45, 255))
+    rl.DrawText(format("SCORE"), 12, 64, 16, rl.Color(70, 55, 45, 255))
+    rl.DrawText(format("{}", g.score), 12, 84, 26, rl.Color(30, 30, 30, 255))
+    rl.DrawText(format("BEST"), 12, 132, 16, rl.Color(70, 55, 45, 255))
+    rl.DrawText(format("{}", g.best), 12, 152, 22, rl.Color(90, 70, 60, 255))
+
+    let pscale = 34.0 / 112.0
+    let bx = cfg.right + 18
+    rl.DrawText(format("NEXT"), bx, 64, 16, rl.Color(70, 55, 45, 255))
+    let nr = cfg.tier_r[g.next_tier] * pscale
+    rl.DrawCircle(m.floor(bx + 25), 120, nr, cfg.tier_col[g.next_tier])
+    rl.DrawText(format("THEN"), bx, 168, 16, rl.Color(70, 55, 45, 255))
+    let tr = cfg.tier_r[g.next_next_tier] * pscale
+    rl.DrawCircle(m.floor(bx + 25), 224, tr, cfg.tier_col[g.next_next_tier])
+
+    if g.combo_display_timer > 0 and g.combo_count >= 2 {
+        rl.DrawText(format("Combo x{}", g.combo_count), m.floor(g.combo_x) - 30, m.floor(g.combo_y) - 70, 22, rl.Color(200, 60, 60, 255))
+    }
+
+    if g.game_over {
+        rl.DrawRectangleRec(rl.Rectangle(cfg.left - cfg.wall, 0, (cfg.right - cfg.left) + 2 * cfg.wall, cfg.bottom), rl.Color(0, 0, 0, 150))
+        rl.DrawText(format("GAME OVER"), cfg.left + 70, 360, 40, rl.RAYWHITE)
+        rl.DrawText(format("Score: {}", g.score), cfg.left + 80, 420, 24, rl.RAYWHITE)
+        rl.DrawText(format("Best:  {}", g.best), cfg.left + 80, 454, 24, rl.RAYWHITE)
+        rl.DrawText(format("Press R to restart"), cfg.left + 48, 510, 22, rl.LIGHTGRAY)
+    }
+
+    rl.EndDrawing()
+}

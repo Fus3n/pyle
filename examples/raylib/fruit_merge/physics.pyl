@@ -1,0 +1,160 @@
+# physics.pyl - rotational rigid-body circle solver for the Suika game.
+
+fn step(g, dt, cfg, m) {
+    let fruits = g.fruits
+    let n = fruits.size()
+    let merges = []
+    if n == 0 { return merges }
+
+    let sdt = dt / cfg.substeps
+    let sub = 0
+    while sub < cfg.substeps {
+        let i = 0
+        while i < n {
+            let f = fruits[i]
+            if f.dead == 0 {
+                f.merge_cd = f.merge_cd - sdt
+                if f.merge_cd < 0 { f.merge_cd = 0 }
+                f.vy = f.vy + cfg.gravity * sdt
+                f.x = f.x + f.vx * sdt
+                f.y = f.y + f.vy * sdt
+                f.angle = f.angle + f.omega * sdt
+                f.vx = f.vx * cfg.air_damp
+                f.vy = f.vy * cfg.air_damp
+                f.omega = f.omega * cfg.ang_damp
+
+                let r = cfg.tier_r[f.tier]
+                if f.x - r < cfg.left {
+                    f.x = cfg.left + r
+                    if f.vx < 0 { f.vx = -f.vx * cfg.restitution }
+                }
+                if f.x + r > cfg.right {
+                    f.x = cfg.right - r
+                    if f.vx > 0 { f.vx = -f.vx * cfg.restitution }
+                }
+                if f.y + r > cfg.bottom {
+                    f.y = cfg.bottom - r
+                    if f.vy > 0 { f.vy = -f.vy * cfg.restitution }
+                    let slip = f.vx - f.omega * r
+                    let k = 0.15
+                    f.vx = f.vx - slip * k
+                    f.omega = f.omega + slip * k / r
+                }
+            }
+            i = i + 1
+        }
+
+        let iter = 0
+        while iter < cfg.iterations {
+            let a = 0
+            while a < n {
+                let fa = fruits[a]
+                let b = a + 1
+                while b < n {
+                    let fb = fruits[b]
+                    if fa.dead == 0 and fb.dead == 0 {
+                        let dx = fb.x - fa.x
+                        let dy = fb.y - fa.y
+                        let dist2 = dx * dx + dy * dy
+                        let ra = cfg.tier_r[fa.tier]
+                        let rb = cfg.tier_r[fb.tier]
+                        let rr = ra + rb
+
+                        if dist2 < rr * rr {
+                            let dist = m.sqrt(dist2)
+                            let nx = dx / dist
+                            let ny = dy / dist
+                            if dist < 0.0001 {
+                                nx = 1.0
+                                if fa.id < fb.id { nx = -1.0 }
+                                ny = 0.0
+                            }
+                            let overlap = rr - dist
+
+                            let ma = ra * ra
+                            let mb = rb * rb
+                            let invMa = 1.0 / ma
+                            let invMb = 1.0 / mb
+                            let Ia = 0.5 * ma * ra * ra
+                            let Ib = 0.5 * mb * rb * rb
+                            let invIa = 1.0 / Ia
+                            let invIb = 1.0 / Ib
+
+                            let rax = nx * ra
+                            let ray = ny * ra
+                            let rbx = -nx * rb
+                            let rby = -ny * rb
+
+                            let vax = fa.vx - fa.omega * ray
+                            let vay = fa.vy + fa.omega * rax
+                            let vbx = fb.vx - fb.omega * rby
+                            let vby = fb.vy + fb.omega * rbx
+                            let rvx = vbx - vax
+                            let rvy = vby - vay
+                            let vn = rvx * nx + rvy * ny
+
+                            let jn = 0.0
+                            if vn < 0 {
+                                let racn = rax * ny - ray * nx
+                                let rbcn = rbx * ny - rby * nx
+                                let invSumN = invMa + invMb + invIa * racn * racn + invIb * rbcn * rbcn
+                                jn = -(1.0 + cfg.restitution) * vn / invSumN
+                                fa.vx = fa.vx - jn * invMa * nx
+                                fa.vy = fa.vy - jn * invMa * ny
+                                fa.omega = fa.omega - jn * invIa * racn
+                                fb.vx = fb.vx + jn * invMb * nx
+                                fb.vy = fb.vy + jn * invMb * ny
+                                fb.omega = fb.omega + jn * invIb * rbcn
+                            }
+
+                            let tx = -ny
+                            let ty = nx
+                            let racx = rax * ty - ray * tx
+                            let rbcx = rbx * ty - rby * tx
+                            let vt = rvx * tx + rvy * ty
+                            let invSumT = invMa + invMb + invIa * racx * racx + invIb * rbcx * rbcx
+                            let jt = -vt / invSumT
+                            let jn_abs = 0.0
+                            if jn < 0 { jn_abs = -jn } else { jn_abs = jn }
+                            let restN = ((ma + mb) * 0.5) * cfg.gravity * sdt
+                            let maxJt = cfg.friction * (jn_abs + restN)
+                            if jt > maxJt { jt = maxJt }
+                            if jt < -maxJt { jt = -maxJt }
+                            fa.vx = fa.vx - jt * invMa * tx
+                            fa.vy = fa.vy - jt * invMa * ty
+                            fa.omega = fa.omega - jt * invIa * racx
+                            fb.vx = fb.vx + jt * invMb * tx
+                            fb.vy = fb.vy + jt * invMb * ty
+                            fb.omega = fb.omega + jt * invIb * rbcx
+
+                            let slop = 0.5
+                            let excess = overlap - slop
+                            if excess > 0 {
+                                let totalInvMass = invMa + invMb
+                                if totalInvMass > 0 {
+                                    let corr = excess * 0.4
+                                    fa.x = fa.x - nx * corr * (invMa / totalInvMass)
+                                    fa.y = fa.y - ny * corr * (invMa / totalInvMass)
+                                    fb.x = fb.x + nx * corr * (invMb / totalInvMass)
+                                    fb.y = fb.y + ny * corr * (invMb / totalInvMass)
+                                }
+                            }
+                        }
+
+                        let merge_dist2 = (rr + cfg.merge_touch) * (rr + cfg.merge_touch)
+                        if fa.tier == fb.tier and fa.merge_cd <= 0 and fb.merge_cd <= 0 and dist2 < merge_dist2 {
+                            fa.dead = 1
+                            fb.dead = 1
+                            merges.append([a, b])
+                        }
+                    }
+                    b = b + 1
+                }
+                a = a + 1
+            }
+            iter = iter + 1
+        }
+        sub = sub + 1
+    }
+    return merges
+}

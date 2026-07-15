@@ -1,0 +1,23 @@
+let rl = import("raylib")
+
+let W = 800
+let H = 450
+let font_size = 40
+
+rl.SetExitKey(rl.KEY_NULL)
+rl.InitWindow(W, H, "basic window")
+rl.SetTargetFPS(60)
+
+let text = "hello from pyle!"
+let tw = rl.MeasureText(text, font_size)
+let tx = (W - tw) / 2
+let ty = (H - font_size) / 2
+
+while not rl.WindowShouldClose() {
+    rl.BeginDrawing()
+    rl.ClearBackground(rl.RAYWHITE)
+    rl.DrawText(text, tx, ty, font_size, rl.LIGHTGRAY)
+    rl.EndDrawing()
+}
+
+rl.CloseWindow()

@@ -1,0 +1,231 @@
+let rl = import("raylib")
+let m = import("math")
+
+let WIDTH = 1280
+let HEIGHT = 800
+let CELL = 6
+let PANEL = 220
+let GRID_W = WIDTH - PANEL
+let COLS = m.floor(GRID_W / CELL)
+let ROWS = m.floor(HEIGHT / CELL)
+let STEP_RATE = 0.08
+
+struct Cell(alive, age) {
+    fn _init(a, g) {
+        self.alive = a
+        self.age = g
+    }
+    fn is_alive() {
+        return self.alive == 1
+    }
+    fn revive() {
+        self.alive = 1
+        self.age = 1
+    }
+    fn kill() {
+        self.alive = 0
+        self.age = 0
+    }
+}
+
+struct Life(cols, rows, grid) {
+    fn _init(c, r) {
+        self.cols = c
+        self.rows = r
+        self.grid = []
+        let total = c * r
+        let k = 0
+        while k < total {
+            self.grid.append(Cell(0, 0))
+            k = k + 1
+        }
+    }
+
+    fn at(x, y) {
+        return self.grid[x + y * self.cols]
+    }
+
+    fn reseed() {
+        let total = self.cols * self.rows
+        let k = 0
+        while k < total {
+            let cell = self.grid[k]
+            if rl.GetRandomValue(0, 99) < 30 { cell.revive() }
+            else { cell.kill() }
+            k = k + 1
+        }
+    }
+
+    fn clear() {
+        let total = self.cols * self.rows
+        let k = 0
+        while k < total {
+            let cell = self.grid[k]
+            cell.kill()
+            k = k + 1
+        }
+    }
+
+    fn step() {
+        let cols = self.cols
+        let rows = self.rows
+        let next = []
+        let y = 0
+        while y < rows {
+            let x = 0
+            while x < cols {
+                let n = 0
+                let dy = -1
+                while dy <= 1 {
+                    let dx = -1
+                    while dx <= 1 {
+                        let nx = x + dx
+                        let ny = y + dy
+                        if nx < 0 { nx = cols - 1 }
+                        if nx >= cols { nx = 0 }
+                        if ny < 0 { ny = rows - 1 }
+                        if ny >= ROWS { ny = 0 }
+                        n = n + self.grid[nx + ny * cols].alive
+                        dx = dx + 1
+                    }
+                    dy = dy + 1
+                }
+                let i = x + y * cols
+                n = n - self.grid[i].alive
+                let a = self.grid[i].alive
+                let na = 0
+                if a == 1 {
+                    if n == 2 { na = 1 }
+                    if n == 3 { na = 1 }
+                } else {
+                    if n == 3 { na = 1 }
+                }
+                if na == 1 {
+                    if a == 1 {
+                        let old = self.grid[i].age
+                        if old < 40 { next.append(Cell(1, old + 1)) }
+                        else { next.append(Cell(1, old)) }
+                    } else {
+                        next.append(Cell(1, 1))
+                    }
+                } else {
+                    next.append(Cell(0, 0))
+                }
+                x = x + 1
+            }
+            y = y + 1
+        }
+        let k = 0
+        while k < self.cols * self.rows {
+            self.grid[k] = next[k]
+            k = k + 1
+        }
+    }
+}
+
+let life = Life(COLS, ROWS)
+let palette = [rl.GREEN, rl.LIME, rl.YELLOW, rl.GOLD, rl.ORANGE,
+               rl.RED, rl.MAGENTA, rl.PURPLE, rl.BLUE, rl.SKYBLUE, rl.RAYWHITE]
+let PANEL_COL = rl.Color(18, 18, 26, 255)
+
+let fps = 60.0
+let last_time = rl.GetTime()
+let step_timer = 0.0
+let gen = 0
+
+rl.InitWindow(WIDTH, HEIGHT, "Pyle Life - Conway's Game of Life")
+rl.SetTargetFPS(60)
+
+# ---------------------------------------------------------------- main loop
+while not rl.WindowShouldClose() {
+    let now = rl.GetTime()
+    let rdt = now - last_time
+    last_time = now
+    if rdt > 0.05 { rdt = 0.05 }
+    let inst = 0.0
+    if rdt > 0 { inst = 1.0 / rdt }
+    fps = fps * 0.9 + inst * 0.3
+
+    # input: LMB paint, RMB erase, R reseed, C clear
+    if rl.IsMouseButtonDown(0) {
+        let gx = m.floor(rl.GetMouseX() / CELL)
+        let gy = m.floor(rl.GetMouseY() / CELL)
+        let by = -1
+        while by <= 1 {
+            let bx = -1
+            while bx <= 1 {
+                let px = gx + bx
+                let py = gy + by
+                if px >= 0 and px < COLS and py >= 0 and py < ROWS {
+                    let cell = life.at(px, py)
+                    cell.revive()
+                }
+                bx = bx + 1
+            }
+            by = by + 1
+        }
+    }
+    if rl.IsMouseButtonDown(1) {
+        let gx = m.floor(rl.GetMouseX() / CELL)
+        let gy = m.floor(rl.GetMouseY() / CELL)
+        let by = -1
+        while by <= 1 {
+            let bx = -1
+            while bx <= 1 {
+                let px = gx + bx
+                let py = gy + by
+                if px >= 0 and px < COLS and py >= 0 and py < ROWS {
+                    let cell = life.at(px, py)
+                    cell.kill()
+                }
+                bx = bx + 1
+            }
+            by = by + 1
+        }
+    }
+    if rl.IsKeyPressed(82) { life.reseed() }
+    if rl.IsKeyPressed(67) { life.clear() }
+
+    step_timer = step_timer + rdt
+    if step_timer >= STEP_RATE {
+        step_timer = 0.0
+        life.step()
+        gen = gen + 1
+    }
+
+    rl.BeginDrawing()
+    rl.ClearBackground(rl.BLACK)
+
+    let alive_count = 0
+    let y = 0
+    while y < ROWS {
+        let x = 0
+        while x < COLS {
+            let c = life.at(x, y)
+            if c.is_alive() {
+                alive_count = alive_count + 1
+                let ac = c.age - (c.age / 11) * 11
+                rl.DrawRectangle(x * CELL, y * CELL, CELL, CELL, palette[ac])
+            }
+            x = x + 1
+        }
+        y = y + 1
+    }
+
+    rl.DrawRectangle(GRID_W, 0, PANEL, HEIGHT, PANEL_COL)
+    let sx = GRID_W + 16
+    let sy = 18
+    rl.DrawText("Pyle Life", sx, sy, 28, rl.RAYWHITE)
+    rl.DrawText(format("FPS:   {:.1f}", fps), sx, sy + 46, 18, rl.LIGHTGRAY)
+    rl.DrawText(format("frame: {:.2f} ms", rdt * 1000), sx, sy + 74, 18, rl.LIGHTGRAY)
+    rl.DrawText(format("gen:   {}", gen), sx, sy + 102, 18, rl.LIGHTGRAY)
+    rl.DrawText(format("alive: {}", alive_count), sx, sy + 130, 18, rl.LIGHTGRAY)
+    rl.DrawText("LMB paint", sx, sy + 176, 16, rl.GRAY)
+    rl.DrawText("RMB erase", sx, sy + 198, 16, rl.GRAY)
+    rl.DrawText("R reseed", sx, sy + 220, 16, rl.GRAY)
+    rl.DrawText("C clear", sx, sy + 242, 16, rl.GRAY)
+
+    rl.EndDrawing()
+}
+
+rl.CloseWindow()
