@@ -1,0 +1,6 @@
+print("What is your name?")
+let name = input()
+print("Hello, " + name)
+
+let age = input("Enter your age: ")
+print("You are " + age + " years old")
