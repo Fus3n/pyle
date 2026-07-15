@@ -13,11 +13,14 @@ end
 if is_mode("debug") then
     set_policy("build.sanitizer.address", true)      
     set_policy("build.sanitizer.undefined", true)    
-    -- set_policy("build.sanitizer.leak", true)         
+    set_runtimes("MDd")
+else
+    set_runtimes("MD")
 end
 
 add_requires("fmt 12.2.0", {configs = {header_only = true}})
 add_requires("unordered_dense 4.8.1", "argparse 3.2", "simdjson 4.2.4")
+add_requires("raylib 5.5")
 add_cxxflags("/utf-8", {tools = "cl"})
 add_rules("plugin.compile_commands.autoupdate")
 
@@ -32,7 +35,8 @@ target("libpyle")
 
 target("pyle")
     set_kind("binary")
-    add_files("pyle/src/**.cpp")
+    add_files("pyle/src/main.cpp")
+    add_files("pyle/src/std/std_json.cpp")
     add_packages("argparse", "simdjson")
     add_deps("libpyle")
     set_rundir("$(projectdir)")
@@ -42,6 +46,20 @@ target("pyle")
     after_build(function (target)
         import("core.project.project")
         os.cp("$(projectdir)/std", target:targetdir())
+    end)
+
+target("raylib")
+    set_kind("shared")
+    set_filename("raylib.pyled")
+    add_files("pyle/src/std/vendor/raylib/**.cpp")
+    add_packages("raylib")
+    add_deps("libpyle")
+    after_build(function (target)
+        local outdir = target:targetdir()
+        local stddir = path.join(outdir, "std")
+        os.mkdir(stddir)
+        os.cp(target:targetfile(), path.join(stddir, "raylib.pyled"))
+        os.cp(target:targetfile(), path.join("$(projectdir)/std", "raylib.pyled"))
     end)
 
 target("example_basic_embedding")

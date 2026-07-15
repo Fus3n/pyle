@@ -52,7 +52,8 @@ int main(int argc, char* argv[]) {
     pyle::register_module(pyle.vm, "json", register_json_module);
 
     fs::path exe_dir = get_executable_directory();
-    fs::path std_path = exe_dir / "std";
+    pyle.vm.add_import_path((exe_dir / "std").string());
+    pyle.vm.add_import_path("./std/");
 
     try {
         std::string source = read_file(script_path);

@@ -1,5 +1,6 @@
 #include "pyle/std/std_core.hpp"
 #include "pyle/value.hpp"
+#include "pyle/config.hpp"
 #include <iostream>
 #include <fstream>
 #include <sstream>
@@ -16,6 +17,23 @@
 #include "pyle/std/prelude.hpp" 
 #include "pyle/std/std_file_module.hpp"
 #include <fmt/color.h>
+
+#if defined(_WIN32)
+    #define WIN32_LEAN_AND_MEAN
+    #include <windows.h>
+    using DynLib = HMODULE;
+    #define DynLibOpen(path) LoadLibraryA(path)
+    #define DynLibSym(lib, name) reinterpret_cast<void*>(GetProcAddress(lib, name))
+    #define DynLibClose(lib) FreeLibrary(lib)
+#elif defined(__linux__) || defined(__APPLE__)
+    #include <dlfcn.h>
+    using DynLib = void*;
+    #define DynLibOpen(path) dlopen(path, RTLD_NOW | RTLD_LOCAL)
+    #define DynLibSym(lib, name) dlsym(lib, name)
+    #define DynLibClose(lib) dlclose(lib)
+#else
+    #error "Unsupported platform for .pyled native modules"
+#endif
 
 
 namespace pyle {
@@ -122,7 +140,48 @@ namespace pyle {
             vm.loaded_modules[mod_name_idx] = module_val;
             return module_val;
         }
-        
+
+        // Try loading as .pyled native module
+        {
+            std::string mod_name = std::get<std::string>(vm.get_heap_object(mod_name_idx).data);
+            std::string pyled_filepath = mod_name;
+            if (pyled_filepath.size() < 6 || pyled_filepath.substr(pyled_filepath.size() - 6) != ".pyled") {
+                pyled_filepath += ".pyled";
+            }
+
+            auto try_load_pyled = [&](const std::string& path) -> std::optional<Value> {
+                std::ifstream f(path);
+                if (!f.is_open()) return std::nullopt;
+                f.close();
+
+                DynLib lib = DynLibOpen(path.c_str());
+                if (!lib) return std::nullopt;
+
+                auto version_ptr = reinterpret_cast<int64_t*>(DynLibSym(lib, "pyle_module_version"));
+                if (!version_ptr || *version_ptr != PYLE_MODULE_ABI_VERSION) {
+                    DynLibClose(lib);
+                    return std::nullopt;
+                }
+
+                auto init_fn = reinterpret_cast<int64_t(*)(void*)>(DynLibSym(lib, "pyle_module_init"));
+                if (!init_fn) {
+                    DynLibClose(lib);
+                    return std::nullopt;
+                }
+
+                HeapIdx map_idx(init_fn(static_cast<void*>(&vm)));
+                Value module_val(Value::Tag::MapRef, map_idx);
+                vm.loaded_modules[mod_name_idx] = module_val;
+                return module_val;
+            };
+
+            if (auto result = try_load_pyled(pyled_filepath)) return *result;
+
+            for (const auto& dir : vm.import_paths) {
+                if (auto result = try_load_pyled(dir + pyled_filepath)) return *result;
+            }
+        }
+
         std::string mod_name = std::get<std::string>(vm.get_heap_object(mod_name_idx).data);
         std::string filepath = mod_name;
         if (filepath.size() < 4 || filepath.substr(filepath.size() - 4) != ".pyl") {
