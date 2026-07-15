@@ -16,7 +16,7 @@
 #include <fmt/color.h>
 #include "pyle/std/prelude.hpp" 
 #include "pyle/std/std_file_module.hpp"
-#include <fmt/color.h>
+#include <filesystem>
 
 #if defined(_WIN32)
     #define WIN32_LEAN_AND_MEAN
@@ -199,6 +199,15 @@ namespace pyle {
         std::optional<std::string> code_opt = try_read_file(filepath);
         std::string resolved_path = filepath;
 
+        if (!code_opt && filepath.size() >= 2 && filepath[0] == '.' && (filepath[1] == '/' || filepath[1] == '\\')) {
+            std::string script_dir = std::filesystem::path(vm.script_name).parent_path().string();
+            if (!script_dir.empty()) {
+                std::string rel_path = script_dir + "/" + filepath;
+                code_opt = try_read_file(rel_path);
+                if (code_opt) resolved_path = rel_path;
+            }
+        }
+
         if (!code_opt) {
             for (const auto& dir : vm.import_paths) {
                 std::string test_path = dir + filepath;
@@ -232,7 +241,7 @@ namespace pyle {
         vm.global_slots = &std::get<ArrayType>(vm.get_heap_object(module_storage_idx).data);
         vm.global_slot_map = vm.builtin_slot_map;
         
-        ErrorReporter reporter(source, filepath);
+        ErrorReporter reporter(source, resolved_path);
         Lexer lexer(source, reporter);
         auto tokens = lexer.tokenize();
         bool success = false;
@@ -245,7 +254,7 @@ namespace pyle {
                 std::string_view saved_source_code = vm.source_code;
                 std::string_view saved_script_name = vm.script_name;
                 vm.source_code = source;
-                vm.script_name = filepath;
+                vm.script_name = resolved_path;
                 Compiler compiler(vm, reporter);
                 Chunk chunk = compiler.compile(ast);
                 if (!reporter.has_errors()) {

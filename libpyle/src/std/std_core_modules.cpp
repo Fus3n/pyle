@@ -61,6 +61,17 @@ namespace pyle {
         return val;
     }
 
+    Value os_script_path(VM& vm, ArgView args) {
+        (void)args;
+        return Value(Value::Tag::StringRef, vm.intern_string(std::string(vm.script_name)));
+    }
+
+    Value os_script_dir(VM& vm, ArgView args) {
+        (void)args;
+        std::filesystem::path p(vm.script_name);
+        return Value(Value::Tag::StringRef, vm.intern_string(p.parent_path().string()));
+    }
+
     Value os_module_factory(VM& vm) {
         return NativeModule(vm, "os")
             .raw_function("system", os_sys)
@@ -69,6 +80,8 @@ namespace pyle {
             .raw_function("remove", os_remove)
             .raw_function("sleep", os_sleep)
             .raw_function("sleep_async", os_sleep_async)
+            .raw_function("script_path", os_script_path)
+            .raw_function("script_dir", os_script_dir)
             .build();
     }
     
