@@ -597,62 +597,76 @@ namespace pyle {
             return;
         }
 
-        size_t line = 0;
-        CallFrame& frame = frames[frame_count - 1];
-        Function& func = get_func_from_frame(frame);
-        if (frame.ip > 0 && frame.ip <= func.chunk.lines.size()) {
-            line = func.chunk.lines[frame.ip - 1];
-        }
-        
-        std::string_view display_name = script_name;
-        std::string_view display_source = source_code;
-        if (!func.source_file.empty()) {
-            display_name = func.source_file;
-            auto it = source_cache.find(func.source_file);
-            if (it != source_cache.end()) {
-                display_source = it->second;
+        auto get_line_of_code = [](std::string_view src, size_t target_line) -> std::string_view {
+            size_t current_line = 0;
+            size_t start = 0;
+            for (size_t i = 0; i < src.size(); ++i) {
+                if (src[i] == '\n') {
+                    if (current_line == target_line) {
+                        return src.substr(start, i - start);
+                    }
+                    start = i + 1;
+                    current_line++;
+                }
+            }
+            if (current_line == target_line && start < src.size()) {
+                return src.substr(start);
+            }
+            return "";
+        };
+
+        size_t err_line = 0;
+        std::string_view err_source;
+        std::string_view err_func_name;
+
+        for (size_t i = 0; i < frame_count; ++i) {
+            CallFrame& frame = frames[i];
+            Function& func = get_func_from_frame(frame);
+
+            size_t line = 0;
+            if (frame.ip > 0 && frame.ip <= func.chunk.lines.size()) {
+                line = func.chunk.lines[frame.ip - 1];
+            }
+
+            std::string_view display_name = script_name;
+            std::string_view display_source = source_code;
+            if (!func.source_file.empty()) {
+                display_name = func.source_file;
+                auto it = source_cache.find(func.source_file);
+                if (it != source_cache.end()) {
+                    display_source = it->second;
+                }
+            }
+
+            fmt::print(stderr, "   --> {}:{}: (in function '{}')\n", display_name, line + 1, func.name);
+
+            if (i == frame_count - 1) {
+                err_line = line;
+                err_source = display_source;
+                err_func_name = func.name;
             }
         }
-        
-        fmt::print(stderr, "\033[1;31m{}:\033[0m \033[1m{}\033[0m\n", err_to_string(type), msg);
-        fmt::print(stderr, "   --> {}:{}: (in function '{}')\n", display_name, line + 1, func.name);
-        
-        if (!display_source.empty()) {
-            auto get_line_of_code = [](std::string_view src, size_t target_line) -> std::string_view {
-                size_t current_line = 0;
-                size_t start = 0;
-                for (size_t i = 0; i < src.size(); ++i) {
-                    if (src[i] == '\n') {
-                        if (current_line == target_line) {
-                            return src.substr(start, i - start);
-                        }
-                        start = i + 1;
-                        current_line++;
-                    }
-                }
-                if (current_line == target_line && start < src.size()) {
-                    return src.substr(start);
-                }
-                return "";
-            };
-            
-            std::string_view line_text = get_line_of_code(display_source, line);
+
+        if (!err_source.empty()) {
+            std::string_view line_text = get_line_of_code(err_source, err_line);
             if (!line_text.empty()) {
-                fmt::print(stderr, " {:4d} | {}\n", line + 1, line_text);
-                
+                fmt::print(stderr, " {:4d} | {}\n", err_line + 1, line_text);
+
                 size_t first_non_space = 0;
                 while (first_non_space < line_text.size() && (line_text[first_non_space] == ' ' || line_text[first_non_space] == '\t')) {
                     first_non_space++;
                 }
                 std::string carets = "        | ";
-                for (size_t i = 0; i < first_non_space; ++i) {
-                    if (line_text[i] == '\t') carets += '\t';
+                for (size_t j = 0; j < first_non_space; ++j) {
+                    if (line_text[j] == '\t') carets += '\t';
                     else carets += ' ';
                 }
                 carets += "\033[1;31m^^^^~\033[0m";
                 fmt::print(stderr, "{}\n", carets);
             }
         }
+
+        fmt::print(stderr, "\033[1;31m{}:\033[0m \033[1m{}\033[0m\n", err_to_string(type), msg);
         
         std::string hint = get_runtime_hint(type, msg);
         if (!hint.empty()) {
@@ -820,6 +834,7 @@ namespace pyle {
 
         Function main_fn;
         main_fn.name = "main";
+        main_fn.source_file = script_name;
         main_fn.chunk = std::move(in_chunk);
         
         HeapIdx main_func_idx = alloc(Object(std::move(main_fn)));
