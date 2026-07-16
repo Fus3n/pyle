@@ -43,6 +43,12 @@ namespace raylib_binding {
     void register_fonts(VM& vm, MapType& exports);
     void register_constants(VM& vm, MapType& exports);
     void register_audio(VM& vm, MapType& exports);
-
+    void register_3d(VM& vm, MapType& exports);
+    void register_shader(VM& vm, MapType& exports);
+    void register_rendertarget(VM& vm, MapType& exports);
+    void register_mesh(VM& vm, MapType& exports);
+    void register_material(VM& vm, MapType& exports);
+    void register_core(VM& vm, MapType& exports);
+    void register_rlgl(VM& vm, MapType& exports);
 }
 }

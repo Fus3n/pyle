@@ -706,7 +706,7 @@ namespace pyle {
             set_top(Value(Value::Tag::StringRef, idx));\
         } else { \
             std::string msg = fmt::format("Unsupported operand types. a.tag={}, b.tag={}", \
-            static_cast<int>(a.tag), static_cast<int>(b.tag)); \
+            a.tag_to_string(), b.tag_to_string()); \
             sync_expr; \
             runtime_error(RuntimeError::Type, msg); \
             return; \

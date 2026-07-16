@@ -1,0 +1,38 @@
+let rl = import("raylib")
+
+rl.SetExitKey(rl.KEY_NULL)
+rl.InitWindow(800, 600, "3D cubes")
+rl.SetTargetFPS(60)
+
+let cam = rl.Camera3D()
+cam.position = rl.Vector3(10, 10, 10)
+cam.target = rl.Vector3(0, 0, 0)
+cam.up = rl.Vector3(0, 1, 0)
+cam.fovy = 45
+cam.projection = rl.CAMERA_PERSPECTIVE
+
+while not rl.WindowShouldClose() {
+    rl.UpdateCamera(cam, rl.CAMERA_ORBITAL)
+
+    rl.BeginDrawing()
+    rl.ClearBackground(rl.RAYWHITE)
+
+    rl.BeginMode3D(cam)
+    rl.DrawGrid(10, 1)
+
+    rl.DrawCube(rl.Vector3(0, 1, 0), 2, 2, 2, rl.RED)
+    rl.DrawCubeWires(rl.Vector3(0, 1, 0), 2, 2, 2, rl.DARKGRAY)
+
+    rl.DrawCube(rl.Vector3(-3, 1, -3), 1, 1, 1, rl.GREEN)
+    rl.DrawCube(rl.Vector3(3, 1, 3), 1, 1, 1, rl.BLUE)
+    rl.DrawSphere(rl.Vector3(0, 3, 0), 1, rl.ORANGE)
+    rl.DrawSphereWires(rl.Vector3(0, 3, 0), 1, 16, 16, rl.DARKGRAY)
+    rl.DrawPlane(rl.Vector3(0, -0.5, 0), rl.Vector2(12, 12), rl.BEIGE)
+
+    rl.EndMode3D()
+
+    rl.DrawFPS(10, 10)
+    rl.EndDrawing()
+}
+
+rl.CloseWindow()

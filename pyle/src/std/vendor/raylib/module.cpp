@@ -20,6 +20,13 @@ namespace pyle {
         register_fonts(vm, exports);
         register_constants(vm, exports);
         register_audio(vm, exports);
+        register_3d(vm, exports);
+        register_shader(vm, exports);
+        register_rendertarget(vm, exports);
+        register_mesh(vm, exports);
+        register_material(vm, exports);
+        register_core(vm, exports);
+        register_rlgl(vm, exports);
 
         HeapIdx map_idx = vm.alloc(Object(std::move(exports)));
         vm.get_heap_object<MapObject>(map_idx).is_module = true;

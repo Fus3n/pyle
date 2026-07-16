@@ -1,0 +1,30 @@
+let rl = import("raylib")
+
+rl.SetExitKey(rl.KEY_NULL)
+rl.InitWindow(800, 600, "shader effect")
+rl.SetTargetFPS(60)
+
+let img = rl.GenImageChecked(256, 256, 16, 16, rl.DARKBLUE, rl.SKYBLUE)
+let tex = rl.LoadTextureFromImage(img)
+rl.UnloadImage(img)
+
+let shader = rl.LoadShader(none, "examples/raylib/test.fs")
+let loc_time = rl.GetShaderLocation(shader, "u_time")
+
+let time = 0
+while not rl.WindowShouldClose() {
+    time = time + rl.GetFrameTime()
+
+    rl.BeginDrawing()
+    rl.ClearBackground(rl.RAYWHITE)
+
+    rl.BeginShaderMode(shader)
+    rl.DrawTextureEx(tex, rl.Vector2(272, 172), 0, 1, rl.WHITE)
+    rl.EndShaderMode()
+
+    rl.EndDrawing()
+}
+
+rl.UnloadTexture(tex)
+rl.UnloadShader(shader)
+rl.CloseWindow()
