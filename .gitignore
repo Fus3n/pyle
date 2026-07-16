@@ -12,6 +12,7 @@ print_tree.ps1
 test.pyl
 test.py
 commands.txt
+local_setup.ps1
 
 pyle_test_dev
 vm_verify
@@ -21,4 +22,3 @@ vm_verify
 
 # Handled by xmake
 CMakeLists.txt
-

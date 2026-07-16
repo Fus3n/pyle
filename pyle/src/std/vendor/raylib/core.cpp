@@ -116,6 +116,12 @@ namespace raylib_binding {
             SetRandomSeed(static_cast<unsigned int>(from_value<int64_t>(vm, args[0])));
             return Value();
         });
+        mod.raw_function("GetRandomValue", +[](VM& vm, ArgView args) -> Value {
+            if (args.size() != 2) { vm.runtime_error(RuntimeError::ArgumentError, "GetRandomValue expects 2 ints (min, max)."); return Value(); }
+            int min = static_cast<int>(from_value<int64_t>(vm, args[0]));
+            int max = static_cast<int>(from_value<int64_t>(vm, args[1]));
+            return Value(static_cast<int64_t>(GetRandomValue(min, max)));
+        });
         mod.raw_function("LoadFileData", +[](VM& vm, ArgView args) -> Value {
             if (args.size() != 1) { vm.runtime_error(RuntimeError::ArgumentError, "LoadFileData expects 1 string."); return Value(); }
             const std::string& path = from_value<std::string>(vm, args[0]);

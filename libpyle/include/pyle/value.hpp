@@ -279,6 +279,7 @@ namespace pyle {
         HeapIdx closure_idx = 0;       
         HeapIdx caller_idx = 0;   
         HeapIdx self_idx = 0;          
+        HeapIdx saved_globals_idx = HeapIdx(-1);
 
         enum class State {
             Suspended,

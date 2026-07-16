@@ -62,7 +62,7 @@ namespace pyle {
 
         HeapIdx idx = alloc(Object(std::string(str)));
         auto& stored = std::get<std::string>(heap[idx].data);
-        interned_strings[stored] = idx;
+        interned_strings.try_emplace(stored, idx);
         return idx;
     }
 
@@ -88,8 +88,9 @@ namespace pyle {
             return false;
         }
 
-        HeapIdx fn_idx = type.special_methods[static_cast<size_t>(SpecialMethod::Init)];
+            HeapIdx fn_idx = type.special_methods[static_cast<size_t>(SpecialMethod::Init)];
         bool has_init = (fn_idx != 0);
+        Function* init_fn = has_init ? &std::get<Function>(heap[fn_idx].data) : nullptr;
 
         Struct instance;
         instance.type_idx = struct_type_idx;
@@ -133,7 +134,14 @@ namespace pyle {
             CallFrame new_frame;
             new_frame.closure = closure_idx;
             new_frame.ip = 0;
-            new_frame.stack_base = stack_size() - arg_count - 1; 
+            new_frame.stack_base = stack_size() - arg_count - 1;
+            if (init_fn->module_env != 0) {
+                new_frame.module_swap = true;
+                new_frame.saved_globals_idx = globals_idx;
+                new_frame.module_env_idx = init_fn->module_env;
+                global_slots = &std::get<ArrayType>(heap[init_fn->module_env].data);
+                globals_idx = init_fn->module_env;
+            }
             frames[frame_count++] = new_frame;
             return true;
         } else {
@@ -388,6 +396,9 @@ namespace pyle {
                 }
                 if (coro_ptr->caller_idx != 0) {
                     mark_value(Value(Value::Tag::CoroutineRef, coro_ptr->caller_idx));
+                }
+                if (coro_ptr->saved_globals_idx != HeapIdx(-1)) {
+                    mark_value(Value(Value::Tag::ArrayRef, coro_ptr->saved_globals_idx));
                 }
 
                 // Trace evaluation stack and CallFrames only if suspended.

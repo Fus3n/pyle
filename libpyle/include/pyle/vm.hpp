@@ -133,6 +133,7 @@ namespace pyle {
             coro.frames = this->frames;
             coro.frame_count = this->frame_count;
             coro.frame_capacity = this->frame_capacity;
+            coro.saved_globals_idx = this->globals_idx;
         }
 
         inline void load_coroutine_state(Coroutine& coro) {
@@ -143,6 +144,10 @@ namespace pyle {
             this->frame_count = coro.frame_count;
             this->frame_capacity = coro.frame_capacity;
             this->stack_end = this->stack + this->stack_capacity;
+            this->globals_idx = coro.saved_globals_idx;
+            this->global_slots = (this->globals_idx == HeapIdx(-1))
+                ? &this->root_globals
+                : &std::get<ArrayType>(this->heap[this->globals_idx].data);
         }
 
         void init_root_coroutine();

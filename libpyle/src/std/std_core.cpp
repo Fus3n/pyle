@@ -375,7 +375,18 @@ namespace pyle {
         CallFrame entry_frame;
         entry_frame.closure = closure_idx;
         entry_frame.ip = 0;
-        entry_frame.stack_base = 1; 
+        entry_frame.stack_base = 1;
+
+        {
+            Function& fn = std::get<Function>(vm.get_heap_object(
+                std::get<Closure>(vm.get_heap_object(closure_idx).data).function).data);
+            if (fn.module_env != 0) {
+                entry_frame.module_swap = true;
+                entry_frame.saved_globals_idx = vm.globals_idx;
+                entry_frame.module_env_idx = fn.module_env;
+                coro.saved_globals_idx = fn.module_env;
+            }
+        }
 
         coro.frames[coro.frame_count++] = entry_frame;
 
