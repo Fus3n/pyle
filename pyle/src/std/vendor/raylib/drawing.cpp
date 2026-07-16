@@ -13,7 +13,19 @@ namespace raylib_binding {
         });
         
         mod.function<BeginDrawing>("BeginDrawing")
-           .function<EndDrawing>("EndDrawing");
+           .function<EndDrawing>("EndDrawing")
+           .raw_function("BeginBlendMode", +[](VM& vm, ArgView args) -> Value {
+               if (args.size() != 1) { vm.runtime_error(RuntimeError::ArgumentError, "BeginBlendMode expects (mode)."); return Value(); }
+               BeginBlendMode(from_value<int64_t>(vm, args[0]));
+               return Value();
+           })
+           .function<EndBlendMode>("EndBlendMode")
+           .raw_function("BeginScissorMode", +[](VM& vm, ArgView args) -> Value {
+               if (args.size() != 4) { vm.runtime_error(RuntimeError::ArgumentError, "BeginScissorMode expects (x, y, width, height)."); return Value(); }
+               BeginScissorMode(from_value<int64_t>(vm, args[0]), from_value<int64_t>(vm, args[1]), from_value<int64_t>(vm, args[2]), from_value<int64_t>(vm, args[3]));
+               return Value();
+           })
+           .function<EndScissorMode>("EndScissorMode");
 
         mod.raw_function("BeginMode2D", +[](VM& vm, ArgView args) -> Value {
             if (args.size() != 1) { vm.runtime_error(RuntimeError::ArgumentError, "BeginMode2D expects 1 Camera2D."); return Value(); }

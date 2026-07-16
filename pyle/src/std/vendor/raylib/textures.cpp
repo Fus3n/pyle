@@ -110,6 +110,107 @@ namespace raylib_binding {
             DrawTexturePro(*t, *src, *dst, *orig, rot, *c);
             return Value();
         });
+
+        // ---------------------------------------------------------------- Image manipulation
+        mod.raw_function("GenImageChecked", +[](VM& vm, ArgView args) -> Value {
+            if (args.size() != 6) { vm.runtime_error(RuntimeError::ArgumentError, "GenImageChecked expects (width, height, checksX, checksY, col1, col2)."); return Value(); }
+            int w = from_value<int64_t>(vm, args[0]);
+            int h = from_value<int64_t>(vm, args[1]);
+            int cx = from_value<int64_t>(vm, args[2]);
+            int cy = from_value<int64_t>(vm, args[3]);
+            Color* c1 = as_native<Color>(vm, args[4], "Color");
+            Color* c2 = as_native<Color>(vm, args[5], "Color");
+            if (!c1 || !c2) return Value();
+            Image img = GenImageChecked(w, h, cx, cy, *c1, *c2);
+            return to_value_owned<Image>(vm, new Image{ img.data, img.width, img.height, img.mipmaps, img.format });
+        });
+
+        mod.raw_function("ImageCrop", +[](VM& vm, ArgView args) -> Value {
+            if (args.size() != 2) { vm.runtime_error(RuntimeError::ArgumentError, "ImageCrop expects (image, crop)."); return Value(); }
+            Image* img = as_native<Image>(vm, args[0], "Image");
+            Rectangle* r = as_native<Rectangle>(vm, args[1], "Rectangle");
+            if (!img || !r) return Value();
+            ImageCrop(img, *r);
+            return Value();
+        });
+
+        mod.raw_function("ImageResize", +[](VM& vm, ArgView args) -> Value {
+            if (args.size() != 3) { vm.runtime_error(RuntimeError::ArgumentError, "ImageResize expects (image, newWidth, newHeight)."); return Value(); }
+            Image* img = as_native<Image>(vm, args[0], "Image");
+            int nw = from_value<int64_t>(vm, args[1]);
+            int nh = from_value<int64_t>(vm, args[2]);
+            if (!img) return Value();
+            ImageResize(img, nw, nh);
+            return Value();
+        });
+
+        mod.raw_function("ImageResizeNN", +[](VM& vm, ArgView args) -> Value {
+            if (args.size() != 3) { vm.runtime_error(RuntimeError::ArgumentError, "ImageResizeNN expects (image, newWidth, newHeight)."); return Value(); }
+            Image* img = as_native<Image>(vm, args[0], "Image");
+            int nw = from_value<int64_t>(vm, args[1]);
+            int nh = from_value<int64_t>(vm, args[2]);
+            if (!img) return Value();
+            ImageResizeNN(img, nw, nh);
+            return Value();
+        });
+
+        mod.raw_function("ImageResizeCanvas", +[](VM& vm, ArgView args) -> Value {
+            if (args.size() != 6) { vm.runtime_error(RuntimeError::ArgumentError, "ImageResizeCanvas expects (image, newWidth, newHeight, offsetX, offsetY, fill)."); return Value(); }
+            Image* img = as_native<Image>(vm, args[0], "Image");
+            int nw = from_value<int64_t>(vm, args[1]);
+            int nh = from_value<int64_t>(vm, args[2]);
+            int ox = from_value<int64_t>(vm, args[3]);
+            int oy = from_value<int64_t>(vm, args[4]);
+            Color* fill = as_native<Color>(vm, args[5], "Color");
+            if (!img || !fill) return Value();
+            ImageResizeCanvas(img, nw, nh, ox, oy, *fill);
+            return Value();
+        });
+
+        mod.raw_function("ImageFormat", +[](VM& vm, ArgView args) -> Value {
+            if (args.size() != 2) { vm.runtime_error(RuntimeError::ArgumentError, "ImageFormat expects (image, newFormat)."); return Value(); }
+            Image* img = as_native<Image>(vm, args[0], "Image");
+            int fmt = from_value<int64_t>(vm, args[1]);
+            if (!img) return Value();
+            ImageFormat(img, fmt);
+            return Value();
+        });
+
+        mod.raw_function("ImageDraw", +[](VM& vm, ArgView args) -> Value {
+            if (args.size() != 5) { vm.runtime_error(RuntimeError::ArgumentError, "ImageDraw expects (dst, src, srcRec, dstRec, tint)."); return Value(); }
+            Image* dst = as_native<Image>(vm, args[0], "Image");
+            Image* src = as_native<Image>(vm, args[1], "Image");
+            Rectangle* srcRec = as_native<Rectangle>(vm, args[2], "Rectangle");
+            Rectangle* dstRec = as_native<Rectangle>(vm, args[3], "Rectangle");
+            Color* tint = as_native<Color>(vm, args[4], "Color");
+            if (!dst || !src || !srcRec || !dstRec || !tint) return Value();
+            ImageDraw(dst, *src, *srcRec, *dstRec, *tint);
+            return Value();
+        });
+
+        mod.raw_function("ImageFlipHorizontal", +[](VM& vm, ArgView args) -> Value {
+            if (args.size() != 1) { vm.runtime_error(RuntimeError::ArgumentError, "ImageFlipHorizontal expects (image)."); return Value(); }
+            Image* img = as_native<Image>(vm, args[0], "Image");
+            if (!img) return Value();
+            ImageFlipHorizontal(img);
+            return Value();
+        });
+
+        mod.raw_function("ImageFlipVertical", +[](VM& vm, ArgView args) -> Value {
+            if (args.size() != 1) { vm.runtime_error(RuntimeError::ArgumentError, "ImageFlipVertical expects (image)."); return Value(); }
+            Image* img = as_native<Image>(vm, args[0], "Image");
+            if (!img) return Value();
+            ImageFlipVertical(img);
+            return Value();
+        });
+
+        mod.raw_function("ExportImage", +[](VM& vm, ArgView args) -> Value {
+            if (args.size() != 2) { vm.runtime_error(RuntimeError::ArgumentError, "ExportImage expects (image, fileName)."); return Value(); }
+            Image* img = as_native<Image>(vm, args[0], "Image");
+            const std::string& fn = from_value<std::string>(vm, args[1]);
+            if (!img) return Value();
+            return to_value(vm, ExportImage(*img, fn.c_str()));
+        });
     }
 
 }

@@ -97,6 +97,21 @@ namespace raylib_binding {
             int sz = from_value<int64_t>(vm, args[1]);
             return to_value(vm, MeasureText(text.c_str(), sz));
         });
+
+        mod.raw_function("DrawTextPro", +[](VM& vm, ArgView args) -> Value {
+            if (args.size() != 8) { vm.runtime_error(RuntimeError::ArgumentError, "DrawTextPro expects (font, text, position, origin, rotation, size, spacing, tint)."); return Value(); }
+            Font* f = as_native<Font>(vm, args[0], "Font");
+            const std::string& text = from_value<std::string>(vm, args[1]);
+            Vector2* pos = as_native<Vector2>(vm, args[2], "Vector2");
+            Vector2* origin = as_native<Vector2>(vm, args[3], "Vector2");
+            float rot = from_value<float>(vm, args[4]);
+            float sz = from_value<float>(vm, args[5]);
+            float spacing = from_value<float>(vm, args[6]);
+            Color* c = as_native<Color>(vm, args[7], "Color");
+            if (!f || !pos || !origin || !c) return Value();
+            DrawTextPro(*f, text.c_str(), *pos, *origin, rot, sz, spacing, *c);
+            return Value();
+        });
     }
 
 }

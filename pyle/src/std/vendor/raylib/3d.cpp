@@ -1,4 +1,5 @@
 #include "raylib_binding.hpp"
+#include <cstring>
 
 namespace pyle {
 namespace raylib_binding {
@@ -488,6 +489,62 @@ namespace raylib_binding {
             Model* m = as_native<Model>(vm, args[0], "Model");
             if (!m) return Value();
             UnloadModel(*m);
+            return Value();
+        });
+
+        // ---------------------------------------------------------------- ModelAnimation
+        ClassBinder<ModelAnimation> anim(vm, "ModelAnimation");
+        anim.custom_constructor(+[](VM& vm, ArgView) -> Value {
+            return to_value_owned<ModelAnimation>(vm, new ModelAnimation{});
+        })
+            .member<int, &ModelAnimation::boneCount>("boneCount")
+            .member<int, &ModelAnimation::frameCount>("frameCount")
+            .custom_getter("name", +[](VM& vm, HeapIdx o, ArgView) -> Value {
+                auto* a = native_at<ModelAnimation>(vm, o, "ModelAnimation");
+                if (!a) return Value();
+                return to_value(vm, std::string(a->name));
+            });
+        mod.class_type(anim);
+
+        mod.raw_function("LoadModelAnimations", +[](VM& vm, ArgView args) -> Value {
+            if (args.size() != 1) { vm.runtime_error(RuntimeError::ArgumentError, "LoadModelAnimations expects 1 string (fileName)."); return Value(); }
+            const std::string& path = from_value<std::string>(vm, args[0]);
+            int animCount = 0;
+            ModelAnimation* anims = LoadModelAnimations(path.c_str(), &animCount);
+            Object arr(ArrayType{});
+            auto& items = std::get<ArrayType>(arr.data);
+            for (int i = 0; i < animCount; ++i) {
+                ModelAnimation* a = new ModelAnimation{ anims[i].boneCount, anims[i].frameCount, anims[i].bones, anims[i].framePoses };
+                memcpy(a->name, anims[i].name, 32);
+                items.push_back(to_value_owned<ModelAnimation>(vm, a));
+            }
+            RL_FREE(anims);
+            return Value(Value::Tag::ArrayRef, vm.alloc(std::move(arr)));
+        });
+
+        mod.raw_function("UpdateModelAnimation", +[](VM& vm, ArgView args) -> Value {
+            if (args.size() != 3) { vm.runtime_error(RuntimeError::ArgumentError, "UpdateModelAnimation expects (model, anim, frame)."); return Value(); }
+            Model* m = as_native<Model>(vm, args[0], "Model");
+            ModelAnimation* a = as_native<ModelAnimation>(vm, args[1], "ModelAnimation");
+            int frame = from_value<int64_t>(vm, args[2]);
+            if (!m || !a) return Value();
+            UpdateModelAnimation(*m, *a, frame);
+            return Value();
+        });
+
+        mod.raw_function("IsModelAnimationValid", +[](VM& vm, ArgView args) -> Value {
+            if (args.size() != 2) { vm.runtime_error(RuntimeError::ArgumentError, "IsModelAnimationValid expects (model, anim)."); return Value(); }
+            Model* m = as_native<Model>(vm, args[0], "Model");
+            ModelAnimation* a = as_native<ModelAnimation>(vm, args[1], "ModelAnimation");
+            if (!m || !a) return Value();
+            return to_value(vm, IsModelAnimationValid(*m, *a));
+        });
+
+        mod.raw_function("UnloadModelAnimation", +[](VM& vm, ArgView args) -> Value {
+            if (args.size() != 1) { vm.runtime_error(RuntimeError::ArgumentError, "UnloadModelAnimation expects (anim)."); return Value(); }
+            ModelAnimation* a = as_native<ModelAnimation>(vm, args[0], "ModelAnimation");
+            if (!a) return Value();
+            UnloadModelAnimation(*a);
             return Value();
         });
     }

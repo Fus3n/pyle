@@ -24,6 +24,15 @@ namespace raylib_binding {
         void w_EnableCursor(VM&) { EnableCursor(); }
         void w_DisableCursor(VM&) { DisableCursor(); }
         bool w_IsCursorHidden(VM&) { return IsCursorHidden(); }
+        bool w_IsGamepadAvailable(VM&, int g) { return IsGamepadAvailable(g); }
+        bool w_IsGamepadButtonPressed(VM&, int g, int b) { return IsGamepadButtonPressed(g, b); }
+        bool w_IsGamepadButtonDown(VM&, int g, int b) { return IsGamepadButtonDown(g, b); }
+        bool w_IsGamepadButtonReleased(VM&, int g, int b) { return IsGamepadButtonReleased(g, b); }
+        bool w_IsGamepadButtonUp(VM&, int g, int b) { return IsGamepadButtonUp(g, b); }
+        float w_GetGamepadAxisMovement(VM&, int g, int a) { return GetGamepadAxisMovement(g, a); }
+        int w_GetGamepadAxisCount(VM&, int g) { return GetGamepadAxisCount(g); }
+        const char* w_GetGamepadName(VM&, int g) { return GetGamepadName(g); }
+        void w_SetGamepadMappings(VM&, const std::string& m) { SetGamepadMappings(m.c_str()); }
     }
 
     void register_input(NativeModule& mod) {
@@ -55,10 +64,23 @@ namespace raylib_binding {
                Vector2 v = GetMouseDelta();
                return to_value_owned<Vector2>(vm, new Vector2{ v.x, v.y });
            })
-           .raw_function("GetMouseWheelMoveV", +[](VM& vm, ArgView) -> Value {
-               Vector2 v = GetMouseWheelMoveV();
-               return to_value_owned<Vector2>(vm, new Vector2{ v.x, v.y });
-           });
+            .raw_function("GetMouseWheelMoveV", +[](VM& vm, ArgView) -> Value {
+                Vector2 v = GetMouseWheelMoveV();
+                return to_value_owned<Vector2>(vm, new Vector2{ v.x, v.y });
+            })
+            .function<w_IsGamepadAvailable>("IsGamepadAvailable")
+            .function<w_IsGamepadButtonPressed>("IsGamepadButtonPressed")
+            .function<w_IsGamepadButtonDown>("IsGamepadButtonDown")
+            .function<w_IsGamepadButtonReleased>("IsGamepadButtonReleased")
+            .function<w_IsGamepadButtonUp>("IsGamepadButtonUp")
+            .function<w_GetGamepadAxisMovement>("GetGamepadAxisMovement")
+            .function<w_GetGamepadAxisCount>("GetGamepadAxisCount")
+            .raw_function("GetGamepadName", +[](VM& vm, ArgView args) -> Value {
+                if (args.size() != 1) { vm.runtime_error(RuntimeError::ArgumentError, "GetGamepadName expects (gamepad)."); return Value(); }
+                int g = from_value<int64_t>(vm, args[0]);
+                return to_value(vm, std::string(GetGamepadName(g)));
+            })
+            .function<w_SetGamepadMappings>("SetGamepadMappings");
     }
 
 }
