@@ -13,9 +13,8 @@ end
 if is_mode("debug") then
     set_policy("build.sanitizer.address", true)      
     set_policy("build.sanitizer.undefined", true)    
-    set_runtimes("MDd")
 else
-    set_runtimes("MD")
+    -- set_runtimes("MD")
 end
 
 add_requires("fmt 12.2.0", {configs = {header_only = true}})

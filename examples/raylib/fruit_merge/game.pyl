@@ -2,8 +2,8 @@
 
 let rl = import("raylib")
 let m = import("math")
-let physics = import("examples/raylib/suika/physics")
-let fruit_mod = import("examples/raylib/suika/fruit")
+let physics = import("./physics")
+let fruit_mod = import("./fruit")
 let Fruit = fruit_mod.Fruit
 
 struct Game(fruits, score, best, next_tier, next_next_tier, spawn_x,

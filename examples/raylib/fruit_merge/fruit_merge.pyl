@@ -2,10 +2,10 @@
 
 let rl = import("raylib")
 let m = import("math")
-let cfg_mod = import("examples/raylib/suika/cfg")
-let fruit_mod = import("examples/raylib/suika/fruit")
-let physics = import("examples/raylib/suika/physics")
-let game_mod = import("examples/raylib/suika/game")
+let cfg_mod = import("./cfg")
+let fruit_mod = import("./fruit")
+let physics = import("./physics")
+let game_mod = import("./game")
 
 let Cfg = cfg_mod.Cfg
 let Fruit = fruit_mod.Fruit

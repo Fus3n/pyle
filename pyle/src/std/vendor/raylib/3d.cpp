@@ -3,7 +3,9 @@
 namespace pyle {
 namespace raylib_binding {
 
-    void register_3d(VM& vm, MapType& exports) {
+    void register_3d(NativeModule& mod) {
+        VM& vm = mod.get_vm();
+
         ClassBinder<RayCollision> rcol(vm, "RayCollision");
         rcol.custom_constructor(+[](VM& vm, ArgView) -> Value {
             return to_value_owned<RayCollision>(vm, new RayCollision{});
@@ -20,7 +22,7 @@ namespace raylib_binding {
                 if (!r) return Value();
                 return to_value_owned<Vector3>(vm, new Vector3{ r->normal.x, r->normal.y, r->normal.z });
             });
-        add_class(vm, exports, "RayCollision", rcol.get_constructor());
+        mod.class_type(rcol);
 
         ClassBinder<Camera3D> cam3(vm, "Camera3D");
         cam3.custom_constructor(+[](VM& vm, ArgView) -> Value {
@@ -64,7 +66,7 @@ namespace raylib_binding {
             })
             .member<float, &Camera3D::fovy>("fovy")
             .member<int, &Camera3D::projection>("projection");
-        add_class(vm, exports, "Camera3D", cam3.get_constructor());
+        mod.class_type(cam3);
 
         ClassBinder<BoundingBox> bb(vm, "BoundingBox");
         bb.custom_constructor(+[](VM& vm, ArgView) -> Value {
@@ -94,7 +96,7 @@ namespace raylib_binding {
                 b->max = *v;
                 return a[0];
             });
-        add_class(vm, exports, "BoundingBox", bb.get_constructor());
+        mod.class_type(bb);
 
         ClassBinder<Ray> ray(vm, "Ray");
         ray.custom_constructor(+[](VM& vm, ArgView) -> Value {
@@ -124,21 +126,25 @@ namespace raylib_binding {
                 r->direction = *v;
                 return a[0];
             });
-        add_class(vm, exports, "Ray", ray.get_constructor());
+        mod.class_type(ray);
 
-        add_fn(vm, exports, "BeginMode3D", +[](VM& vm, ArgView args) -> Value {
+        ClassBinder<Model> model(vm, "Model");
+        model.custom_constructor(+[](VM& vm, ArgView) -> Value {
+            return to_value_owned<Model>(vm, new Model{});
+        });
+        mod.class_type(model);
+
+        mod.raw_function("BeginMode3D", +[](VM& vm, ArgView args) -> Value {
             if (args.size() != 1) { vm.runtime_error(RuntimeError::ArgumentError, "BeginMode3D expects (Camera3D)."); return Value(); }
             Camera3D* c = as_native<Camera3D>(vm, args[0], "Camera3D");
             if (!c) return Value();
             BeginMode3D(*c);
             return Value();
         });
-        add_fn(vm, exports, "EndMode3D", +[](VM&, ArgView) -> Value {
-            EndMode3D();
-            return Value();
-        });
+        
+        mod.function<EndMode3D>("EndMode3D");
 
-        add_fn(vm, exports, "DrawLine3D", +[](VM& vm, ArgView args) -> Value {
+        mod.raw_function("DrawLine3D", +[](VM& vm, ArgView args) -> Value {
             if (args.size() != 3) { vm.runtime_error(RuntimeError::ArgumentError, "DrawLine3D expects (start, end, color)."); return Value(); }
             Vector3* s = as_native<Vector3>(vm, args[0], "Vector3");
             Vector3* e = as_native<Vector3>(vm, args[1], "Vector3");
@@ -147,7 +153,7 @@ namespace raylib_binding {
             DrawLine3D(*s, *e, *c);
             return Value();
         });
-        add_fn(vm, exports, "DrawPoint3D", +[](VM& vm, ArgView args) -> Value {
+        mod.raw_function("DrawPoint3D", +[](VM& vm, ArgView args) -> Value {
             if (args.size() != 2) { vm.runtime_error(RuntimeError::ArgumentError, "DrawPoint3D expects (pos, color)."); return Value(); }
             Vector3* p = as_native<Vector3>(vm, args[0], "Vector3");
             Color* c = as_native<Color>(vm, args[1], "Color");
@@ -155,7 +161,7 @@ namespace raylib_binding {
             DrawPoint3D(*p, *c);
             return Value();
         });
-        add_fn(vm, exports, "DrawCube", +[](VM& vm, ArgView args) -> Value {
+        mod.raw_function("DrawCube", +[](VM& vm, ArgView args) -> Value {
             if (args.size() != 5) { vm.runtime_error(RuntimeError::ArgumentError, "DrawCube expects (pos, w, h, l, color)."); return Value(); }
             Vector3* p = as_native<Vector3>(vm, args[0], "Vector3");
             float w = from_value<float>(vm, args[1]);
@@ -166,7 +172,7 @@ namespace raylib_binding {
             DrawCube(*p, w, h, l, *c);
             return Value();
         });
-        add_fn(vm, exports, "DrawCubeV", +[](VM& vm, ArgView args) -> Value {
+        mod.raw_function("DrawCubeV", +[](VM& vm, ArgView args) -> Value {
             if (args.size() != 3) { vm.runtime_error(RuntimeError::ArgumentError, "DrawCubeV expects (pos, size, color)."); return Value(); }
             Vector3* p = as_native<Vector3>(vm, args[0], "Vector3");
             Vector3* s = as_native<Vector3>(vm, args[1], "Vector3");
@@ -175,7 +181,7 @@ namespace raylib_binding {
             DrawCubeV(*p, *s, *c);
             return Value();
         });
-        add_fn(vm, exports, "DrawCubeWires", +[](VM& vm, ArgView args) -> Value {
+        mod.raw_function("DrawCubeWires", +[](VM& vm, ArgView args) -> Value {
             if (args.size() != 5) { vm.runtime_error(RuntimeError::ArgumentError, "DrawCubeWires expects (pos, w, h, l, color)."); return Value(); }
             Vector3* p = as_native<Vector3>(vm, args[0], "Vector3");
             float w = from_value<float>(vm, args[1]);
@@ -186,7 +192,7 @@ namespace raylib_binding {
             DrawCubeWires(*p, w, h, l, *c);
             return Value();
         });
-        add_fn(vm, exports, "DrawCubeWiresV", +[](VM& vm, ArgView args) -> Value {
+        mod.raw_function("DrawCubeWiresV", +[](VM& vm, ArgView args) -> Value {
             if (args.size() != 3) { vm.runtime_error(RuntimeError::ArgumentError, "DrawCubeWiresV expects (pos, size, color)."); return Value(); }
             Vector3* p = as_native<Vector3>(vm, args[0], "Vector3");
             Vector3* s = as_native<Vector3>(vm, args[1], "Vector3");
@@ -195,7 +201,7 @@ namespace raylib_binding {
             DrawCubeWiresV(*p, *s, *c);
             return Value();
         });
-        add_fn(vm, exports, "DrawSphere", +[](VM& vm, ArgView args) -> Value {
+        mod.raw_function("DrawSphere", +[](VM& vm, ArgView args) -> Value {
             if (args.size() != 3) { vm.runtime_error(RuntimeError::ArgumentError, "DrawSphere expects (center, radius, color)."); return Value(); }
             Vector3* p = as_native<Vector3>(vm, args[0], "Vector3");
             float r = from_value<float>(vm, args[1]);
@@ -204,7 +210,7 @@ namespace raylib_binding {
             DrawSphere(*p, r, *c);
             return Value();
         });
-        add_fn(vm, exports, "DrawSphereEx", +[](VM& vm, ArgView args) -> Value {
+        mod.raw_function("DrawSphereEx", +[](VM& vm, ArgView args) -> Value {
             if (args.size() != 5) { vm.runtime_error(RuntimeError::ArgumentError, "DrawSphereEx expects (center, radius, rings, slices, color)."); return Value(); }
             Vector3* p = as_native<Vector3>(vm, args[0], "Vector3");
             float r = from_value<float>(vm, args[1]);
@@ -215,7 +221,7 @@ namespace raylib_binding {
             DrawSphereEx(*p, r, rings, slices, *c);
             return Value();
         });
-        add_fn(vm, exports, "DrawSphereWires", +[](VM& vm, ArgView args) -> Value {
+        mod.raw_function("DrawSphereWires", +[](VM& vm, ArgView args) -> Value {
             if (args.size() != 5) { vm.runtime_error(RuntimeError::ArgumentError, "DrawSphereWires expects (center, radius, rings, slices, color)."); return Value(); }
             Vector3* p = as_native<Vector3>(vm, args[0], "Vector3");
             float r = from_value<float>(vm, args[1]);
@@ -226,7 +232,7 @@ namespace raylib_binding {
             DrawSphereWires(*p, r, rings, slices, *c);
             return Value();
         });
-        add_fn(vm, exports, "DrawCylinder", +[](VM& vm, ArgView args) -> Value {
+        mod.raw_function("DrawCylinder", +[](VM& vm, ArgView args) -> Value {
             if (args.size() != 6) { vm.runtime_error(RuntimeError::ArgumentError, "DrawCylinder expects (pos, rTop, rBot, height, slices, color)."); return Value(); }
             Vector3* p = as_native<Vector3>(vm, args[0], "Vector3");
             float rt = from_value<float>(vm, args[1]);
@@ -238,7 +244,7 @@ namespace raylib_binding {
             DrawCylinder(*p, rt, rb, h, sl, *c);
             return Value();
         });
-        add_fn(vm, exports, "DrawCylinderWires", +[](VM& vm, ArgView args) -> Value {
+        mod.raw_function("DrawCylinderWires", +[](VM& vm, ArgView args) -> Value {
             if (args.size() != 6) { vm.runtime_error(RuntimeError::ArgumentError, "DrawCylinderWires expects (pos, rTop, rBot, height, slices, color)."); return Value(); }
             Vector3* p = as_native<Vector3>(vm, args[0], "Vector3");
             float rt = from_value<float>(vm, args[1]);
@@ -250,7 +256,7 @@ namespace raylib_binding {
             DrawCylinderWires(*p, rt, rb, h, sl, *c);
             return Value();
         });
-        add_fn(vm, exports, "DrawPlane", +[](VM& vm, ArgView args) -> Value {
+        mod.raw_function("DrawPlane", +[](VM& vm, ArgView args) -> Value {
             if (args.size() != 3) { vm.runtime_error(RuntimeError::ArgumentError, "DrawPlane expects (center, size, color)."); return Value(); }
             Vector3* p = as_native<Vector3>(vm, args[0], "Vector3");
             Vector2* s = as_native<Vector2>(vm, args[1], "Vector2");
@@ -259,7 +265,7 @@ namespace raylib_binding {
             DrawPlane(*p, *s, *c);
             return Value();
         });
-        add_fn(vm, exports, "DrawRay", +[](VM& vm, ArgView args) -> Value {
+        mod.raw_function("DrawRay", +[](VM& vm, ArgView args) -> Value {
             if (args.size() != 2) { vm.runtime_error(RuntimeError::ArgumentError, "DrawRay expects (ray, color)."); return Value(); }
             Ray* r = as_native<Ray>(vm, args[0], "Ray");
             Color* c = as_native<Color>(vm, args[1], "Color");
@@ -267,14 +273,14 @@ namespace raylib_binding {
             DrawRay(*r, *c);
             return Value();
         });
-        add_fn(vm, exports, "DrawGrid", +[](VM& vm, ArgView args) -> Value {
+        mod.raw_function("DrawGrid", +[](VM& vm, ArgView args) -> Value {
             int slices = 10; float spacing = 1.0f;
             if (args.size() > 0) slices = from_value<int64_t>(vm, args[0]);
             if (args.size() > 1) spacing = from_value<float>(vm, args[1]);
             DrawGrid(slices, spacing);
             return Value();
         });
-        add_fn(vm, exports, "DrawBoundingBox", +[](VM& vm, ArgView args) -> Value {
+        mod.raw_function("DrawBoundingBox", +[](VM& vm, ArgView args) -> Value {
             if (args.size() != 2) { vm.runtime_error(RuntimeError::ArgumentError, "DrawBoundingBox expects (box, color)."); return Value(); }
             BoundingBox* b = as_native<BoundingBox>(vm, args[0], "BoundingBox");
             Color* c = as_native<Color>(vm, args[1], "Color");
@@ -282,7 +288,7 @@ namespace raylib_binding {
             DrawBoundingBox(*b, *c);
             return Value();
         });
-        add_fn(vm, exports, "DrawCircle3D", +[](VM& vm, ArgView args) -> Value {
+        mod.raw_function("DrawCircle3D", +[](VM& vm, ArgView args) -> Value {
             if (args.size() != 5) { vm.runtime_error(RuntimeError::ArgumentError, "DrawCircle3D expects (center, radius, rotAxis, rotAngle, color)."); return Value(); }
             Vector3* p = as_native<Vector3>(vm, args[0], "Vector3");
             float r = from_value<float>(vm, args[1]);
@@ -293,7 +299,7 @@ namespace raylib_binding {
             DrawCircle3D(*p, r, *a, ang, *c);
             return Value();
         });
-        add_fn(vm, exports, "DrawTriangle3D", +[](VM& vm, ArgView args) -> Value {
+        mod.raw_function("DrawTriangle3D", +[](VM& vm, ArgView args) -> Value {
             if (args.size() != 4) { vm.runtime_error(RuntimeError::ArgumentError, "DrawTriangle3D expects (v1, v2, v3, color)."); return Value(); }
             Vector3* v1 = as_native<Vector3>(vm, args[0], "Vector3");
             Vector3* v2 = as_native<Vector3>(vm, args[1], "Vector3");
@@ -304,7 +310,7 @@ namespace raylib_binding {
             return Value();
         });
 
-        add_fn(vm, exports, "CheckCollisionSpheres", +[](VM& vm, ArgView args) -> Value {
+        mod.raw_function("CheckCollisionSpheres", +[](VM& vm, ArgView args) -> Value {
             if (args.size() != 4) { vm.runtime_error(RuntimeError::ArgumentError, "CheckCollisionSpheres expects (c1, r1, c2, r2)."); return Value(); }
             Vector3* c1 = as_native<Vector3>(vm, args[0], "Vector3");
             float r1 = from_value<float>(vm, args[1]);
@@ -313,14 +319,14 @@ namespace raylib_binding {
             if (!c1 || !c2) return Value();
             return to_value(vm, CheckCollisionSpheres(*c1, r1, *c2, r2));
         });
-        add_fn(vm, exports, "CheckCollisionBoxes", +[](VM& vm, ArgView args) -> Value {
+        mod.raw_function("CheckCollisionBoxes", +[](VM& vm, ArgView args) -> Value {
             if (args.size() != 2) { vm.runtime_error(RuntimeError::ArgumentError, "CheckCollisionBoxes expects (b1, b2)."); return Value(); }
             BoundingBox* b1 = as_native<BoundingBox>(vm, args[0], "BoundingBox");
             BoundingBox* b2 = as_native<BoundingBox>(vm, args[1], "BoundingBox");
             if (!b1 || !b2) return Value();
             return to_value(vm, CheckCollisionBoxes(*b1, *b2));
         });
-        add_fn(vm, exports, "CheckCollisionBoxSphere", +[](VM& vm, ArgView args) -> Value {
+        mod.raw_function("CheckCollisionBoxSphere", +[](VM& vm, ArgView args) -> Value {
             if (args.size() != 3) { vm.runtime_error(RuntimeError::ArgumentError, "CheckCollisionBoxSphere expects (box, center, radius)."); return Value(); }
             BoundingBox* b = as_native<BoundingBox>(vm, args[0], "BoundingBox");
             Vector3* c = as_native<Vector3>(vm, args[1], "Vector3");
@@ -328,7 +334,7 @@ namespace raylib_binding {
             if (!b || !c) return Value();
             return to_value(vm, CheckCollisionBoxSphere(*b, *c, r));
         });
-        add_fn(vm, exports, "GetRayCollisionSphere", +[](VM& vm, ArgView args) -> Value {
+        mod.raw_function("GetRayCollisionSphere", +[](VM& vm, ArgView args) -> Value {
             if (args.size() != 3) { vm.runtime_error(RuntimeError::ArgumentError, "GetRayCollisionSphere expects (ray, center, radius)."); return Value(); }
             Ray* r = as_native<Ray>(vm, args[0], "Ray");
             Vector3* c = as_native<Vector3>(vm, args[1], "Vector3");
@@ -337,7 +343,7 @@ namespace raylib_binding {
             auto rc = GetRayCollisionSphere(*r, *c, rad);
             return to_value_owned<RayCollision>(vm, new RayCollision{ rc.hit, rc.distance, rc.point, rc.normal });
         });
-        add_fn(vm, exports, "GetRayCollisionBox", +[](VM& vm, ArgView args) -> Value {
+        mod.raw_function("GetRayCollisionBox", +[](VM& vm, ArgView args) -> Value {
             if (args.size() != 2) { vm.runtime_error(RuntimeError::ArgumentError, "GetRayCollisionBox expects (ray, box)."); return Value(); }
             Ray* r = as_native<Ray>(vm, args[0], "Ray");
             BoundingBox* b = as_native<BoundingBox>(vm, args[1], "BoundingBox");
@@ -345,8 +351,28 @@ namespace raylib_binding {
             auto rc = GetRayCollisionBox(*r, *b);
             return to_value_owned<RayCollision>(vm, new RayCollision{ rc.hit, rc.distance, rc.point, rc.normal });
         });
+        mod.raw_function("GetRayCollisionMesh", +[](VM& vm, ArgView args) -> Value {
+            if (args.size() != 3) { vm.runtime_error(RuntimeError::ArgumentError, "GetRayCollisionMesh expects (ray, mesh, transform)."); return Value(); }
+            Ray* r = as_native<Ray>(vm, args[0], "Ray");
+            Mesh* m = as_native<Mesh>(vm, args[1], "Mesh");
+            Matrix* t = as_native<Matrix>(vm, args[2], "Matrix");
+            if (!r || !m || !t) return Value();
+            auto rc = GetRayCollisionMesh(*r, *m, *t);
+            return to_value_owned<RayCollision>(vm, new RayCollision{ rc.hit, rc.distance, rc.point, rc.normal });
+        });
+        mod.raw_function("GetRayCollisionQuad", +[](VM& vm, ArgView args) -> Value {
+            if (args.size() != 5) { vm.runtime_error(RuntimeError::ArgumentError, "GetRayCollisionQuad expects (ray, p1, p2, p3, p4)."); return Value(); }
+            Ray* r = as_native<Ray>(vm, args[0], "Ray");
+            Vector3* p1 = as_native<Vector3>(vm, args[1], "Vector3");
+            Vector3* p2 = as_native<Vector3>(vm, args[2], "Vector3");
+            Vector3* p3 = as_native<Vector3>(vm, args[3], "Vector3");
+            Vector3* p4 = as_native<Vector3>(vm, args[4], "Vector3");
+            if (!r || !p1 || !p2 || !p3 || !p4) return Value();
+            auto rc = GetRayCollisionQuad(*r, *p1, *p2, *p3, *p4);
+            return to_value_owned<RayCollision>(vm, new RayCollision{ rc.hit, rc.distance, rc.point, rc.normal });
+        });
 
-        add_fn(vm, exports, "GetScreenToWorldRay", +[](VM& vm, ArgView args) -> Value {
+        mod.raw_function("GetScreenToWorldRay", +[](VM& vm, ArgView args) -> Value {
             if (args.size() != 2) { vm.runtime_error(RuntimeError::ArgumentError, "GetScreenToWorldRay expects (mousePos, camera)."); return Value(); }
             Vector2* m = as_native<Vector2>(vm, args[0], "Vector2");
             Camera3D* c = as_native<Camera3D>(vm, args[1], "Camera3D");
@@ -354,7 +380,7 @@ namespace raylib_binding {
             Ray r = GetScreenToWorldRay(*m, *c);
             return to_value_owned<Ray>(vm, new Ray{ r.position, r.direction });
         });
-        add_fn(vm, exports, "GetWorldToScreen", +[](VM& vm, ArgView args) -> Value {
+        mod.raw_function("GetWorldToScreen", +[](VM& vm, ArgView args) -> Value {
             if (args.size() != 2) { vm.runtime_error(RuntimeError::ArgumentError, "GetWorldToScreen expects (pos, camera)."); return Value(); }
             Vector3* p = as_native<Vector3>(vm, args[0], "Vector3");
             Camera3D* c = as_native<Camera3D>(vm, args[1], "Camera3D");
@@ -362,7 +388,7 @@ namespace raylib_binding {
             Vector2 v = GetWorldToScreen(*p, *c);
             return to_value_owned<Vector2>(vm, new Vector2{ v.x, v.y });
         });
-        add_fn(vm, exports, "GetScreenToWorld2D", +[](VM& vm, ArgView args) -> Value {
+        mod.raw_function("GetScreenToWorld2D", +[](VM& vm, ArgView args) -> Value {
             if (args.size() != 2) { vm.runtime_error(RuntimeError::ArgumentError, "GetScreenToWorld2D expects (pos, camera)."); return Value(); }
             Vector2* p = as_native<Vector2>(vm, args[0], "Vector2");
             Camera2D* c = as_native<Camera2D>(vm, args[1], "Camera2D");
@@ -370,7 +396,7 @@ namespace raylib_binding {
             Vector2 v = GetScreenToWorld2D(*p, *c);
             return to_value_owned<Vector2>(vm, new Vector2{ v.x, v.y });
         });
-        add_fn(vm, exports, "GetWorldToScreen2D", +[](VM& vm, ArgView args) -> Value {
+        mod.raw_function("GetWorldToScreen2D", +[](VM& vm, ArgView args) -> Value {
             if (args.size() != 2) { vm.runtime_error(RuntimeError::ArgumentError, "GetWorldToScreen2D expects (pos, camera)."); return Value(); }
             Vector2* p = as_native<Vector2>(vm, args[0], "Vector2");
             Camera2D* c = as_native<Camera2D>(vm, args[1], "Camera2D");
@@ -378,19 +404,21 @@ namespace raylib_binding {
             Vector2 v = GetWorldToScreen2D(*p, *c);
             return to_value_owned<Vector2>(vm, new Vector2{ v.x, v.y });
         });
-        add_fn(vm, exports, "GetCameraMatrix", +[](VM& vm, ArgView args) -> Value {
+        mod.raw_function("GetCameraMatrix", +[](VM& vm, ArgView args) -> Value {
             if (args.size() != 1) { vm.runtime_error(RuntimeError::ArgumentError, "GetCameraMatrix expects (camera)."); return Value(); }
             Camera3D* c = as_native<Camera3D>(vm, args[0], "Camera3D");
             if (!c) return Value();
             return to_value_owned<Matrix>(vm, new Matrix(GetCameraMatrix(*c)));
         });
-        add_fn(vm, exports, "GetCameraMatrix2D", +[](VM& vm, ArgView args) -> Value {
+        mod.raw_function("GetCameraMatrix2D", +[](VM& vm, ArgView args) -> Value {
             if (args.size() != 1) { vm.runtime_error(RuntimeError::ArgumentError, "GetCameraMatrix2D expects (camera)."); return Value(); }
             Camera2D* c = as_native<Camera2D>(vm, args[0], "Camera2D");
             if (!c) return Value();
             return to_value_owned<Matrix>(vm, new Matrix(GetCameraMatrix2D(*c)));
         });
-        add_fn(vm, exports, "UpdateCamera", +[](VM& vm, ArgView args) -> Value {
+        
+        // Use w_ wrapper for UpdateCamera to extract ptr safely or pass it directly 
+        mod.raw_function("UpdateCamera", +[](VM& vm, ArgView args) -> Value {
             if (args.size() != 2) { vm.runtime_error(RuntimeError::ArgumentError, "UpdateCamera expects (camera, mode)."); return Value(); }
             Camera3D* c = as_native<Camera3D>(vm, args[0], "Camera3D");
             int mode = from_value<int64_t>(vm, args[1]);
@@ -398,7 +426,7 @@ namespace raylib_binding {
             UpdateCamera(c, mode);
             return Value();
         });
-        add_fn(vm, exports, "UpdateCameraPro", +[](VM& vm, ArgView args) -> Value {
+        mod.raw_function("UpdateCameraPro", +[](VM& vm, ArgView args) -> Value {
             if (args.size() != 4) { vm.runtime_error(RuntimeError::ArgumentError, "UpdateCameraPro expects (camera, movement, rotation, zoom)."); return Value(); }
             Camera3D* c = as_native<Camera3D>(vm, args[0], "Camera3D");
             Vector3* mov = as_native<Vector3>(vm, args[1], "Vector3");
@@ -409,7 +437,7 @@ namespace raylib_binding {
             return Value();
         });
 
-        add_fn(vm, exports, "DrawModel", +[](VM& vm, ArgView args) -> Value {
+        mod.raw_function("DrawModel", +[](VM& vm, ArgView args) -> Value {
             if (args.size() != 4) { vm.runtime_error(RuntimeError::ArgumentError, "DrawModel expects (model, pos, scale, tint)."); return Value(); }
             Model* m = as_native<Model>(vm, args[0], "Model");
             Vector3* p = as_native<Vector3>(vm, args[1], "Vector3");
@@ -419,7 +447,7 @@ namespace raylib_binding {
             DrawModel(*m, *p, s, *c);
             return Value();
         });
-        add_fn(vm, exports, "DrawModelEx", +[](VM& vm, ArgView args) -> Value {
+        mod.raw_function("DrawModelEx", +[](VM& vm, ArgView args) -> Value {
             if (args.size() != 6) { vm.runtime_error(RuntimeError::ArgumentError, "DrawModelEx expects (model, pos, rotAxis, rotAngle, scale, tint)."); return Value(); }
             Model* m = as_native<Model>(vm, args[0], "Model");
             Vector3* p = as_native<Vector3>(vm, args[1], "Vector3");
@@ -431,7 +459,7 @@ namespace raylib_binding {
             DrawModelEx(*m, *p, *a, ang, *s, *c);
             return Value();
         });
-        add_fn(vm, exports, "DrawBillboard", +[](VM& vm, ArgView args) -> Value {
+        mod.raw_function("DrawBillboard", +[](VM& vm, ArgView args) -> Value {
             if (args.size() != 5) { vm.runtime_error(RuntimeError::ArgumentError, "DrawBillboard expects (camera, tex, pos, scale, tint)."); return Value(); }
             Camera3D* cam = as_native<Camera3D>(vm, args[0], "Camera3D");
             Texture2D* t = as_native<Texture2D>(vm, args[1], "Texture");
@@ -443,68 +471,24 @@ namespace raylib_binding {
             return Value();
         });
 
-        ClassBinder<Model> mod(vm, "Model");
-        mod.custom_constructor(+[](VM& vm, ArgView) -> Value {
-            return to_value_owned<Model>(vm, new Model{});
-        });
-        add_class(vm, exports, "Model", mod.get_constructor());
-
-        add_fn(vm, exports, "LoadModel", +[](VM& vm, ArgView args) -> Value {
+        mod.raw_function("LoadModel", +[](VM& vm, ArgView args) -> Value {
             if (args.size() != 1) { vm.runtime_error(RuntimeError::ArgumentError, "LoadModel expects 1 string."); return Value(); }
             const std::string& path = from_value<std::string>(vm, args[0]);
             Model m = LoadModel(path.c_str());
             return to_value_owned<Model>(vm, new Model(m));
         });
-        add_fn(vm, exports, "IsModelValid", +[](VM& vm, ArgView args) -> Value {
+        mod.raw_function("IsModelValid", +[](VM& vm, ArgView args) -> Value {
             if (args.size() != 1) { vm.runtime_error(RuntimeError::ArgumentError, "IsModelValid expects 1 Model."); return Value(); }
             Model* m = as_native<Model>(vm, args[0], "Model");
             if (!m) return Value();
             return to_value(vm, IsModelValid(*m));
         });
-        add_fn(vm, exports, "UnloadModel", +[](VM& vm, ArgView args) -> Value {
+        mod.raw_function("UnloadModel", +[](VM& vm, ArgView args) -> Value {
             if (args.size() != 1) { vm.runtime_error(RuntimeError::ArgumentError, "UnloadModel expects 1 Model."); return Value(); }
             Model* m = as_native<Model>(vm, args[0], "Model");
             if (!m) return Value();
             UnloadModel(*m);
             return Value();
-        });
-
-        add_fn(vm, exports, "GetRayCollisionMesh", +[](VM& vm, ArgView args) -> Value {
-            if (args.size() != 3) { vm.runtime_error(RuntimeError::ArgumentError, "GetRayCollisionMesh expects (ray, mesh, transform)."); return Value(); }
-            Ray* r = as_native<Ray>(vm, args[0], "Ray");
-            Mesh* m = as_native<Mesh>(vm, args[1], "Mesh");
-            Matrix* t = as_native<Matrix>(vm, args[2], "Matrix");
-            if (!r || !m || !t) return Value();
-            auto rc = GetRayCollisionMesh(*r, *m, *t);
-            return to_value_owned<RayCollision>(vm, new RayCollision{ rc.hit, rc.distance, rc.point, rc.normal });
-        });
-        add_fn(vm, exports, "GetRayCollisionQuad", +[](VM& vm, ArgView args) -> Value {
-            if (args.size() != 5) { vm.runtime_error(RuntimeError::ArgumentError, "GetRayCollisionQuad expects (ray, p1, p2, p3, p4)."); return Value(); }
-            Ray* r = as_native<Ray>(vm, args[0], "Ray");
-            Vector3* p1 = as_native<Vector3>(vm, args[1], "Vector3");
-            Vector3* p2 = as_native<Vector3>(vm, args[2], "Vector3");
-            Vector3* p3 = as_native<Vector3>(vm, args[3], "Vector3");
-            Vector3* p4 = as_native<Vector3>(vm, args[4], "Vector3");
-            if (!r || !p1 || !p2 || !p3 || !p4) return Value();
-            auto rc = GetRayCollisionQuad(*r, *p1, *p2, *p3, *p4);
-            return to_value_owned<RayCollision>(vm, new RayCollision{ rc.hit, rc.distance, rc.point, rc.normal });
-        });
-        add_fn(vm, exports, "GetRayCollisionSphere", +[](VM& vm, ArgView args) -> Value {
-            if (args.size() != 3) { vm.runtime_error(RuntimeError::ArgumentError, "GetRayCollisionSphere expects (ray, center, radius)."); return Value(); }
-            Ray* r = as_native<Ray>(vm, args[0], "Ray");
-            Vector3* c = as_native<Vector3>(vm, args[1], "Vector3");
-            float rad = from_value<float>(vm, args[2]);
-            if (!r || !c) return Value();
-            auto rc = GetRayCollisionSphere(*r, *c, rad);
-            return to_value_owned<RayCollision>(vm, new RayCollision{ rc.hit, rc.distance, rc.point, rc.normal });
-        });
-        add_fn(vm, exports, "GetRayCollisionBox", +[](VM& vm, ArgView args) -> Value {
-            if (args.size() != 2) { vm.runtime_error(RuntimeError::ArgumentError, "GetRayCollisionBox expects (ray, box)."); return Value(); }
-            Ray* r = as_native<Ray>(vm, args[0], "Ray");
-            BoundingBox* b = as_native<BoundingBox>(vm, args[1], "BoundingBox");
-            if (!r || !b) return Value();
-            auto rc = GetRayCollisionBox(*r, *b);
-            return to_value_owned<RayCollision>(vm, new RayCollision{ rc.hit, rc.distance, rc.point, rc.normal });
         });
     }
 

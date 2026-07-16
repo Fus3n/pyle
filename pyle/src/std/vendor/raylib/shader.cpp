@@ -3,14 +3,16 @@
 namespace pyle {
 namespace raylib_binding {
 
-    void register_shader(VM& vm, MapType& exports) {
+    void register_shader(NativeModule& mod) {
+        VM& vm = mod.get_vm();
+
         ClassBinder<Shader> shader(vm, "Shader");
         shader.custom_constructor(+[](VM& vm, ArgView) -> Value {
             return to_value_owned<Shader>(vm, new Shader{});
         });
-        add_class(vm, exports, "Shader", shader.get_constructor());
+        mod.class_type(shader);
 
-        add_fn(vm, exports, "LoadShader", +[](VM& vm, ArgView args) -> Value {
+        mod.raw_function("LoadShader", +[](VM& vm, ArgView args) -> Value {
             std::string vs, fs;
             const char* vs_cstr = nullptr;
             const char* fs_cstr = nullptr;
@@ -35,7 +37,8 @@ namespace raylib_binding {
             Shader s = LoadShader(vs_cstr, fs_cstr);
             return to_value_owned<Shader>(vm, new Shader{ s.id, s.locs });
         });
-        add_fn(vm, exports, "LoadShaderFromMemory", +[](VM& vm, ArgView args) -> Value {
+        
+        mod.raw_function("LoadShaderFromMemory", +[](VM& vm, ArgView args) -> Value {
             std::string vs, fs;
             const char* vs_cstr = nullptr;
             const char* fs_cstr = nullptr;
@@ -55,45 +58,49 @@ namespace raylib_binding {
             Shader s = LoadShaderFromMemory(vs_cstr, fs_cstr);
             return to_value_owned<Shader>(vm, new Shader{ s.id, s.locs });
         });
-        add_fn(vm, exports, "IsShaderValid", +[](VM& vm, ArgView args) -> Value {
+        
+        mod.raw_function("IsShaderValid", +[](VM& vm, ArgView args) -> Value {
             if (args.size() != 1) { vm.runtime_error(RuntimeError::ArgumentError, "IsShaderValid expects 1 Shader."); return Value(); }
             Shader* s = as_native<Shader>(vm, args[0], "Shader");
             if (!s) return Value();
             return to_value(vm, IsShaderValid(*s));
         });
-        add_fn(vm, exports, "UnloadShader", +[](VM& vm, ArgView args) -> Value {
+        
+        mod.raw_function("UnloadShader", +[](VM& vm, ArgView args) -> Value {
             if (args.size() != 1) { vm.runtime_error(RuntimeError::ArgumentError, "UnloadShader expects 1 Shader."); return Value(); }
             Shader* s = as_native<Shader>(vm, args[0], "Shader");
             if (!s) return Value();
             UnloadShader(*s);
             return Value();
         });
-        add_fn(vm, exports, "BeginShaderMode", +[](VM& vm, ArgView args) -> Value {
+        
+        mod.raw_function("BeginShaderMode", +[](VM& vm, ArgView args) -> Value {
             if (args.size() != 1) { vm.runtime_error(RuntimeError::ArgumentError, "BeginShaderMode expects 1 Shader."); return Value(); }
             Shader* s = as_native<Shader>(vm, args[0], "Shader");
             if (!s) return Value();
             BeginShaderMode(*s);
             return Value();
         });
-        add_fn(vm, exports, "EndShaderMode", +[](VM&, ArgView) -> Value {
-            EndShaderMode();
-            return Value();
-        });
-        add_fn(vm, exports, "GetShaderLocation", +[](VM& vm, ArgView args) -> Value {
+        
+        mod.function<EndShaderMode>("EndShaderMode");
+        
+        mod.raw_function("GetShaderLocation", +[](VM& vm, ArgView args) -> Value {
             if (args.size() != 2) { vm.runtime_error(RuntimeError::ArgumentError, "GetShaderLocation expects (shader, uniformName)."); return Value(); }
             Shader* s = as_native<Shader>(vm, args[0], "Shader");
             const std::string& name = from_value<std::string>(vm, args[1]);
             if (!s) return Value();
             return to_value(vm, GetShaderLocation(*s, name.c_str()));
         });
-        add_fn(vm, exports, "GetShaderLocationAttrib", +[](VM& vm, ArgView args) -> Value {
+        
+        mod.raw_function("GetShaderLocationAttrib", +[](VM& vm, ArgView args) -> Value {
             if (args.size() != 2) { vm.runtime_error(RuntimeError::ArgumentError, "GetShaderLocationAttrib expects (shader, attribName)."); return Value(); }
             Shader* s = as_native<Shader>(vm, args[0], "Shader");
             const std::string& name = from_value<std::string>(vm, args[1]);
             if (!s) return Value();
             return to_value(vm, GetShaderLocationAttrib(*s, name.c_str()));
         });
-        add_fn(vm, exports, "SetShaderValue", +[](VM& vm, ArgView args) -> Value {
+        
+        mod.raw_function("SetShaderValue", +[](VM& vm, ArgView args) -> Value {
             if (args.size() != 4) { vm.runtime_error(RuntimeError::ArgumentError, "SetShaderValue expects (shader, locIndex, value, uniformType)."); return Value(); }
             Shader* s = as_native<Shader>(vm, args[0], "Shader");
             int loc = from_value<int64_t>(vm, args[1]);
@@ -127,7 +134,8 @@ namespace raylib_binding {
             }
             return Value();
         });
-        add_fn(vm, exports, "SetShaderValueMatrix", +[](VM& vm, ArgView args) -> Value {
+        
+        mod.raw_function("SetShaderValueMatrix", +[](VM& vm, ArgView args) -> Value {
             if (args.size() != 3) { vm.runtime_error(RuntimeError::ArgumentError, "SetShaderValueMatrix expects (shader, locIndex, matrix)."); return Value(); }
             Shader* s = as_native<Shader>(vm, args[0], "Shader");
             int loc = from_value<int64_t>(vm, args[1]);
@@ -136,7 +144,8 @@ namespace raylib_binding {
             SetShaderValueMatrix(*s, loc, *m);
             return Value();
         });
-        add_fn(vm, exports, "SetShaderValueTexture", +[](VM& vm, ArgView args) -> Value {
+        
+        mod.raw_function("SetShaderValueTexture", +[](VM& vm, ArgView args) -> Value {
             if (args.size() != 3) { vm.runtime_error(RuntimeError::ArgumentError, "SetShaderValueTexture expects (shader, locIndex, texture)."); return Value(); }
             Shader* s = as_native<Shader>(vm, args[0], "Shader");
             int loc = from_value<int64_t>(vm, args[1]);

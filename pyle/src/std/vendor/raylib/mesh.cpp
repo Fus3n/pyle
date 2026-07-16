@@ -3,16 +3,18 @@
 namespace pyle {
 namespace raylib_binding {
 
-    void register_mesh(VM& vm, MapType& exports) {
+    void register_mesh(NativeModule& mod) {
+        VM& vm = mod.get_vm();
+
         ClassBinder<Mesh> mesh(vm, "Mesh");
         mesh.custom_constructor(+[](VM& vm, ArgView) -> Value {
             return to_value_owned<Mesh>(vm, new Mesh{});
         })
             .member<int, &Mesh::vertexCount>("vertexCount")
             .member<int, &Mesh::triangleCount>("triangleCount");
-        add_class(vm, exports, "Mesh", mesh.get_constructor());
+        mod.class_type(mesh);
 
-        add_fn(vm, exports, "GenMeshCube", +[](VM& vm, ArgView args) -> Value {
+        mod.raw_function("GenMeshCube", +[](VM& vm, ArgView args) -> Value {
             if (args.size() != 3) { vm.runtime_error(RuntimeError::ArgumentError, "GenMeshCube expects (width, height, length)."); return Value(); }
             float w = from_value<float>(vm, args[0]);
             float h = from_value<float>(vm, args[1]);
@@ -20,7 +22,8 @@ namespace raylib_binding {
             Mesh m = GenMeshCube(w, h, l);
             return to_value_owned<Mesh>(vm, new Mesh(m));
         });
-        add_fn(vm, exports, "GenMeshPlane", +[](VM& vm, ArgView args) -> Value {
+        
+        mod.raw_function("GenMeshPlane", +[](VM& vm, ArgView args) -> Value {
             if (args.size() != 4) { vm.runtime_error(RuntimeError::ArgumentError, "GenMeshPlane expects (width, length, resX, resZ)."); return Value(); }
             float w = from_value<float>(vm, args[0]);
             float l = from_value<float>(vm, args[1]);
@@ -29,7 +32,8 @@ namespace raylib_binding {
             Mesh m = GenMeshPlane(w, l, rx, rz);
             return to_value_owned<Mesh>(vm, new Mesh(m));
         });
-        add_fn(vm, exports, "GenMeshSphere", +[](VM& vm, ArgView args) -> Value {
+        
+        mod.raw_function("GenMeshSphere", +[](VM& vm, ArgView args) -> Value {
             if (args.size() != 3) { vm.runtime_error(RuntimeError::ArgumentError, "GenMeshSphere expects (radius, rings, slices)."); return Value(); }
             float r = from_value<float>(vm, args[0]);
             int rings = from_value<int64_t>(vm, args[1]);
@@ -37,7 +41,8 @@ namespace raylib_binding {
             Mesh m = GenMeshSphere(r, rings, slices);
             return to_value_owned<Mesh>(vm, new Mesh(m));
         });
-        add_fn(vm, exports, "GenMeshCylinder", +[](VM& vm, ArgView args) -> Value {
+        
+        mod.raw_function("GenMeshCylinder", +[](VM& vm, ArgView args) -> Value {
             if (args.size() != 3) { vm.runtime_error(RuntimeError::ArgumentError, "GenMeshCylinder expects (radius, height, slices)."); return Value(); }
             float r = from_value<float>(vm, args[0]);
             float h = from_value<float>(vm, args[1]);
@@ -45,7 +50,8 @@ namespace raylib_binding {
             Mesh m = GenMeshCylinder(r, h, sl);
             return to_value_owned<Mesh>(vm, new Mesh(m));
         });
-        add_fn(vm, exports, "GenMeshTorus", +[](VM& vm, ArgView args) -> Value {
+        
+        mod.raw_function("GenMeshTorus", +[](VM& vm, ArgView args) -> Value {
             if (args.size() != 4) { vm.runtime_error(RuntimeError::ArgumentError, "GenMeshTorus expects (radius, size, radSeg, sides)."); return Value(); }
             float r = from_value<float>(vm, args[0]);
             float sz = from_value<float>(vm, args[1]);
@@ -54,7 +60,8 @@ namespace raylib_binding {
             Mesh m = GenMeshTorus(r, sz, rs, sd);
             return to_value_owned<Mesh>(vm, new Mesh(m));
         });
-        add_fn(vm, exports, "GenMeshHeightmap", +[](VM& vm, ArgView args) -> Value {
+        
+        mod.raw_function("GenMeshHeightmap", +[](VM& vm, ArgView args) -> Value {
             if (args.size() != 2) { vm.runtime_error(RuntimeError::ArgumentError, "GenMeshHeightmap expects (image, size)."); return Value(); }
             Image* img = as_native<Image>(vm, args[0], "Image");
             Vector3* sz = as_native<Vector3>(vm, args[1], "Vector3");
@@ -62,7 +69,8 @@ namespace raylib_binding {
             Mesh m = GenMeshHeightmap(*img, *sz);
             return to_value_owned<Mesh>(vm, new Mesh(m));
         });
-        add_fn(vm, exports, "GenMeshCubicmap", +[](VM& vm, ArgView args) -> Value {
+        
+        mod.raw_function("GenMeshCubicmap", +[](VM& vm, ArgView args) -> Value {
             if (args.size() != 2) { vm.runtime_error(RuntimeError::ArgumentError, "GenMeshCubicmap expects (cubicmap, cubeSize)."); return Value(); }
             Image* img = as_native<Image>(vm, args[0], "Image");
             Vector3* sz = as_native<Vector3>(vm, args[1], "Vector3");
@@ -70,8 +78,8 @@ namespace raylib_binding {
             Mesh m = GenMeshCubicmap(*img, *sz);
             return to_value_owned<Mesh>(vm, new Mesh(m));
         });
-
-        add_fn(vm, exports, "UploadMesh", +[](VM& vm, ArgView args) -> Value {
+        
+        mod.raw_function("UploadMesh", +[](VM& vm, ArgView args) -> Value {
             if (args.size() != 2) { vm.runtime_error(RuntimeError::ArgumentError, "UploadMesh expects (mesh, dynamic)."); return Value(); }
             Mesh* m = as_native<Mesh>(vm, args[0], "Mesh");
             bool dyn = from_value<bool>(vm, args[1]);
@@ -79,14 +87,16 @@ namespace raylib_binding {
             UploadMesh(m, dyn);
             return Value();
         });
-        add_fn(vm, exports, "UnloadMesh", +[](VM& vm, ArgView args) -> Value {
+        
+        mod.raw_function("UnloadMesh", +[](VM& vm, ArgView args) -> Value {
             if (args.size() != 1) { vm.runtime_error(RuntimeError::ArgumentError, "UnloadMesh expects 1 Mesh."); return Value(); }
             Mesh* m = as_native<Mesh>(vm, args[0], "Mesh");
             if (!m) return Value();
             UnloadMesh(*m);
             return Value();
         });
-        add_fn(vm, exports, "DrawMesh", +[](VM& vm, ArgView args) -> Value {
+        
+        mod.raw_function("DrawMesh", +[](VM& vm, ArgView args) -> Value {
             if (args.size() != 3) { vm.runtime_error(RuntimeError::ArgumentError, "DrawMesh expects (mesh, material, transform)."); return Value(); }
             Mesh* m = as_native<Mesh>(vm, args[0], "Mesh");
             Material* mat = as_native<Material>(vm, args[1], "Material");
@@ -95,7 +105,8 @@ namespace raylib_binding {
             DrawMesh(*m, *mat, *t);
             return Value();
         });
-        add_fn(vm, exports, "DrawMeshInstanced", +[](VM& vm, ArgView args) -> Value {
+        
+        mod.raw_function("DrawMeshInstanced", +[](VM& vm, ArgView args) -> Value {
             if (args.size() != 3) { vm.runtime_error(RuntimeError::ArgumentError, "DrawMeshInstanced expects (mesh, material, transforms)."); return Value(); }
             Mesh* m = as_native<Mesh>(vm, args[0], "Mesh");
             Material* mat = as_native<Material>(vm, args[1], "Material");
@@ -118,14 +129,16 @@ namespace raylib_binding {
             delete[] transforms;
             return Value();
         });
-        add_fn(vm, exports, "GetMeshBoundingBox", +[](VM& vm, ArgView args) -> Value {
+        
+        mod.raw_function("GetMeshBoundingBox", +[](VM& vm, ArgView args) -> Value {
             if (args.size() != 1) { vm.runtime_error(RuntimeError::ArgumentError, "GetMeshBoundingBox expects 1 Mesh."); return Value(); }
             Mesh* m = as_native<Mesh>(vm, args[0], "Mesh");
             if (!m) return Value();
             BoundingBox bb = GetMeshBoundingBox(*m);
             return to_value_owned<BoundingBox>(vm, new BoundingBox{ bb.min, bb.max });
         });
-        add_fn(vm, exports, "ExportMesh", +[](VM& vm, ArgView args) -> Value {
+        
+        mod.raw_function("ExportMesh", +[](VM& vm, ArgView args) -> Value {
             if (args.size() != 2) { vm.runtime_error(RuntimeError::ArgumentError, "ExportMesh expects (mesh, fileName)."); return Value(); }
             Mesh* m = as_native<Mesh>(vm, args[0], "Mesh");
             const std::string& name = from_value<std::string>(vm, args[1]);

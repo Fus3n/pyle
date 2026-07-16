@@ -26,48 +26,39 @@ namespace raylib_binding {
         bool w_IsCursorHidden(VM&) { return IsCursorHidden(); }
     }
 
-    Value native_GetMousePosition(VM& vm, ArgView args) {
-        if (args.size() != 0) { vm.runtime_error(RuntimeError::ArgumentError, "GetMousePosition expects 0 args."); return Value(); }
-        Vector2 v = GetMousePosition();
-        return to_value_owned<Vector2>(vm, new Vector2{ v.x, v.y });
-    }
-
-    Value native_GetMouseDelta(VM& vm, ArgView args) {
-        if (args.size() != 0) { vm.runtime_error(RuntimeError::ArgumentError, "GetMouseDelta expects 0 args."); return Value(); }
-        Vector2 v = GetMouseDelta();
-        return to_value_owned<Vector2>(vm, new Vector2{ v.x, v.y });
-    }
-
-    Value native_GetMouseWheelMoveV(VM& vm, ArgView args) {
-        if (args.size() != 0) { vm.runtime_error(RuntimeError::ArgumentError, "GetMouseWheelMoveV expects 0 args."); return Value(); }
-        Vector2 v = GetMouseWheelMoveV();
-        return to_value_owned<Vector2>(vm, new Vector2{ v.x, v.y });
-    }
-
-    void register_input(VM& vm, MapType& exports) {
-        add_fn(vm, exports, "IsKeyDown", pyle::FreeFnDeducer<w_IsKeyDown>::wrap);
-        add_fn(vm, exports, "IsKeyPressed", pyle::FreeFnDeducer<w_IsKeyPressed>::wrap);
-        add_fn(vm, exports, "IsKeyReleased", pyle::FreeFnDeducer<w_IsKeyReleased>::wrap);
-        add_fn(vm, exports, "IsKeyUp", pyle::FreeFnDeducer<w_IsKeyUp>::wrap);
-        add_fn(vm, exports, "IsKeyPressedRepeat", pyle::FreeFnDeducer<w_IsKeyPressedRepeat>::wrap);
-        add_fn(vm, exports, "GetKeyPressed", pyle::FreeFnDeducer<w_GetKeyPressed>::wrap);
-        add_fn(vm, exports, "GetCharPressed", pyle::FreeFnDeducer<w_GetCharPressed>::wrap);
-        add_fn(vm, exports, "GetMouseX", pyle::FreeFnDeducer<w_GetMouseX>::wrap);
-        add_fn(vm, exports, "GetMouseY", pyle::FreeFnDeducer<w_GetMouseY>::wrap);
-        add_fn(vm, exports, "IsMouseButtonPressed", pyle::FreeFnDeducer<w_IsMouseButtonPressed>::wrap);
-        add_fn(vm, exports, "IsMouseButtonDown", pyle::FreeFnDeducer<w_IsMouseButtonDown>::wrap);
-        add_fn(vm, exports, "IsMouseButtonReleased", pyle::FreeFnDeducer<w_IsMouseButtonReleased>::wrap);
-        add_fn(vm, exports, "IsMouseButtonUp", pyle::FreeFnDeducer<w_IsMouseButtonUp>::wrap);
-        add_fn(vm, exports, "GetMousePosition", native_GetMousePosition);
-        add_fn(vm, exports, "GetMouseDelta", native_GetMouseDelta);
-        add_fn(vm, exports, "GetMouseWheelMove", pyle::FreeFnDeducer<w_GetMouseWheelMove>::wrap);
-        add_fn(vm, exports, "GetMouseWheelMoveV", native_GetMouseWheelMoveV);
-        add_fn(vm, exports, "SetMouseCursor", pyle::FreeFnDeducer<w_SetMouseCursor>::wrap);
-        add_fn(vm, exports, "ShowCursor", pyle::FreeFnDeducer<w_ShowCursor>::wrap);
-        add_fn(vm, exports, "HideCursor", pyle::FreeFnDeducer<w_HideCursor>::wrap);
-        add_fn(vm, exports, "EnableCursor", pyle::FreeFnDeducer<w_EnableCursor>::wrap);
-        add_fn(vm, exports, "DisableCursor", pyle::FreeFnDeducer<w_DisableCursor>::wrap);
-        add_fn(vm, exports, "IsCursorHidden", pyle::FreeFnDeducer<w_IsCursorHidden>::wrap);
+    void register_input(NativeModule& mod) {
+        mod.function<w_IsKeyDown>("IsKeyDown")
+           .function<w_IsKeyPressed>("IsKeyPressed")
+           .function<w_IsKeyReleased>("IsKeyReleased")
+           .function<w_IsKeyUp>("IsKeyUp")
+           .function<w_IsKeyPressedRepeat>("IsKeyPressedRepeat")
+           .function<w_GetKeyPressed>("GetKeyPressed")
+           .function<w_GetCharPressed>("GetCharPressed")
+           .function<w_GetMouseX>("GetMouseX")
+           .function<w_GetMouseY>("GetMouseY")
+           .function<w_IsMouseButtonPressed>("IsMouseButtonPressed")
+           .function<w_IsMouseButtonDown>("IsMouseButtonDown")
+           .function<w_IsMouseButtonReleased>("IsMouseButtonReleased")
+           .function<w_IsMouseButtonUp>("IsMouseButtonUp")
+           .function<w_GetMouseWheelMove>("GetMouseWheelMove")
+           .function<w_SetMouseCursor>("SetMouseCursor")
+           .function<w_ShowCursor>("ShowCursor")
+           .function<w_HideCursor>("HideCursor")
+           .function<w_EnableCursor>("EnableCursor")
+           .function<w_DisableCursor>("DisableCursor")
+           .function<w_IsCursorHidden>("IsCursorHidden")
+           .raw_function("GetMousePosition", +[](VM& vm, ArgView) -> Value {
+               Vector2 v = GetMousePosition();
+               return to_value_owned<Vector2>(vm, new Vector2{ v.x, v.y });
+           })
+           .raw_function("GetMouseDelta", +[](VM& vm, ArgView) -> Value {
+               Vector2 v = GetMouseDelta();
+               return to_value_owned<Vector2>(vm, new Vector2{ v.x, v.y });
+           })
+           .raw_function("GetMouseWheelMoveV", +[](VM& vm, ArgView) -> Value {
+               Vector2 v = GetMouseWheelMoveV();
+               return to_value_owned<Vector2>(vm, new Vector2{ v.x, v.y });
+           });
     }
 
 }

@@ -33,84 +33,87 @@ namespace raylib_binding {
         {"RAYWHITE",  { 245, 245, 245, 255 }},
     };
 
-    void register_constants(VM& vm, MapType& exports) {
+    void register_constants(NativeModule& mod) {
         for (const auto& def : PALETTE) {
-            add_val(vm, exports, def.name,
-                    to_value_owned<Color>(vm, new Color{ def.c.r, def.c.g, def.c.b, def.c.a }));
+            mod.native_object<Color>(def.name, new Color{ def.c.r, def.c.g, def.c.b, def.c.a });
         }
 
-        auto key = [&](const std::string& name, int code) {
-            add_val(vm, exports, name, Value(static_cast<int64_t>(code)));
-        };
-        key("KEY_SPACE", 32); key("KEY_APOSTROPHE", 39); key("KEY_COMMA", 44);
-        key("KEY_MINUS", 45); key("KEY_PERIOD", 46); key("KEY_SLASH", 47);
-        for (int i = 0; i < 10; ++i) key("KEY_" + std::string(1, char('0' + i)), 48 + i);
-        key("KEY_SEMICOLON", 59); key("KEY_EQUAL", 61);
-        for (int i = 0; i < 26; ++i) key("KEY_" + std::string(1, char('A' + i)), 65 + i);
-        key("KEY_BACKSPACE", 259); key("KEY_TAB", 258); key("KEY_ENTER", 257);
-        key("KEY_NULL", 0); key("KEY_ESCAPE", 256); key("KEY_DELETE", 261); key("KEY_INSERT", 260);
-        key("KEY_RIGHT", 262); key("KEY_LEFT", 263); key("KEY_DOWN", 264); key("KEY_UP", 265);
-        key("KEY_PAGEUP", 266); key("KEY_PAGEDOWN", 267); key("KEY_HOME", 268); key("KEY_END", 269);
-        key("MOUSE_LEFT_BUTTON", 0); key("MOUSE_RIGHT_BUTTON", 1);
-        key("MOUSE_MIDDLE_BUTTON", 2); key("MOUSE_SIDE_BUTTON", 3); key("MOUSE_EXTRA_BUTTON", 4);
+        mod.add_constants({
+            {"KEY_SPACE", 32}, {"KEY_APOSTROPHE", 39}, {"KEY_COMMA", 44},
+            {"KEY_MINUS", 45}, {"KEY_PERIOD", 46}, {"KEY_SLASH", 47},
+            {"KEY_0", 48}, {"KEY_1", 49}, {"KEY_2", 50}, {"KEY_3", 51},
+            {"KEY_4", 52}, {"KEY_5", 53}, {"KEY_6", 54}, {"KEY_7", 55},
+            {"KEY_8", 56}, {"KEY_9", 57},
+            {"KEY_SEMICOLON", 59}, {"KEY_EQUAL", 61},
+            {"KEY_A", 65}, {"KEY_B", 66}, {"KEY_C", 67}, {"KEY_D", 68},
+            {"KEY_E", 69}, {"KEY_F", 70}, {"KEY_G", 71}, {"KEY_H", 72},
+            {"KEY_I", 73}, {"KEY_J", 74}, {"KEY_K", 75}, {"KEY_L", 76},
+            {"KEY_M", 77}, {"KEY_N", 78}, {"KEY_O", 79}, {"KEY_P", 80},
+            {"KEY_Q", 81}, {"KEY_R", 82}, {"KEY_S", 83}, {"KEY_T", 84},
+            {"KEY_U", 85}, {"KEY_V", 86}, {"KEY_W", 87}, {"KEY_X", 88},
+            {"KEY_Y", 89}, {"KEY_Z", 90},
+            {"KEY_BACKSPACE", 259}, {"KEY_TAB", 258}, {"KEY_ENTER", 257},
+            {"KEY_NULL", 0}, {"KEY_ESCAPE", 256}, {"KEY_DELETE", 261}, {"KEY_INSERT", 260},
+            {"KEY_RIGHT", 262}, {"KEY_LEFT", 263}, {"KEY_DOWN", 264}, {"KEY_UP", 265},
+            {"KEY_PAGEUP", 266}, {"KEY_PAGEDOWN", 267}, {"KEY_HOME", 268}, {"KEY_END", 269},
+            {"MOUSE_LEFT_BUTTON", 0}, {"MOUSE_RIGHT_BUTTON", 1},
+            {"MOUSE_MIDDLE_BUTTON", 2}, {"MOUSE_SIDE_BUTTON", 3}, {"MOUSE_EXTRA_BUTTON", 4},
 
-        key("FLAG_VSYNC_HINT", 0x40); key("FLAG_FULLSCREEN_MODE", 2);
-        key("FLAG_WINDOW_RESIZABLE", 4); key("FLAG_WINDOW_UNDECORATED", 8);
-        key("FLAG_WINDOW_TRANSPARENT", 16); key("FLAG_MSAA_4X_HINT", 32);
-        key("FLAG_WINDOW_HIGHDPI", 0x2000); key("FLAG_WINDOW_MAXIMIZED", 0x400);
-        key("FLAG_WINDOW_HIDDEN", 0x80); key("FLAG_WINDOW_MINIMIZED", 0x200);
-        key("FLAG_WINDOW_UNFOCUSED", 0x800); key("FLAG_WINDOW_TOPMOST", 0x1000);
-        key("FLAG_WINDOW_ALWAYS_RUN", 0x100); key("FLAG_WINDOW_MOUSE_PASSTHROUGH", 0x4000);
-        key("FLAG_BORDERLESS_WINDOWED_MODE", 0x8000); key("FLAG_INTERLACED_HINT", 0x10000);
+            {"FLAG_VSYNC_HINT", 0x40}, {"FLAG_FULLSCREEN_MODE", 2},
+            {"FLAG_WINDOW_RESIZABLE", 4}, {"FLAG_WINDOW_UNDECORATED", 8},
+            {"FLAG_WINDOW_TRANSPARENT", 16}, {"FLAG_MSAA_4X_HINT", 32},
+            {"FLAG_WINDOW_HIGHDPI", 0x2000}, {"FLAG_WINDOW_MAXIMIZED", 0x400},
+            {"FLAG_WINDOW_HIDDEN", 0x80}, {"FLAG_WINDOW_MINIMIZED", 0x200},
+            {"FLAG_WINDOW_UNFOCUSED", 0x800}, {"FLAG_WINDOW_TOPMOST", 0x1000},
+            {"FLAG_WINDOW_ALWAYS_RUN", 0x100}, {"FLAG_WINDOW_MOUSE_PASSTHROUGH", 0x4000},
+            {"FLAG_BORDERLESS_WINDOWED_MODE", 0x8000}, {"FLAG_INTERLACED_HINT", 0x10000},
 
-        // Additional key codes
-        key("KEY_LEFT_BRACKET", 91); key("KEY_BACKSLASH", 92); key("KEY_RIGHT_BRACKET", 93);
-        key("KEY_GRAVE", 96);
-        key("KEY_CAPS_LOCK", 280); key("KEY_SCROLL_LOCK", 281); key("KEY_NUM_LOCK", 282);
-        key("KEY_PRINT_SCREEN", 283); key("KEY_PAUSE", 284);
-        for (int i = 0; i < 12; ++i) key("KEY_F" + std::to_string(i + 1), 290 + i);
-        key("KEY_LEFT_SHIFT", 340); key("KEY_LEFT_CONTROL", 341); key("KEY_LEFT_ALT", 342); key("KEY_LEFT_SUPER", 343);
-        key("KEY_RIGHT_SHIFT", 344); key("KEY_RIGHT_CONTROL", 345); key("KEY_RIGHT_ALT", 346); key("KEY_RIGHT_SUPER", 347);
-        key("KEY_KB_MENU", 348);
-        for (int i = 0; i < 10; ++i) key("KEY_KP_" + std::to_string(i), 320 + i);
-        key("KEY_KP_DECIMAL", 330); key("KEY_KP_DIVIDE", 331); key("KEY_KP_MULTIPLY", 332);
-        key("KEY_KP_SUBTRACT", 333); key("KEY_KP_ADD", 334); key("KEY_KP_ENTER", 335); key("KEY_KP_EQUAL", 336);
-        key("KEY_BACK", 4); key("KEY_MENU", 5); key("KEY_VOLUME_UP", 24); key("KEY_VOLUME_DOWN", 25);
+            {"KEY_LEFT_BRACKET", 91}, {"KEY_BACKSLASH", 92}, {"KEY_RIGHT_BRACKET", 93},
+            {"KEY_GRAVE", 96},
+            {"KEY_CAPS_LOCK", 280}, {"KEY_SCROLL_LOCK", 281}, {"KEY_NUM_LOCK", 282},
+            {"KEY_PRINT_SCREEN", 283}, {"KEY_PAUSE", 284},
+            {"KEY_F1", 290}, {"KEY_F2", 291}, {"KEY_F3", 292}, {"KEY_F4", 293},
+            {"KEY_F5", 294}, {"KEY_F6", 295}, {"KEY_F7", 296}, {"KEY_F8", 297},
+            {"KEY_F9", 298}, {"KEY_F10", 299}, {"KEY_F11", 300}, {"KEY_F12", 301},
+            {"KEY_LEFT_SHIFT", 340}, {"KEY_LEFT_CONTROL", 341}, {"KEY_LEFT_ALT", 342}, {"KEY_LEFT_SUPER", 343},
+            {"KEY_RIGHT_SHIFT", 344}, {"KEY_RIGHT_CONTROL", 345}, {"KEY_RIGHT_ALT", 346}, {"KEY_RIGHT_SUPER", 347},
+            {"KEY_KB_MENU", 348},
+            {"KEY_KP_0", 320}, {"KEY_KP_1", 321}, {"KEY_KP_2", 322}, {"KEY_KP_3", 323},
+            {"KEY_KP_4", 324}, {"KEY_KP_5", 325}, {"KEY_KP_6", 326}, {"KEY_KP_7", 327},
+            {"KEY_KP_8", 328}, {"KEY_KP_9", 329},
+            {"KEY_KP_DECIMAL", 330}, {"KEY_KP_DIVIDE", 331}, {"KEY_KP_MULTIPLY", 332},
+            {"KEY_KP_SUBTRACT", 333}, {"KEY_KP_ADD", 334}, {"KEY_KP_ENTER", 335}, {"KEY_KP_EQUAL", 336},
+            {"KEY_BACK", 4}, {"KEY_MENU", 5}, {"KEY_VOLUME_UP", 24}, {"KEY_VOLUME_DOWN", 25},
 
-        // Extra mouse buttons
-        key("MOUSE_BUTTON_FORWARD", 5); key("MOUSE_BUTTON_BACK", 6);
+            {"MOUSE_BUTTON_FORWARD", 5}, {"MOUSE_BUTTON_BACK", 6},
 
-        // Mouse cursors
-        key("MOUSE_CURSOR_DEFAULT", 0); key("MOUSE_CURSOR_ARROW", 1);
-        key("MOUSE_CURSOR_IBEAM", 2); key("MOUSE_CURSOR_CROSSHAIR", 3);
-        key("MOUSE_CURSOR_POINTING_HAND", 4); key("MOUSE_CURSOR_RESIZE_EW", 5);
-        key("MOUSE_CURSOR_RESIZE_NS", 6); key("MOUSE_CURSOR_RESIZE_NWSE", 7);
-        key("MOUSE_CURSOR_RESIZE_NESW", 8); key("MOUSE_CURSOR_RESIZE_ALL", 9);
-        key("MOUSE_CURSOR_NOT_ALLOWED", 10);
+            {"MOUSE_CURSOR_DEFAULT", 0}, {"MOUSE_CURSOR_ARROW", 1},
+            {"MOUSE_CURSOR_IBEAM", 2}, {"MOUSE_CURSOR_CROSSHAIR", 3},
+            {"MOUSE_CURSOR_POINTING_HAND", 4}, {"MOUSE_CURSOR_RESIZE_EW", 5},
+            {"MOUSE_CURSOR_RESIZE_NS", 6}, {"MOUSE_CURSOR_RESIZE_NWSE", 7},
+            {"MOUSE_CURSOR_RESIZE_NESW", 8}, {"MOUSE_CURSOR_RESIZE_ALL", 9},
+            {"MOUSE_CURSOR_NOT_ALLOWED", 10},
 
-        // Camera modes and projection
-        key("CAMERA_CUSTOM", 0); key("CAMERA_FREE", 1); key("CAMERA_ORBITAL", 2);
-        key("CAMERA_FIRST_PERSON", 3); key("CAMERA_THIRD_PERSON", 4);
-        key("CAMERA_PERSPECTIVE", 0); key("CAMERA_ORTHOGRAPHIC", 1);
+            {"CAMERA_CUSTOM", 0}, {"CAMERA_FREE", 1}, {"CAMERA_ORBITAL", 2},
+            {"CAMERA_FIRST_PERSON", 3}, {"CAMERA_THIRD_PERSON", 4},
+            {"CAMERA_PERSPECTIVE", 0}, {"CAMERA_ORTHOGRAPHIC", 1},
 
-        // Shader uniform types
-        key("SHADER_UNIFORM_FLOAT", 0); key("SHADER_UNIFORM_VEC2", 1);
-        key("SHADER_UNIFORM_VEC3", 2); key("SHADER_UNIFORM_VEC4", 3);
-        key("SHADER_UNIFORM_INT", 4); key("SHADER_UNIFORM_IVEC2", 5);
-        key("SHADER_UNIFORM_IVEC3", 6); key("SHADER_UNIFORM_IVEC4", 7);
-        key("SHADER_UNIFORM_SAMPLER2D", 8);
+            {"SHADER_UNIFORM_FLOAT", 0}, {"SHADER_UNIFORM_VEC2", 1},
+            {"SHADER_UNIFORM_VEC3", 2}, {"SHADER_UNIFORM_VEC4", 3},
+            {"SHADER_UNIFORM_INT", 4}, {"SHADER_UNIFORM_IVEC2", 5},
+            {"SHADER_UNIFORM_IVEC3", 6}, {"SHADER_UNIFORM_IVEC4", 7},
+            {"SHADER_UNIFORM_SAMPLER2D", 8},
 
-        // Texture filter/wrap modes
-        key("TEXTURE_FILTER_POINT", 0); key("TEXTURE_FILTER_BILINEAR", 1);
-        key("TEXTURE_FILTER_TRILINEAR", 2); key("TEXTURE_FILTER_ANISOTROPIC_4X", 3);
-        key("TEXTURE_FILTER_ANISOTROPIC_8X", 4); key("TEXTURE_FILTER_ANISOTROPIC_16X", 5);
-        key("TEXTURE_WRAP_REPEAT", 0); key("TEXTURE_WRAP_CLAMP", 1);
-        key("TEXTURE_WRAP_MIRROR_REPEAT", 2); key("TEXTURE_WRAP_MIRROR_CLAMP", 3);
+            {"TEXTURE_FILTER_POINT", 0}, {"TEXTURE_FILTER_BILINEAR", 1},
+            {"TEXTURE_FILTER_TRILINEAR", 2}, {"TEXTURE_FILTER_ANISOTROPIC_4X", 3},
+            {"TEXTURE_FILTER_ANISOTROPIC_8X", 4}, {"TEXTURE_FILTER_ANISOTROPIC_16X", 5},
+            {"TEXTURE_WRAP_REPEAT", 0}, {"TEXTURE_WRAP_CLAMP", 1},
+            {"TEXTURE_WRAP_MIRROR_REPEAT", 2}, {"TEXTURE_WRAP_MIRROR_CLAMP", 3},
 
-        // Blend modes
-        key("BLEND_ALPHA", 0); key("BLEND_ADDITIVE", 1); key("BLEND_MULTIPLIED", 2);
-        key("BLEND_ADD_COLORS", 3); key("BLEND_SUBTRACT_COLORS", 4);
-        key("BLEND_ALPHA_PREMULTIPLY", 5); key("BLEND_CUSTOM", 6); key("BLEND_CUSTOM_SEPARATE", 7);
+            {"BLEND_ALPHA", 0}, {"BLEND_ADDITIVE", 1}, {"BLEND_MULTIPLIED", 2},
+            {"BLEND_ADD_COLORS", 3}, {"BLEND_SUBTRACT_COLORS", 4},
+            {"BLEND_ALPHA_PREMULTIPLY", 5}, {"BLEND_CUSTOM", 6}, {"BLEND_CUSTOM_SEPARATE", 7},
+        });
     }
 
 }

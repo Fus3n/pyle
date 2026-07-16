@@ -783,6 +783,8 @@ namespace pyle {
     public:
         NativeModule(VM& vm, const std::string& name) : vm(vm), name(name) {}
 
+        VM& get_vm() { return vm; }
+
         NativeModule& raw_function(const std::string& func_name, NativeFn raw_fn) {
             HeapIdx fn_idx = vm.alloc(Object(raw_fn));
             Value key(Value::Tag::StringRef, vm.intern_string(func_name));
@@ -794,6 +796,26 @@ namespace pyle {
         NativeModule& constant(const std::string& name, T value) {
             Value key(Value::Tag::StringRef, vm.intern_string(name));
             exports[key] = to_value(vm, value);
+            return *this;
+        }
+
+        NativeModule& int_constant(const std::string& cname, int64_t value) {
+            Value key(Value::Tag::StringRef, vm.intern_string(cname));
+            exports[key] = Value(value);
+            return *this;
+        }
+
+        NativeModule& add_constants(std::initializer_list<std::pair<const char*, int64_t>> pairs) {
+            for (auto& [cname, value] : pairs) {
+                int_constant(cname, value);
+            }
+            return *this;
+        }
+
+        template <typename T>
+        NativeModule& native_object(const std::string& oname, T* ptr) {
+            Value key(Value::Tag::StringRef, vm.intern_string(oname));
+            exports[key] = to_value_owned<T>(vm, ptr);
             return *this;
         }
 
@@ -812,6 +834,11 @@ namespace pyle {
             Value key(Value::Tag::StringRef, vm.intern_string(BindRegistry<T>::class_name));
             exports[key] = ctor;
             return *this;
+        }
+
+        template <typename T>
+        NativeModule& class_type(ClassBinder<T>& binder) {
+            return class_binder<T>(binder);
         }
 
         Value build() {
