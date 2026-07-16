@@ -225,6 +225,7 @@ namespace pyle {
         std::string name;
         int arity = 0;
         Chunk chunk;
+        std::string source_file;
 
         struct UpvalueInfo {
             uint8_t index;

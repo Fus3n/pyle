@@ -55,6 +55,7 @@ namespace pyle {
         void set_gc_enabled(bool enabled) { gc_enabled = enabled; }
         bool is_gc_enabled() const { return gc_enabled; }
         bool is_panicked() const { return panicked; }
+        void set_panicked(bool v = true) { panicked = v; }
 
         Object& get_heap_object(const HeapIdx idx) { return heap[idx]; }
 
@@ -111,6 +112,7 @@ namespace pyle {
 
         ankerl::unordered_dense::map<HeapIdx, ModuleFactory> module_registry;
         ankerl::unordered_dense::map<HeapIdx, Value> loaded_modules;
+        ankerl::unordered_dense::map<std::string, std::string> source_cache;
 
         size_t builtin_count = 0;
         bool builtins_finalized = false;

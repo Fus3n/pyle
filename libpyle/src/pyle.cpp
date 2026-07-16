@@ -46,6 +46,7 @@ namespace pyle {
 
         vm.source_code = source;
         vm.script_name = script_name;
+        vm.source_cache[std::string(script_name)] = std::string(source);
 
         vm.execute(chunk);
         vm.set_gc_enabled(saved_gc);

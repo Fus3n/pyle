@@ -147,6 +147,7 @@ namespace pyle {
         Function fn;
         fn.name = name;
         fn.arity = params.size();
+        fn.source_file = reporter.get_script_name();
         
         Chunk* enclosing_chunk = current_chunk;
         int enclosing_scope = current_state->scope_depth;

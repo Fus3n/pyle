@@ -244,6 +244,13 @@ namespace pyle {
         ErrorReporter reporter(source, resolved_path);
         Lexer lexer(source, reporter);
         auto tokens = lexer.tokenize();
+        
+        std::string_view saved_source_code = vm.source_code;
+        std::string_view saved_script_name = vm.script_name;
+        vm.source_code = source;
+        vm.script_name = resolved_path;
+        vm.source_cache[resolved_path] = source;
+        
         bool success = false;
         
         if (!reporter.has_errors()) {
@@ -251,20 +258,17 @@ namespace pyle {
             auto ast = parser.parse();
 
             if (!reporter.has_errors()) {
-                std::string_view saved_source_code = vm.source_code;
-                std::string_view saved_script_name = vm.script_name;
-                vm.source_code = source;
-                vm.script_name = resolved_path;
                 Compiler compiler(vm, reporter);
                 Chunk chunk = compiler.compile(ast);
                 if (!reporter.has_errors()) {
                     vm.execute(chunk);
-                    vm.script_name = saved_script_name;
-                    vm.source_code = saved_source_code;
                     success = !vm.is_panicked();
                 }
             }
         }
+        
+        vm.script_name = saved_script_name;
+        vm.source_code = saved_source_code;
         
         if (!success) {
             vm.globals_idx = vm.saved_globals_stack.back();
@@ -275,7 +279,9 @@ namespace pyle {
             vm.global_slot_map = std::move(vm.saved_slot_maps_stack.back());
             vm.saved_slot_maps_stack.pop_back();
             reporter.print_errors();
-            vm.runtime_error(RuntimeError::Runtime, fmt::format("Failed to compile module '{}'.", mod_name));
+            if (!vm.is_panicked()) {
+                vm.set_panicked(true);
+            }
             return Value();
         }
         

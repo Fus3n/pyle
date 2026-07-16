@@ -604,10 +604,20 @@ namespace pyle {
             line = func.chunk.lines[frame.ip - 1];
         }
         
-        fmt::print(stderr, "\033[1;31m{}:\033[0m \033[1m{}\033[0m\n", err_to_string(type), msg);
-        fmt::print(stderr, "   --> {}:{}: (in function '{}')\n", script_name, line + 1, func.name);
+        std::string_view display_name = script_name;
+        std::string_view display_source = source_code;
+        if (!func.source_file.empty()) {
+            display_name = func.source_file;
+            auto it = source_cache.find(func.source_file);
+            if (it != source_cache.end()) {
+                display_source = it->second;
+            }
+        }
         
-        if (!source_code.empty()) {
+        fmt::print(stderr, "\033[1;31m{}:\033[0m \033[1m{}\033[0m\n", err_to_string(type), msg);
+        fmt::print(stderr, "   --> {}:{}: (in function '{}')\n", display_name, line + 1, func.name);
+        
+        if (!display_source.empty()) {
             auto get_line_of_code = [](std::string_view src, size_t target_line) -> std::string_view {
                 size_t current_line = 0;
                 size_t start = 0;
@@ -626,7 +636,7 @@ namespace pyle {
                 return "";
             };
             
-            std::string_view line_text = get_line_of_code(source_code, line);
+            std::string_view line_text = get_line_of_code(display_source, line);
             if (!line_text.empty()) {
                 fmt::print(stderr, " {:4d} | {}\n", line + 1, line_text);
                 
@@ -766,7 +776,6 @@ namespace pyle {
     void VM::execute(Chunk in_chunk) {
         size_t saved_sp_offset = sp - stack;
         size_t saved_frame_count = frame_count;
-        bool saved_panicked = panicked;
         std::string_view saved_source_code = source_code;
         std::string_view saved_script_name = script_name;
 
@@ -774,7 +783,6 @@ namespace pyle {
             VM& vm;
             size_t saved_sp_offset;
             size_t saved_frame_count;
-            bool saved_panicked;
             std::string_view saved_source_code;
             std::string_view saved_script_name;
 
@@ -792,7 +800,6 @@ namespace pyle {
                 // Restore stack offset and execution context
                 vm.sp = vm.stack + saved_sp_offset;
                 vm.frame_count = saved_frame_count;
-                vm.panicked = saved_panicked;
                 vm.source_code = saved_source_code;
                 vm.script_name = saved_script_name;
             }
@@ -801,7 +808,6 @@ namespace pyle {
             *this,
             saved_sp_offset,
             saved_frame_count,
-            saved_panicked,
             saved_source_code,
             saved_script_name
         };

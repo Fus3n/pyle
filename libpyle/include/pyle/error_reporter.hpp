@@ -38,6 +38,9 @@ namespace pyle {
         ErrorReporter(std::string_view source = "", std::string_view script_name = "main.pyl")
             : source(source), script_name(script_name) {}
 
+        std::string_view get_script_name() const { return script_name; }
+        std::string_view get_source() const { return source; }
+
         void report(const Span loc, ErrorType type, const std::string& message, size_t length = 1);
         bool has_errors() const;
         void print_errors() const;
