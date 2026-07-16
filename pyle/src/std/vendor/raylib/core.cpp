@@ -127,6 +127,16 @@ namespace raylib_binding {
             HeapIdx idx = vm.alloc(Object(std::move(buffer)));
             return Value(Value::Tag::BytesRef, idx);
         });
+        mod.raw_function("SetTraceLogLevel", +[](VM& vm, ArgView args) -> Value {
+            if (args.size() != 1) { vm.runtime_error(RuntimeError::ArgumentError, "SetTraceLogLevel expects 1 int (logLevel)."); return Value(); }
+            SetTraceLogLevel(from_value<int64_t>(vm, args[0]));
+            return Value();
+        });
+        mod.raw_function("TraceLog", +[](VM& vm, ArgView args) -> Value {
+            if (args.size() != 2) { vm.runtime_error(RuntimeError::ArgumentError, "TraceLog expects (logLevel, message)."); return Value(); }
+            TraceLog(from_value<int64_t>(vm, args[0]), "%s", from_value<std::string>(vm, args[1]).c_str());
+            return Value();
+        });
         mod.raw_function("SaveFileData", +[](VM& vm, ArgView args) -> Value {
             if (args.size() != 2) { vm.runtime_error(RuntimeError::ArgumentError, "SaveFileData expects (fileName, data)."); return Value(); }
             const std::string& path = from_value<std::string>(vm, args[0]);
