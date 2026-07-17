@@ -38,7 +38,7 @@ namespace pyle {
                 stmts.push_back(statement());
             }
         } catch (ParserError& error) {
-            return {};
+            // return {};
         }
         return stmts;
     }

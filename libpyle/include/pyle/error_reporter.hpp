@@ -45,6 +45,7 @@ namespace pyle {
         bool has_errors() const;
         void print_errors() const;
         void clear();
+        const std::vector<ErrorRecord>& get_errors() const { return errors; }
     };
 
     enum class RuntimeError {

@@ -1,10 +1,16 @@
 {
   "name": "pyle",
-  "version": "1.0.0",
+  "version": "1.2.0",
   "publisher": "Fus3n",
+  "description": "Pyle language support: syntax highlighting, LSP-powered go-to-definition, hover signatures, completions",
   "engines": {
-    "vscode": "^1.0.0"
+    "vscode": "^1.85.0"
   },
+  "activationEvents": [
+    "onLanguage:pyle",
+    "onStartupFinished"
+  ],
+  "main": "./src/extension.js",
   "contributes": {
     "languages": [
       {
@@ -26,6 +32,19 @@
         "scopeName": "source.pyle",
         "path": "./syntaxes/pyle.tmLanguage.json"
       }
-    ]
+    ],
+    "commands": [
+      {
+        "command": "pyle.restartLSP",
+        "title": "Pyle: Restart LSP Server"
+      }
+    ],
+    "configuration": {
+      "title": "Pyle",
+      "properties": {}
+    }
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1"
   }
 }

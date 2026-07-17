@@ -18,6 +18,7 @@ end
 add_requires("fmt 12.2.0", {configs = {header_only = true}})
 add_requires("unordered_dense 4.8.1", "argparse 3.2", "simdjson 4.2.4")
 add_requires("raylib 5.5")
+add_requires("nlohmann_json 3.11.3")
 add_cxxflags("/utf-8", {tools = "cl"})
 add_rules("plugin.compile_commands.autoupdate")
 
@@ -77,6 +78,18 @@ target("example_class_binding")
     add_files("examples_cpp/03_class_binding.cpp")
     add_deps("libpyle")
     
+target("pyle-lsp")
+    set_kind("binary")
+    add_files("pyle-lsp/src/main.cpp")
+    add_packages("nlohmann_json")
+    add_deps("libpyle")
+    set_rundir("$(projectdir)")
+    set_runtimes("MT")
+    
+    if is_plat("mingw", "msys") then
+        add_ldflags("-static", {force = true})
+    end
+
 target("example_async_binding")
     set_kind("binary")
     set_languages("c++17")
