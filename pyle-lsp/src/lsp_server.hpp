@@ -125,7 +125,6 @@ private:
             }
         }
 
-        // 1. Completion with member access (dotted notation)
         if (!obj_name.empty()) {
             if (obj_name == "self") {
                 if (!current_struct_name.empty()) {
@@ -133,7 +132,6 @@ private:
                     for (const auto& f : ff) {
                         if (prefix.empty() || f.name.find(prefix) == 0) {
                             int k = (f.is_method) ? 2 : 5;
-                            // Enforce Priority: Non-underscore fields first (0_), private next (1_)
                             std::string sort_prio = (f.name.front() == '_') ? "1_" : "0_";
                             
                             items.push_back(pyle::lsp::utils::make_obj({
@@ -145,13 +143,11 @@ private:
                 }
             } 
             else if (doc->imports.find(obj_name) != doc->imports.end()) {
-                // Autocomplete module symbols
                 std::string resolved = docs.resolve_import(path, doc->imports.at(obj_name), doc->import_paths);
                 if (!resolved.empty()) {
                     Document* mod_doc = docs.get(resolved);
                     if (mod_doc) {
                         for (const auto& sym : mod_doc->symbols) {
-                            // Critical Fix: Skip variables belonging to inner structures (fields/methods) or local scopes
                             if (!sym.parent_struct.empty() || sym.is_local) continue; 
                             if (!sym.name.empty() && sym.name.front() == '_') continue; 
                             
@@ -167,7 +163,6 @@ private:
                 }
             } 
             else {
-                // Member chain evaluation (Handles simple vars: 'vn.', complex chains: 'self._ui.', return calls: 'vn.get_theme().')
                 std::string struct_name = docs.resolve_type_of_chain(path, obj_name, current_func_name, current_struct_name);
                 
                 if (!struct_name.empty()) {

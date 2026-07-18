@@ -72,8 +72,6 @@ public:
         
         return line.substr(start, end - start);
     }
-
-    // Resolves an import accurately using relative heuristics and upward scanning.
     std::string resolve_import(const std::string& current_file, const std::string& import_path, const std::vector<std::string>& extra_paths) {
         std::string cache_key = current_file + "|" + import_path;
         for (const auto& ep : extra_paths) cache_key += "|" + ep;
@@ -84,12 +82,10 @@ public:
         fs::path base_dir = fs::path(current_file).parent_path();
         std::vector<std::string> candidates;
         
-        // 1. Explicit import relative to the current file's folder
         candidates.push_back((base_dir / (import_path + ".pyl")).string());
         candidates.push_back((base_dir / import_path).string());
         candidates.push_back((base_dir / (import_path + ".pyle")).string());
 
-        // 2. Extra explicit include paths (like add_import_path("vm_verify"))
         for (const auto& ep : extra_paths) {
             fs::path ep_path(ep);
             if (!ep_path.is_absolute()) {
@@ -99,7 +95,6 @@ public:
             candidates.push_back((ep_path / import_path).string());
         }
 
-        // 3. Heuristic: Automatically walk up the folder tree to resolve imports (e.g., vn/ui -> root/vn/ui.pyl)
         fs::path current_walk = base_dir;
         while (current_walk.has_parent_path() && current_walk != current_walk.parent_path()) {
             current_walk = current_walk.parent_path();
@@ -118,7 +113,6 @@ public:
         return resolved;
     }
 
-    // Lazily evaluate a type chain recursively (vn.get_theme(). -> returns 'VNTheme')
     std::string resolve_type_of_chain(const std::string& file, const std::string& chain, const std::string& current_func, const std::string& current_struct, int depth = 0) {
         if (depth > 5 || chain.empty()) return ""; 
 
@@ -146,7 +140,10 @@ public:
                     if (sym.is_local && sym.scope_func != current_func) continue;
                     if (!sym.type_name.empty()) {
                         if (sym.type_name.rfind("import()", 0) == 0) {
-                            current_type = ""; // Trigger fallback module check
+                            current_type = ""; 
+                        } else if (sym.type_name.size() > 2 && sym.type_name.substr(sym.type_name.size() - 2) == "()" && sym.type_name.find('.') == std::string::npos) {
+                            // Simple constructor call like "Enin()" — strip parens
+                            current_type = sym.type_name.substr(0, sym.type_name.size() - 2);
                         } else if (sym.type_name.find('.') != std::string::npos || sym.type_name.find('(') != std::string::npos) {
                             current_type = resolve_type_of_chain(file, sym.type_name, current_func, current_struct, depth + 1);
                         } else {
@@ -157,7 +154,6 @@ public:
                 }
             }
 
-            // Check if parts[0] is an imported module name (ex: 'engine')
             if (current_type.empty()) {
                 for (const auto& [var_name, mod_path] : d->imports) {
                     if (var_name == parts[0]) {
@@ -166,17 +162,22 @@ public:
                             if (!resolved.empty()) {
                                 Document* mod_doc = get(resolved);
                                 if (mod_doc) {
-                                    // Strip trailing call parenthesis to fetch structural types (e.g. Engine() -> Engine)
                                     std::string p1_clean = parts[1];
                                     if (p1_clean.size() > 2 && p1_clean.substr(p1_clean.size() - 2) == "()") {
                                         p1_clean = p1_clean.substr(0, p1_clean.size() - 2);
                                     }
                                     
                                     for (const auto& s : mod_doc->symbols) {
-                                        if (s.name == p1_clean && s.kind == SymbolKind::Struct) {
-                                            current_type = s.name;
-                                            start_idx = 2;
-                                            break;
+                                        if (s.name == p1_clean) {
+                                            if (s.kind == SymbolKind::Struct) {
+                                                current_type = s.name;
+                                                start_idx = 2;
+                                                break;
+                                            } else if ((s.is_method || s.kind == SymbolKind::Function) && !s.type_name.empty()) {
+                                                current_type = resolve_type_of_chain(resolved, s.type_name, "", s.parent_struct, depth + 1);
+                                                start_idx = 2;
+                                                break;
+                                            }
                                         }
                                     }
                                 }
@@ -194,7 +195,6 @@ public:
             }
         }
 
-        // Trace the nested properties down the chain
         for (size_t i = start_idx; i < parts.size(); ++i) {
             std::string member = parts[i];
             bool is_call = false;
@@ -203,12 +203,14 @@ public:
                 is_call = true;
             }
 
-            if (current_type.empty()) return "";
+            if (current_type.empty()) {
+                return "";
+            }
 
             std::string member_type_raw = "";
             std::string member_file = file;
 
-            auto find_member = [&](const Document& doc) -> bool {
+            auto find_member_doc = [&](const Document& doc) -> bool {
                 for (const auto& sym : doc.symbols) {
                     if (sym.parent_struct == current_type && sym.name == member) {
                         member_type_raw = sym.type_name;
@@ -219,23 +221,41 @@ public:
                 return false;
             };
 
-            if (!find_member(*d)) {
+            if (!find_member_doc(*d)) {
+                bool found_in_import = false;
                 for (const auto& [var_name, mod_path] : d->imports) {
                     std::string resolved = resolve_import(file, mod_path, d->import_paths);
                     if (!resolved.empty()) {
                         Document* mod_doc = get(resolved);
-                        if (mod_doc && find_member(*mod_doc)) break;
+                        if (mod_doc && find_member_doc(*mod_doc)) {
+                            found_in_import = true;
+                            break;
+                        }
                     }
+                }
+                if (!found_in_import) {
+                    return "";
                 }
             }
 
-            if (member_type_raw.empty()) return "";
+            if (member_type_raw.empty()) {
+                return "";
+            }
 
-            // Evaluate the raw member type expression relative to the file and struct where it is defined!
-            current_type = resolve_type_of_chain(member_file, member_type_raw, "", current_type, depth + 1);
+            if (member_type_raw.size() > 2 && member_type_raw.substr(member_type_raw.size() - 2) == "()" && member_type_raw.find('.') == std::string::npos) {
+                current_type = member_type_raw.substr(0, member_type_raw.size() - 2);
+            } else if (member_type_raw.find('.') == std::string::npos && member_type_raw.find('(') == std::string::npos) {
+                SymbolInfo* sym = sym_by_name(member_file, member_type_raw, Position{0, 0});
+                if (sym && !sym->type_name.empty()) {
+                    current_type = resolve_type_of_chain(member_file, sym->type_name, "", current_type, depth + 1);
+                } else {
+                    return "";
+                }
+            } else {
+                current_type = resolve_type_of_chain(member_file, member_type_raw, "", current_type, depth + 1);
+            }
         }
 
-        // Always return sanitized structural names
         std::string result = current_type;
         if (result.size() > 2 && result.substr(result.size() - 2) == "()") {
             result = result.substr(0, result.size() - 2);
@@ -303,6 +323,12 @@ public:
             if (resolved.empty()) continue;
             Document* mod_doc = get(resolved);
             if (mod_doc) search_doc(*mod_doc);
+            if (!out.empty()) return out;
+        }
+
+        for (const auto& [fp, doc] : docs_) {
+            if (&doc == d) continue;
+            search_doc(doc);
             if (!out.empty()) return out;
         }
         return out;

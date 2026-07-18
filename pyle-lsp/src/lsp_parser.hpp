@@ -68,7 +68,6 @@ public:
                 current_struct = active_structs.empty() ? "" : active_structs.back().name;
             }
 
-            // 1. Struct Definitions
             if (t.type == pyle::TokenType::STRUCT) {
                 std::string struct_name = get_ident(i + 1);
                 if (!struct_name.empty()) {
@@ -110,7 +109,6 @@ public:
                     active_structs.push_back({current_depth + 1, s_idx, struct_name});
                 }
             }
-            // 2. Methods and Global Functions
             else if (t.type == pyle::TokenType::FN) {
                 std::string func_name = get_ident(i + 1);
                 if (!func_name.empty()) {
@@ -158,12 +156,10 @@ public:
                     active_funcs.push_back({current_depth + 1, f_idx, func_name});
                 }
             }
-            // 3. Variable Declarations and Explicit Module Imports
             else if (t.type == pyle::TokenType::LET) {
                 std::string var_name = get_ident(i + 1);
                 if (!var_name.empty()) {
                     
-                    // Verify if it is an explicit import (let engine = import("vn/engine"))
                     bool is_import = false;
                     std::string import_val = "";
                     if (i + 5 < tokens.size() && 
@@ -194,7 +190,6 @@ public:
                         v_info.kind = SymbolKind::Variable;
                         v_info.detail = "let " + var_name;
 
-                        // Lazily extract clean structural types (Let engine = engine.Engine(...))
                         size_t init_start = i + 3;
                         std::string init_chain = "";
                         while (init_start < tokens.size() && 
@@ -217,7 +212,6 @@ public:
                     doc.symbols.push_back(v_info);
                 }
             }
-            // 4. Member Field Allocations: self._ui = ui.UIManager(...)
             else if (t.type == pyle::TokenType::IDENTIFIER && t.lexeme == "self" && !current_struct.empty()) {
                 std::string field_name = get_ident(i + 2);
                 if (!field_name.empty() && i + 3 < tokens.size() && tokens[i + 3].type == pyle::TokenType::EQUAL) {
@@ -264,7 +258,6 @@ public:
                     }
                 }
             }
-            // 5. Function Return Chains: return self._ui.theme
             else if (t.type == pyle::TokenType::RETURN && !active_funcs.empty()) {
                 size_t ret_start = i + 1;
                 std::string ret_chain = "";
