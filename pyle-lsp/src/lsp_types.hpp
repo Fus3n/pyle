@@ -38,6 +38,7 @@ struct SymbolInfo {
     Range range;
     Range selection_range;
     std::string type_name;
+    bool has_type_hint = false;
     bool is_method = false;
     bool is_local = false;
     std::string parent_struct = "";
@@ -51,6 +52,7 @@ struct Document {
     std::vector<SymbolInfo> symbols;
     std::map<std::string, std::string> imports;
     std::vector<std::string> import_paths;
+    bool type_decls_loaded = false;
 };
 
 inline const std::vector<std::pair<std::string, std::string>> LSP_KEYWORDS = {

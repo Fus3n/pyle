@@ -12,6 +12,8 @@ class LspServer {
     DocumentManager docs;
 
 public:
+    DocumentManager& document_manager() { return docs; }
+
     void run() {
         while (true) {
             std::string msg = JsonRpcTransport::read_message();
@@ -55,6 +57,10 @@ public:
 
 private:
     void handle_init(const json& req) {
+        if (req.contains("params") && req["params"].contains("rootUri") && !req["params"]["rootUri"].is_null()) {
+            docs.root_path = pyle::lsp::utils::file_uri_to_path(req["params"]["rootUri"].get<std::string>());
+        }
+
         json caps = pyle::lsp::utils::make_obj({
             {"textDocumentSync", pyle::lsp::utils::make_obj({{"openClose", true}, {"change", 1}})},
             {"completionProvider", pyle::lsp::utils::make_obj({{"triggerCharacters", json::array({".", ":"})} })},

@@ -20,8 +20,82 @@ class DocumentManager {
     std::map<std::string, std::string> import_cache_;
 
 public:
+    std::string root_path;
+    std::vector<std::string> default_import_paths = {"."};
     using DocMap = std::map<std::string, Document>;
     const DocMap& all() const { return docs_; }
+
+    std::string find_type_decl_file(const std::string& file_path) {
+        fs::path p(file_path);
+        std::string stem = p.stem().string();
+        fs::path parent = p.parent_path();
+
+        std::vector<fs::path> candidates;
+        candidates.push_back(parent / (stem + ".pyl.d"));
+        candidates.push_back(parent / "types" / (stem + ".pyl.d"));
+
+        for (const auto& dp : default_import_paths) {
+            fs::path dp_path(dp);
+            if (dp_path.is_absolute()) {
+                candidates.push_back(dp_path / (stem + ".pyl.d"));
+                candidates.push_back(dp_path / "types" / (stem + ".pyl.d"));
+            }
+        }
+
+        for (const auto& c : candidates) {
+            if (fs::exists(c)) {
+                return pyle::lsp::utils::normalize_path(c.string());
+            }
+        }
+        return "";
+    }
+
+    void load_type_declarations(Document& doc) {
+        if (doc.type_decls_loaded) return;
+
+        std::string type_file = find_type_decl_file(doc.file_path);
+        if (type_file.empty()) {
+            doc.type_decls_loaded = true;
+            return;
+        }
+
+        Document type_doc = docs_[type_file];
+        if (type_doc.file_path.empty()) {
+            std::string type_src = pyle::lsp::utils::read_file_contents(type_file);
+            if (type_src.empty()) {
+                doc.type_decls_loaded = true;
+                return;
+            }
+            type_doc.file_path = type_file;
+            type_doc.source = type_src;
+            type_doc.reporter = pyle::ErrorReporter(type_src, type_file);
+            FuzzyParser::parse(type_doc);
+            docs_[type_file] = type_doc;
+        }
+
+        for (const auto& s : type_doc.symbols) {
+            bool exists = false;
+            for (auto& existing : doc.symbols) {
+                if (existing.name == s.name && existing.parent_struct == s.parent_struct && existing.kind == s.kind) {
+                    existing = s;
+                    existing.has_type_hint = true;
+                    exists = true;
+                    break;
+                }
+            }
+            if (!exists) {
+                auto copy = s;
+                copy.has_type_hint = true;
+                doc.symbols.push_back(copy);
+            }
+        }
+
+        doc.type_decls_loaded = true;
+    }
+
+    bool has_suffix(const std::string& str, const std::string& suffix) const {
+        return str.size() >= suffix.size() && str.compare(str.size() - suffix.size(), suffix.size(), suffix) == 0;
+    }
 
     void open(const std::string& file_path, const std::string& source) {
         Document doc;
@@ -29,6 +103,11 @@ public:
         doc.source = source;
         doc.reporter = pyle::ErrorReporter(source, file_path);
         FuzzyParser::parse(doc);
+
+        if (has_suffix(file_path, ".pyled")) {
+            load_type_declarations(doc);
+        }
+
         docs_[file_path] = std::move(doc);
         send_diagnostics(docs_[file_path]);
     }
@@ -52,6 +131,18 @@ public:
     Document* get(const std::string& file_path) {
         auto it = docs_.find(file_path);
         if (it != docs_.end()) return &it->second;
+
+        if (has_suffix(file_path, ".pyled")) {
+            Document doc;
+            doc.file_path = file_path;
+            doc.source = "";
+            doc.reporter = pyle::ErrorReporter("", file_path);
+            load_type_declarations(doc);
+            if (doc.symbols.empty()) return nullptr;
+            docs_[file_path] = std::move(doc);
+            return &docs_[file_path];
+        }
+
         std::string src = pyle::lsp::utils::read_file_contents(file_path);
         if (src.empty()) return nullptr;
         open(file_path, src);
@@ -75,31 +166,57 @@ public:
     std::string resolve_import(const std::string& current_file, const std::string& import_path, const std::vector<std::string>& extra_paths) {
         std::string cache_key = current_file + "|" + import_path;
         for (const auto& ep : extra_paths) cache_key += "|" + ep;
+        for (const auto& dp : default_import_paths) cache_key += "|" + dp;
+        cache_key += "|" + root_path;
         
         auto it = import_cache_.find(cache_key);
         if (it != import_cache_.end()) return it->second;
 
-        fs::path base_dir = fs::path(current_file).parent_path();
+        auto try_extensions = [&](const fs::path& dir) -> std::vector<std::string> {
+            static const std::vector<std::string> exts = {".pyl", ".pyle", ".pyled", ".pyl.d"};
+            std::vector<std::string> result;
+            for (const auto& ext : exts) {
+                result.push_back((dir / (import_path + ext)).string());
+            }
+            result.push_back((dir / import_path).string());
+            return result;
+        };
+
         std::vector<std::string> candidates;
-        
-        candidates.push_back((base_dir / (import_path + ".pyl")).string());
-        candidates.push_back((base_dir / import_path).string());
-        candidates.push_back((base_dir / (import_path + ".pyle")).string());
+        fs::path base_dir = fs::path(current_file).parent_path();
+
+        auto add = [&](const fs::path& dir) {
+            auto c = try_extensions(dir);
+            candidates.insert(candidates.end(), c.begin(), c.end());
+        };
+
+        add(base_dir);
 
         for (const auto& ep : extra_paths) {
             fs::path ep_path(ep);
             if (!ep_path.is_absolute()) {
                 ep_path = base_dir / ep_path;
             }
-            candidates.push_back((ep_path / (import_path + ".pyl")).string());
-            candidates.push_back((ep_path / import_path).string());
+            add(ep_path);
+        }
+
+        for (const auto& dp : default_import_paths) {
+            fs::path dp_path(dp);
+            if (!dp_path.is_absolute()) dp_path = base_dir / dp_path;
+            add(dp_path);
+        }
+
+        if (!root_path.empty()) {
+            fs::path rp(root_path);
+            for (const auto& dp : default_import_paths) {
+                add(rp / dp);
+            }
         }
 
         fs::path current_walk = base_dir;
         while (current_walk.has_parent_path() && current_walk != current_walk.parent_path()) {
             current_walk = current_walk.parent_path();
-            candidates.push_back((current_walk / (import_path + ".pyl")).string());
-            candidates.push_back((current_walk / import_path).string());
+            add(current_walk);
         }
         
         std::string resolved = "";
@@ -246,8 +363,14 @@ public:
                 current_type = member_type_raw.substr(0, member_type_raw.size() - 2);
             } else if (member_type_raw.find('.') == std::string::npos && member_type_raw.find('(') == std::string::npos) {
                 SymbolInfo* sym = sym_by_name(member_file, member_type_raw, Position{0, 0});
-                if (sym && !sym->type_name.empty()) {
-                    current_type = resolve_type_of_chain(member_file, sym->type_name, "", current_type, depth + 1);
+                if (sym) {
+                    if (sym->kind == SymbolKind::Struct) {
+                        current_type = sym->name;
+                    } else if (!sym->type_name.empty()) {
+                        current_type = resolve_type_of_chain(member_file, sym->type_name, "", current_type, depth + 1);
+                    } else {
+                        return "";
+                    }
                 } else {
                     return "";
                 }

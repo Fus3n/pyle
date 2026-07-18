@@ -17,7 +17,7 @@
       ]
     },
     {
-      "comment": "Function declarations with parameter highlighting: fn my_func(a, b)",
+      "comment": "Function declarations with parameter highlighting: fn my_func(a, b) or fn my_func(x: Type)",
       "begin": "\\b(fn)\\s+([a-zA-Z_][a-zA-Z0-9_]*)\\s*\\(",
       "beginCaptures": {
         "1": {
@@ -34,6 +34,13 @@
         }
       },
       "patterns": [
+        {
+          "match": "(:)\\s*([a-zA-Z_][a-zA-Z0-9_]*)",
+          "captures": {
+            "1": { "name": "punctuation.separator.type.pyle" },
+            "2": { "name": "storage.type.annotation.pyle" }
+          }
+        },
         {
           "name": "variable.parameter.function.pyle",
           "match": "\\b[a-zA-Z_][a-zA-Z0-9_]*\\b"
@@ -57,6 +64,14 @@
       }
     },
     {
+      "comment": "Type annotations: var: TypeName or self.field: TypeName",
+      "match": "(:)\\s*([a-zA-Z_][a-zA-Z0-9_]*)",
+      "captures": {
+        "1": { "name": "punctuation.separator.type.pyle" },
+        "2": { "name": "storage.type.annotation.pyle" }
+      }
+    },
+    {
       "name": "storage.type.pyle",
       "match": "\\b(let)\\b"
     },
@@ -74,7 +89,11 @@
     },
     {
       "name": "support.function.builtin.pyle",
-      "match": "\\b(print|printf|format|import|add_import_path|typeof|Coro)\\b"
+      "match": "\\b(print|printf|format|import|add_import_path|typeof|Coro|Bytes|Future|File)\\b"
+    },
+    {
+      "name": "support.type.primitive.pyle",
+      "match": "\\b(int|float|bool|string|array|map|bytes|function|struct|range|iterator|coro|native_function|native_object)\\b"
     },
     {
       "comment": "Method/Property access: self.health (highlights 'health')",

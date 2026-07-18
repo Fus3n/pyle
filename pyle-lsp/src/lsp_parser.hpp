@@ -75,7 +75,7 @@ public:
                     size_t search = i + 2;
                     std::string params_detail = "";
                     
-                    while (search < tokens.size() && tokens[search].type != pyle::TokenType::LEFT_BRACE) {
+                    while (search < tokens.size() && tokens[search].type != pyle::TokenType::LEFT_BRACE && tokens[search].type != pyle::TokenType::RIGHT_PAREN) {
                         if (tokens[search].type == pyle::TokenType::IDENTIFIER) {
                             std::string field_name = std::string(tokens[search].lexeme);
                             SymbolInfo field_info;
@@ -87,6 +87,16 @@ public:
                                                 {tokens[search].selection.line, tokens[search].selection.column + field_name.size()}};
                             field_info.selection_range = field_info.range;
                             field_info.parent_struct = current_struct;
+                            
+                            if (search + 1 < tokens.size() && tokens[search + 1].type == pyle::TokenType::COLON) {
+                                std::string hint = get_ident(search + 2);
+                                if (!hint.empty()) {
+                                    field_info.type_name = hint;
+                                    field_info.has_type_hint = true;
+                                    search += 2;
+                                }
+                            }
+                            
                             doc.symbols.push_back(field_info);
                             
                             if (!params_detail.empty()) params_detail += ", ";
@@ -131,6 +141,16 @@ public:
                                 p_info.selection_range = p_info.range;
                                 p_info.is_local = true;
                                 p_info.scope_func = current_func;
+                                
+                                if (search + 1 < tokens.size() && tokens[search + 1].type == pyle::TokenType::COLON) {
+                                    std::string hint = get_ident(search + 2);
+                                    if (!hint.empty()) {
+                                        p_info.type_name = hint;
+                                        p_info.has_type_hint = true;
+                                        search += 2;
+                                    }
+                                }
+                                
                                 doc.symbols.push_back(p_info);
                                 
                                 if (!params_detail.empty()) params_detail += ", ";
@@ -159,17 +179,23 @@ public:
             else if (t.type == pyle::TokenType::LET) {
                 std::string var_name = get_ident(i + 1);
                 if (!var_name.empty()) {
+                    std::string type_hint = "";
+                    size_t eq_pos = i + 2;
+                    if (i + 2 < tokens.size() && tokens[i + 2].type == pyle::TokenType::COLON) {
+                        type_hint = get_ident(i + 3);
+                        eq_pos = i + 4;
+                    }
                     
                     bool is_import = false;
                     std::string import_val = "";
-                    if (i + 5 < tokens.size() && 
-                        tokens[i + 2].type == pyle::TokenType::EQUAL && 
-                        tokens[i + 3].type == pyle::TokenType::IDENTIFIER && tokens[i + 3].lexeme == "import" &&
-                        tokens[i + 4].type == pyle::TokenType::LEFT_PAREN && 
-                        tokens[i + 5].type == pyle::TokenType::STRING) {
-                        
+                    if (eq_pos + 3 < tokens.size() && 
+                        tokens[eq_pos].type == pyle::TokenType::EQUAL && 
+                        tokens[eq_pos + 1].type == pyle::TokenType::IDENTIFIER && 
+                        tokens[eq_pos + 1].lexeme == "import" &&
+                        tokens[eq_pos + 2].type == pyle::TokenType::LEFT_PAREN && 
+                        tokens[eq_pos + 3].type == pyle::TokenType::STRING) {
                         is_import = true;
-                        import_val = pyle::lsp::utils::strip_quotes(std::string(tokens[i + 5].lexeme));
+                        import_val = pyle::lsp::utils::strip_quotes(std::string(tokens[eq_pos + 3].lexeme));
                     }
 
                     SymbolInfo v_info;
@@ -189,71 +215,109 @@ public:
                     } else {
                         v_info.kind = SymbolKind::Variable;
                         v_info.detail = "let " + var_name;
-
-                        size_t init_start = i + 3;
-                        std::string init_chain = "";
-                        while (init_start < tokens.size() && 
-                               tokens[init_start].type != pyle::TokenType::SEMICOLON && 
-                               tokens[init_start].selection.line == t.selection.line) {
-                            
-                            if (tokens[init_start].type == pyle::TokenType::IDENTIFIER || 
-                                tokens[init_start].type == pyle::TokenType::DOT) {
-                                init_chain += std::string(tokens[init_start].lexeme);
-                            } else if (tokens[init_start].type == pyle::TokenType::LEFT_PAREN) {
-                                init_chain += "()";
-                                break; // Truncate cleanly upon hitting constructor/method args
-                            } else {
-                                break;
-                            }
-                            init_start++;
+                        
+                        if (!type_hint.empty()) {
+                            v_info.type_name = type_hint;
+                            v_info.has_type_hint = true;
                         }
-                        v_info.type_name = init_chain;
+
+                        if (eq_pos < tokens.size() && tokens[eq_pos].type == pyle::TokenType::EQUAL) {
+                            size_t init_start = eq_pos + 1;
+                            std::string init_chain = "";
+                            while (init_start < tokens.size() && 
+                                   tokens[init_start].type != pyle::TokenType::SEMICOLON && 
+                                   tokens[init_start].selection.line == t.selection.line) {
+                                
+                                if (tokens[init_start].type == pyle::TokenType::IDENTIFIER || 
+                                    tokens[init_start].type == pyle::TokenType::DOT) {
+                                    init_chain += std::string(tokens[init_start].lexeme);
+                                } else if (tokens[init_start].type == pyle::TokenType::LEFT_PAREN) {
+                                    init_chain += "()";
+                                    break;
+                                } else {
+                                    break;
+                                }
+                                init_start++;
+                            }
+                            if (v_info.type_name.empty()) {
+                                v_info.type_name = init_chain;
+                            }
+                        }
                     }
                     doc.symbols.push_back(v_info);
                 }
             }
             else if (t.type == pyle::TokenType::IDENTIFIER && t.lexeme == "self" && !current_struct.empty()) {
                 std::string field_name = get_ident(i + 2);
-                if (!field_name.empty() && i + 3 < tokens.size() && tokens[i + 3].type == pyle::TokenType::EQUAL) {
-                    size_t val_start = i + 4;
-                    std::string val_chain = "";
-                    while (val_start < tokens.size() && 
-                           tokens[val_start].type != pyle::TokenType::SEMICOLON && 
-                           tokens[val_start].selection.line == t.selection.line) {
-                        
-                        if (tokens[val_start].type == pyle::TokenType::IDENTIFIER || 
-                            tokens[val_start].type == pyle::TokenType::DOT) {
-                            val_chain += std::string(tokens[val_start].lexeme);
-                        } else if (tokens[val_start].type == pyle::TokenType::LEFT_PAREN) {
-                            val_chain += "()";
-                            break;
-                        } else {
-                            break;
+                if (!field_name.empty()) {
+                    bool has_self_type_hint = false;
+                    std::string self_type_hint = "";
+                    size_t eq_index = i + 3;
+                    if (i + 3 < tokens.size() && tokens[i + 3].type == pyle::TokenType::COLON) {
+                        self_type_hint = get_ident(i + 4);
+                        if (!self_type_hint.empty()) {
+                            has_self_type_hint = true;
+                            eq_index = i + 5;
                         }
-                        val_start++;
                     }
 
-                    if (!val_chain.empty()) {
-                        bool found = false;
-                        for (auto& sym : doc.symbols) {
-                            if (sym.kind == SymbolKind::Field && sym.parent_struct == current_struct && sym.name == field_name) {
-                                sym.type_name = val_chain;
-                                found = true;
+                    if (eq_index < tokens.size() && tokens[eq_index].type == pyle::TokenType::EQUAL) {
+                        size_t val_start = eq_index + 1;
+                        std::string val_chain = "";
+                        while (val_start < tokens.size() && 
+                               tokens[val_start].type != pyle::TokenType::SEMICOLON && 
+                               tokens[val_start].selection.line == t.selection.line) {
+                            
+                            if (tokens[val_start].type == pyle::TokenType::IDENTIFIER || 
+                                tokens[val_start].type == pyle::TokenType::DOT) {
+                                val_chain += std::string(tokens[val_start].lexeme);
+                            } else if (tokens[val_start].type == pyle::TokenType::LEFT_PAREN) {
+                                val_chain += "()";
+                                break;
+                            } else {
                                 break;
                             }
+                            val_start++;
                         }
-                        if (!found) {
-                            SymbolInfo f_info;
-                            f_info.name = field_name;
-                            f_info.kind = SymbolKind::Field;
-                            f_info.detail = "self." + field_name;
-                            f_info.file_path = doc.file_path;
-                            f_info.range = {{tokens[i+2].selection.line, tokens[i+2].selection.column},
-                                            {tokens[i+2].selection.line, tokens[i+2].selection.column + field_name.size()}};
-                            f_info.selection_range = f_info.range;
-                            f_info.parent_struct = current_struct;
-                            f_info.type_name = val_chain;
-                            doc.symbols.push_back(f_info);
+
+                        bool should_set = has_self_type_hint || !val_chain.empty();
+                        if (should_set) {
+                            bool found = false;
+                            for (auto& sym : doc.symbols) {
+                                if (sym.kind == SymbolKind::Field && sym.parent_struct == current_struct && sym.name == field_name) {
+                                    if (has_self_type_hint) {
+                                        sym.type_name = self_type_hint;
+                                        sym.has_type_hint = true;
+                                    } else if (!sym.has_type_hint) {
+                                        bool is_bare_var = val_chain.find('.') == std::string::npos && val_chain.find('(') == std::string::npos;
+                                        if (is_bare_var && !sym.type_name.empty()) {
+                                            // preserve existing type_name, don't overwrite with bare var name
+                                        } else {
+                                            sym.type_name = val_chain;
+                                        }
+                                    }
+                                    found = true;
+                                    break;
+                                }
+                            }
+                            if (!found) {
+                                SymbolInfo f_info;
+                                f_info.name = field_name;
+                                f_info.kind = SymbolKind::Field;
+                                f_info.detail = "self." + field_name;
+                                f_info.file_path = doc.file_path;
+                                f_info.range = {{tokens[i+2].selection.line, tokens[i+2].selection.column},
+                                                {tokens[i+2].selection.line, tokens[i+2].selection.column + field_name.size()}};
+                                f_info.selection_range = f_info.range;
+                                f_info.parent_struct = current_struct;
+                                if (has_self_type_hint) {
+                                    f_info.type_name = self_type_hint;
+                                    f_info.has_type_hint = true;
+                                } else {
+                                    f_info.type_name = val_chain;
+                                }
+                                doc.symbols.push_back(f_info);
+                            }
                         }
                     }
                 }

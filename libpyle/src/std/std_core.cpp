@@ -459,6 +459,28 @@ namespace pyle {
         pyle::bind_function<native_coro_constructor>(vm, "Coro");
         pyle::bind_function<native_bytes>(vm, "Bytes");
 
+        auto add_type_const = [&](const std::string& name) {
+            pyle::HeapIdx name_idx = vm.intern_string(name);
+            pyle::HeapIdx val_idx = vm.intern_string(name);
+            int slot = vm.declare_global(name_idx);
+            (*vm.global_slots)[slot] = pyle::Value(pyle::Value::Tag::StringRef, val_idx);
+        };
+        add_type_const("int");
+        add_type_const("float");
+        add_type_const("bool");
+        add_type_const("string");
+        add_type_const("array");
+        add_type_const("map");
+        add_type_const("bytes");
+        add_type_const("function");
+        add_type_const("none");
+        add_type_const("struct");
+        add_type_const("range");
+        add_type_const("iterator");
+        add_type_const("coro");
+        add_type_const("native_function");
+        add_type_const("native_object");
+
         pyle::register_core_future(vm); 
         pyle::register_file_module(vm);
 

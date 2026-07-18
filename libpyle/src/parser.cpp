@@ -137,6 +137,9 @@ namespace pyle {
                     throw ParserError();
                 }
                 params.push_back(consume(TokenType::IDENTIFIER, "Expected parameter name."));
+                if (match({TokenType::COLON})) {
+                    consume(TokenType::IDENTIFIER, "Expected type name.");
+                }
             } while (match({TokenType::COMMA}));
         }
         
@@ -154,12 +157,18 @@ namespace pyle {
         std::unique_ptr<BlockStmt> body;
 
         if (match({TokenType::ARROW})) {
-            std::unique_ptr<Expr> expr = expression();
-            consume_statement_end();
-            
-            std::vector<std::unique_ptr<Stmt>> statements;
-            statements.push_back(std::make_unique<ReturnStmt>(std::move(expr)));
-            body = std::make_unique<BlockStmt>(std::move(statements));
+            if (check(TokenType::IDENTIFIER) && peek_next() == TokenType::LEFT_BRACE) {
+                advance();
+                consume(TokenType::LEFT_BRACE, "Expected '{' before function body.");
+                body = block();
+            } else {
+                std::unique_ptr<Expr> expr = expression();
+                consume_statement_end();
+                
+                std::vector<std::unique_ptr<Stmt>> statements;
+                statements.push_back(std::make_unique<ReturnStmt>(std::move(expr)));
+                body = std::make_unique<BlockStmt>(std::move(statements));
+            }
         } else {
             consume(TokenType::LEFT_BRACE, "Expected '{' before function body.");
             body = block();
@@ -176,6 +185,9 @@ namespace pyle {
             if (!check(TokenType::RIGHT_PAREN)) {
                 do {
                     fields.push_back(consume(TokenType::IDENTIFIER, "Expected field name."));
+                    if (match({TokenType::COLON})) {
+                        consume(TokenType::IDENTIFIER, "Expected type name.");
+                    }
                 } while (match({TokenType::COMMA}));
             }
             
@@ -211,6 +223,9 @@ namespace pyle {
             if (!check(TokenType::RIGHT_PAREN)) {
                 do {
                     params.push_back(consume(TokenType::IDENTIFIER, "Expected parameter name."));
+                    if (match({TokenType::COLON})) {
+                        consume(TokenType::IDENTIFIER, "Expected type name.");
+                    }
                 } while (match({TokenType::COMMA}));
             }
             
@@ -345,6 +360,9 @@ namespace pyle {
 
     std::unique_ptr<Stmt> Parser::var_declaration() {
         Token name = consume(TokenType::IDENTIFIER, "Expected variable name.");
+        if (match({TokenType::COLON})) {
+            consume(TokenType::IDENTIFIER, "Expected type name.");
+        }
 
         std::unique_ptr<Expr> initializer = nullptr;
         if (match({TokenType::EQUAL})) {
