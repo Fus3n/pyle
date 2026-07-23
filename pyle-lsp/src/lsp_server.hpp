@@ -2,125 +2,162 @@
 
 #include "lsp_types.hpp"
 #include "lsp_utils.hpp"
-#include "lsp_transport.hpp"
 #include "lsp_document.hpp"
+#include <LibLsp/LspCpp.h>
+#include <LibLsp/lsp/general/initialize.h>
+#include <LibLsp/lsp/general/exit.h>
+#include <LibLsp/lsp/textDocument/did_open.h>
+#include <LibLsp/lsp/textDocument/did_change.h>
+#include <LibLsp/lsp/textDocument/did_close.h>
+#include <LibLsp/lsp/textDocument/completion.h>
+#include <LibLsp/lsp/textDocument/hover.h>
+#include <LibLsp/lsp/textDocument/declaration_definition.h>
+#include <LibLsp/lsp/textDocument/document_symbol.h>
+#include <LibLsp/lsp/textDocument/SemanticTokens.h>
+#include <LibLsp/lsp/textDocument/publishDiagnostics.h>
+#include <LibLsp/lsp/textDocument/document_symbol.h>
+
+#include <mutex>
+#include <condition_variable>
 #include <algorithm>
 
 namespace pyle::lsp {
 
 class LspServer {
     DocumentManager docs;
+    ::lsp::LanguageSession session;
+    std::mutex mtx;
+    std::condition_variable cv;
+    bool exit_flag = false;
 
 public:
     DocumentManager& document_manager() { return docs; }
 
     void run() {
-        while (true) {
-            std::string msg = JsonRpcTransport::read_message();
-            if (msg.empty()) break;
+        docs.on_diagnostics = [this](const std::string& uri) {
+            Notify_TextDocumentPublishDiagnostics::notify notify;
+            notify.params.uri = lsDocumentUri::FromUri(pyle::lsp::utils::path_to_file_uri(uri));
+            session.send(notify);
+        };
 
-            json req;
-            try { req = json::parse(msg); }
-            catch (...) { continue; }
+        session.on([this](td_initialize::request const& req) {
+            return handle_init(req);
+        });
+        
+        session.on([this](Notify_Exit::notify const&) {
+            std::lock_guard<std::mutex> lock(mtx);
+            exit_flag = true;
+            cv.notify_all();
+        });
 
-            if (!req.contains("method")) continue;
-            std::string method = req["method"];
+        session.on([this](Notify_TextDocumentDidOpen::notify const& notify) {
+            docs.open(notify.params.textDocument.uri.GetAbsolutePath(), notify.params.textDocument.text);
+        });
 
-            try {
-                if (method == "initialize") {
-                    handle_init(req);
-                } else if (method == "shutdown") {
-                    JsonRpcTransport::write_message(pyle::lsp::utils::make_obj({{"jsonrpc", "2.0"}, {"id", req["id"]}, {"result", nullptr}}).dump());
-                    break;
-                } else if (method == "textDocument/didOpen") {
-                    handle_open(req);
-                } else if (method == "textDocument/didChange") {
-                    handle_change(req);
-                } else if (method == "textDocument/didClose") {
-                    handle_close(req);
-                } else if (method == "textDocument/completion") {
-                    handle_completion(req);
-                } else if (method == "textDocument/hover") {
-                    handle_hover(req);
-                } else if (method == "textDocument/definition") {
-                    handle_definition(req);
-                } else if (method == "textDocument/documentSymbol") {
-                    handle_doc_symbol(req);
-                } else if (method == "textDocument/semanticTokens/full") {
-                    handle_semantic(req);
-                } else if (req.contains("id")) {
-                    JsonRpcTransport::write_message(pyle::lsp::utils::make_obj({{"jsonrpc", "2.0"}, {"id", req["id"]}, {"result", nullptr}}).dump());
-                }
-            } catch (...) {}
-        }
+        session.on([this](Notify_TextDocumentDidChange::notify const& notify) {
+            if (!notify.params.contentChanges.empty()) {
+                docs.change(notify.params.textDocument.uri.GetAbsolutePath(), notify.params.contentChanges[0].text);
+            }
+        });
+
+        session.on([this](Notify_TextDocumentDidClose::notify const& notify) {
+            docs.close(notify.params.textDocument.uri.GetAbsolutePath());
+        });
+
+        session.on([this](td_completion::request const& req) {
+            return handle_completion(req);
+        });
+
+        session.on([this](td_hover::request const& req) {
+            return handle_hover(req);
+        });
+
+        session.on([this](td_definition::request const& req) {
+            return handle_definition(req);
+        });
+
+        session.on([this](td_symbol::request const& req) {
+            return handle_doc_symbol(req);
+        });;
+
+        session.on([this](td_semanticTokens_full::request const& req) {
+            return handle_semantic(req);
+        });
+
+        session.startStdio();
+
+        std::unique_lock<std::mutex> lock(mtx);
+        cv.wait(lock, [this] { return exit_flag; });
+
+        session.stop();
     }
 
 private:
-    void handle_init(const json& req) {
-        if (req.contains("params") && req["params"].contains("rootUri") && !req["params"]["rootUri"].is_null()) {
-            docs.root_path = pyle::lsp::utils::file_uri_to_path(req["params"]["rootUri"].get<std::string>());
+    td_initialize::response handle_init(const td_initialize::request& req) {
+        if (req.params.rootUri) {
+            docs.root_path = req.params.rootUri->GetAbsolutePath();
         }
 
-        json caps = pyle::lsp::utils::make_obj({
-            {"textDocumentSync", pyle::lsp::utils::make_obj({{"openClose", true}, {"change", 1}})},
-            {"completionProvider", pyle::lsp::utils::make_obj({{"triggerCharacters", json::array({".", ":"})} })},
-            {"hoverProvider", true},
-            {"definitionProvider", true},
-            {"documentSymbolProvider", true},
-            {"semanticTokensProvider", pyle::lsp::utils::make_obj({
-                {"full", pyle::lsp::utils::make_obj({{"delta", false}})},
-                {"legend", pyle::lsp::utils::make_obj({
-                    {"tokenTypes", json::array({"function", "struct", "variable", "parameter", "keyword", "string", "number", "comment", "property", "module"})},
-                    {"tokenModifiers", json::array()}
-                })}
-            })}
-        });
+        td_initialize::response rsp;
+        rsp.id = req.id;
+        
+        rsp.result.capabilities.textDocumentSync = lsTextDocumentSyncOptions();
+        rsp.result.capabilities.textDocumentSync->openClose = true;
+        rsp.result.capabilities.textDocumentSync->change = lsTextDocumentSyncKind::Full;
+        
+        rsp.result.capabilities.completionProvider = lsCompletionOptions();
+        rsp.result.capabilities.completionProvider->triggerCharacters = {".", ":"};
+        
+        rsp.result.capabilities.hoverProvider = true;
+        rsp.result.capabilities.definitionProvider = true;
+        rsp.result.capabilities.documentSymbolProvider = true;
+        
+        lsSemanticTokensOptions semOpts;
+        semOpts.full = true;
+        semOpts.legend.tokenTypes = {"function", "struct", "variable", "parameter", "keyword", "string", "number", "comment", "property", "module"};
+        rsp.result.capabilities.semanticTokensProvider = semOpts;
 
-        JsonRpcTransport::write_message(pyle::lsp::utils::make_obj({
-            {"jsonrpc", "2.0"}, {"id", req["id"]},
-            {"result", pyle::lsp::utils::make_obj({{"capabilities", caps}})}
-        }).dump());
+        return rsp;
     }
 
-    void handle_open(const json& req) {
-        auto& p = req["params"];
-        docs.open(pyle::lsp::utils::file_uri_to_path(p["textDocument"]["uri"]), p["textDocument"]["text"]);
-    }
+    td_completion::response handle_completion(const td_completion::request& req) {
+        td_completion::response rsp;
+        rsp.id = req.id;
+        rsp.result.isIncomplete = false;
 
-    void handle_change(const json& req) {
-        auto& p = req["params"];
-        docs.change(pyle::lsp::utils::file_uri_to_path(p["textDocument"]["uri"]), p["contentChanges"][0]["text"]);
-    }
+        std::string path = req.params.textDocument.uri.GetAbsolutePath();
+        size_t line = req.params.position.line;
+        size_t ch = req.params.position.character;
 
-    void handle_close(const json& req) {
-        docs.close(pyle::lsp::utils::file_uri_to_path(req["params"]["textDocument"]["uri"]));
-    }
-
-    void handle_completion(const json& req) {
-        auto& p = req["params"];
-        std::string path = pyle::lsp::utils::file_uri_to_path(p["textDocument"]["uri"]);
-        size_t line = p["position"]["line"];
-        size_t ch = p["position"]["character"];
-
-        json items = json::array();
         Document* doc = docs.get(path);
-        if (!doc) { send_comp(req["id"], items); return; }
+        if (!doc) return rsp;
 
         auto lines = pyle::lsp::utils::get_lines(doc->source);
         std::string text_before = (line < lines.size()) ? lines[line].substr(0, ch) : "";
 
-        std::string obj_name, after_dot;
-        auto dot = text_before.rfind('.');
-        if (dot != std::string::npos && dot > 0) {
-            obj_name = text_before.substr(0, dot);
-            size_t ws = obj_name.find_last_of(" \t\n({[,=+-*/%");
-            if (ws != std::string::npos) obj_name = obj_name.substr(ws + 1);
-            after_dot = text_before.substr(dot + 1);
+        std::string obj_name, prefix;
+        
+        pyle::ErrorReporter rep("", "");
+        pyle::Lexer lexer(text_before, rep);
+        auto tokens = lexer.tokenize();
+        if (!tokens.empty() && tokens.back().type == pyle::TokenType::EOF_TOKEN) {
+            tokens.pop_back();
         }
 
-        size_t last_brk = text_before.find_last_of(" \t\n({[,=+-*/%");
-        std::string prefix = (last_brk != std::string::npos) ? text_before.substr(last_brk + 1) : text_before;
-        if (!obj_name.empty()) prefix = after_dot;
+        if (!tokens.empty()) {
+            auto last = tokens.back();
+            if (last.type == pyle::TokenType::DOT) {
+                prefix = "";
+                obj_name = docs.extract_chain_backwards(tokens, tokens.size() - 2);
+            } else {
+                prefix = std::string(last.lexeme);
+                if (tokens.size() > 1 && tokens[tokens.size() - 2].type == pyle::TokenType::DOT) {
+                    obj_name = docs.extract_chain_backwards(tokens, tokens.size() - 3);
+                } else {
+                    obj_name = "";
+                }
+            }
+        }
 
         std::string current_func_name = "";
         std::string current_struct_name = "";
@@ -137,13 +174,13 @@ private:
                     auto ff = docs.fields_of(path, current_struct_name, true);
                     for (const auto& f : ff) {
                         if (prefix.empty() || f.name.find(prefix) == 0) {
-                            int k = (f.is_method) ? 2 : 5;
-                            std::string sort_prio = (f.name.front() == '_') ? "1_" : "0_";
-                            
-                            items.push_back(pyle::lsp::utils::make_obj({
-                                {"label", f.name}, {"kind", k}, {"detail", f.detail},
-                                {"insertText", f.name}, {"sortText", sort_prio + f.name}
-                            }));
+                            lsCompletionItem item;
+                            item.label = f.name;
+                            item.kind = f.is_method ? lsCompletionItemKind::Method : lsCompletionItemKind::Field;
+                            item.detail = f.detail;
+                            item.insertText = f.name;
+                            item.sortText = (f.name.front() == '_') ? "1_" + f.name : "0_" + f.name;
+                            rsp.result.items.push_back(item);
                         }
                     }
                 }
@@ -158,39 +195,63 @@ private:
                             if (!sym.name.empty() && sym.name.front() == '_') continue; 
                             
                             if (prefix.empty() || sym.name.find(prefix) == 0) {
-                                int k = (sym.kind == SymbolKind::Struct) ? 22 : 3;
-                                items.push_back(pyle::lsp::utils::make_obj({
-                                    {"label", sym.name}, {"kind", k}, {"detail", sym.detail},
-                                    {"sortText", "0_" + sym.name}
-                                }));
+                                lsCompletionItem item;
+                                item.label = sym.name;
+                                item.kind = (sym.kind == SymbolKind::Struct) ? lsCompletionItemKind::Struct : lsCompletionItemKind::Function;
+                                item.detail = sym.detail;
+                                item.sortText = "0_" + sym.name;
+                                rsp.result.items.push_back(item);
                             }
                         }
                     }
                 }
             } 
             else {
-                std::string struct_name = docs.resolve_type_of_chain(path, obj_name, current_func_name, current_struct_name);
+                std::string literal_type = "";
+                char fc = obj_name.empty() ? 0 : obj_name[0];
+                char lc = obj_name.empty() ? 0 : obj_name.back();
+                if ((fc == '"' || fc == '\'') && fc == lc) {
+                    literal_type = "string";
+                } else if (fc == '[') {
+                    literal_type = "array";
+                } else if (fc == '{') {
+                    literal_type = "map";
+                } else if (obj_name == "true" || obj_name == "false") {
+                    literal_type = "bool";
+                } else if (!obj_name.empty()) {
+                    bool is_num = true, is_float = false;
+                    for (size_t ci = 0; ci < obj_name.size() && is_num; ++ci) {
+                        char c = obj_name[ci];
+                        if (ci == 0 && c == '-') continue;
+                        if (c == '.') { is_float = true; continue; }
+                        if (!isdigit(static_cast<unsigned char>(c))) is_num = false;
+                    }
+                    if (is_num) literal_type = is_float ? "float" : "int";
+                }
+                
+                std::string struct_name = literal_type.empty()
+                    ? docs.resolve_type_of_chain(path, obj_name, current_func_name, current_struct_name)
+                    : literal_type;
                 
                 if (!struct_name.empty()) {
-                    bool include_private_for_self = (obj_name.rfind("self", 0) == 0); // Allow private members ONLY if accessing self.* chain
+                    bool include_private_for_self = (obj_name.rfind("self", 0) == 0);
                     auto ff = docs.fields_of(path, struct_name, include_private_for_self);
                     for (const auto& f : ff) {
                         if (prefix.empty() || f.name.find(prefix) == 0) {
-                            int k = (f.is_method) ? 2 : 5;
-                            std::string sort_prio = (f.name.front() == '_') ? "1_" : "0_";
-                            items.push_back(pyle::lsp::utils::make_obj({
-                                {"label", f.name}, {"kind", k}, {"detail", f.detail},
-                                {"insertText", f.name}, {"sortText", sort_prio + f.name}
-                            }));
+                            lsCompletionItem item;
+                            item.label = f.name;
+                            item.kind = f.is_method ? lsCompletionItemKind::Method : lsCompletionItemKind::Field;
+                            item.detail = f.detail;
+                            item.insertText = f.name;
+                            item.sortText = (f.name.front() == '_') ? "1_" + f.name : "0_" + f.name;
+                            rsp.result.items.push_back(item);
                         }
                     }
                 }
             }
-            send_comp(req["id"], items);
-            return;
+            return rsp;
         }
 
-        // 2. Local & Global Context autocomplete
         if (doc) {
             for (const auto& sym : doc->symbols) {
                 if (sym.is_method) continue; 
@@ -198,185 +259,192 @@ private:
                 if (!sym.name.empty() && sym.name[0] == '_') continue;
                 if (!prefix.empty() && sym.name.find(prefix) != 0) continue;
                 
-                int k = 6;
+                lsCompletionItem item;
+                item.label = sym.name;
                 switch (sym.kind) {
-                    case SymbolKind::Function:  k = 3; break;
-                    case SymbolKind::Struct:    k = 22; break;
-                    case SymbolKind::Module:    k = 9; break;
-                    case SymbolKind::Variable:  k = 6; break;
-                    case SymbolKind::Parameter: k = 6; break; 
-                    default: k = 6;
+                    case SymbolKind::Function:  item.kind = lsCompletionItemKind::Function; break;
+                    case SymbolKind::Struct:    item.kind = lsCompletionItemKind::Struct; break;
+                    case SymbolKind::Module:    item.kind = lsCompletionItemKind::Module; break;
+                    case SymbolKind::Variable:  
+                    case SymbolKind::Parameter: item.kind = lsCompletionItemKind::Variable; break; 
+                    default: item.kind = lsCompletionItemKind::Variable;
                 }
-                
-                // Prioritize locals heavily, fallback to 2_ for globals
-                std::string sort_prio = sym.is_local ? "0_" : "2_";
-                items.push_back(pyle::lsp::utils::make_obj({
-                    {"label", sym.name}, {"kind", k}, {"detail", sym.detail},
-                    {"sortText", sort_prio + sym.name}
-                }));
+                item.detail = sym.detail;
+                item.sortText = sym.is_local ? "0_" + sym.name : "2_" + sym.name;
+                rsp.result.items.push_back(item);
             }
         }
 
         for (const auto& [kw, det] : LSP_KEYWORDS) {
             if (prefix.empty() || kw.find(prefix) == 0) {
-                items.push_back(pyle::lsp::utils::make_obj({
-                    {"label", kw}, {"kind", 14}, {"detail", det},
-                    {"sortText", "3_" + kw}
-                }));
+                lsCompletionItem item;
+                item.label = kw;
+                item.kind = lsCompletionItemKind::Keyword;
+                item.detail = det;
+                item.sortText = "3_" + kw;
+                rsp.result.items.push_back(item);
             }
         }
 
-        send_comp(req["id"], items);
+        return rsp;
     }
 
-    void send_comp(json id, json& items) {
-        JsonRpcTransport::write_message(pyle::lsp::utils::make_obj({
-            {"jsonrpc", "2.0"}, {"id", id},
-            {"result", pyle::lsp::utils::make_obj({{"isIncomplete", false}, {"items", items}})}
-        }).dump());
-    }
-
-    void handle_hover(const json& req) {
-        auto& p = req["params"];
-        std::string path = pyle::lsp::utils::file_uri_to_path(p["textDocument"]["uri"]);
-        Position pos{p["position"]["line"], p["position"]["character"]};
+    td_hover::response handle_hover(const td_hover::request& req) {
+        td_hover::response rsp;
+        rsp.id = req.id;
+        
+        std::string path = req.params.textDocument.uri.GetAbsolutePath();
+        Position pos{req.params.position.line, req.params.position.character};
 
         Document* doc = docs.get(path);
-        if (!doc) {
-            JsonRpcTransport::write_message(pyle::lsp::utils::make_obj({{"jsonrpc", "2.0"}, {"id", req["id"]}, {"result", nullptr}}).dump());
-            return;
-        }
+        if (!doc) return rsp;
 
         std::string word = docs.get_word_at(doc->source, pos);
         SymbolInfo* sym = docs.sym_by_name(path, word, pos);
-        
-        if (!sym) {
-            JsonRpcTransport::write_message(pyle::lsp::utils::make_obj({{"jsonrpc", "2.0"}, {"id", req["id"]}, {"result", nullptr}}).dump());
-            return;
-        }
+        if (!sym) return rsp;
 
         std::string text = "```pyle\n" + sym->detail + "\n```";
         if (!sym->file_path.empty()) {
-            text += "\n\n" + sym->file_path + ":" + std::to_string(sym->selection_range.start.line + 1);
+            text += "\n\n*" + sym->file_path + ":" + std::to_string(sym->selection_range.start.line + 1) + "*";
         }
 
-        JsonRpcTransport::write_message(pyle::lsp::utils::make_obj({
-            {"jsonrpc", "2.0"}, {"id", req["id"]},
-            {"result", pyle::lsp::utils::make_obj({
-                {"contents", pyle::lsp::utils::make_obj({{"kind", "markdown"}, {"value", text}})},
-                {"range", pyle::lsp::utils::make_range(sym->selection_range.start.line, sym->selection_range.start.character, sym->selection_range.end.line, sym->selection_range.end.character)}
-            })}
-        }).dump());
+        lsHover hover;
+        lsMarkupContent mc;
+        mc.kind = "markdown";
+        mc.value = text;
+        hover.contents = mc;
+        
+        lsRange range;
+        range.start.line = sym->selection_range.start.line;
+        range.start.character = sym->selection_range.start.character;
+        range.end.line = sym->selection_range.end.line;
+        range.end.character = sym->selection_range.end.character;
+        hover.range = range;
+        
+        rsp.result = hover;
+        return rsp;
     }
 
-    void handle_definition(const json& req) {
-        auto& p = req["params"];
-        std::string path = pyle::lsp::utils::file_uri_to_path(p["textDocument"]["uri"]);
-        Position pos{p["position"]["line"], p["position"]["character"]};
+    td_definition::response handle_definition(const td_definition::request& req) {
+        td_definition::response rsp;
+        rsp.id = req.id;
+        
+        std::string path = req.params.textDocument.uri.GetAbsolutePath();
+        Position pos{req.params.position.line, req.params.position.character};
 
         Document* doc = docs.get(path);
-        if (!doc) {
-            JsonRpcTransport::write_message(pyle::lsp::utils::make_obj({{"jsonrpc", "2.0"}, {"id", req["id"]}, {"result", nullptr}}).dump());
-            return;
-        }
+        if (!doc) return rsp;
 
         std::string word = docs.get_word_at(doc->source, pos);
         SymbolInfo* sym = docs.sym_by_name(path, word, pos);
         
-        if (!sym) {
-            JsonRpcTransport::write_message(pyle::lsp::utils::make_obj({{"jsonrpc", "2.0"}, {"id", req["id"]}, {"result", nullptr}}).dump());
-            return;
+        if (!sym || (sym->file_path == path && sym->selection_range.start.line == pos.line)) {
+            return rsp;
         }
 
-        if (sym->file_path == path && sym->selection_range.start.line == pos.line) {
-            JsonRpcTransport::write_message(pyle::lsp::utils::make_obj({{"jsonrpc", "2.0"}, {"id", req["id"]}, {"result", nullptr}}).dump());
-            return;
-        }
-
-        JsonRpcTransport::write_message(pyle::lsp::utils::make_obj({
-            {"jsonrpc", "2.0"}, {"id", req["id"]},
-            {"result", pyle::lsp::utils::make_obj({
-                {"uri", pyle::lsp::utils::path_to_file_uri(sym->file_path)},
-                {"range", pyle::lsp::utils::make_range(sym->selection_range.start.line, sym->selection_range.start.character, sym->selection_range.end.line, sym->selection_range.end.character)}
-            })}
-        }).dump());
+        std::vector<lsLocation> locs;
+        lsLocation loc;
+        loc.uri = lsDocumentUri::FromUri(pyle::lsp::utils::path_to_file_uri(sym->file_path));
+        loc.range.start.line = sym->selection_range.start.line;
+        loc.range.start.character = sym->selection_range.start.character;
+        loc.range.end.line = sym->selection_range.end.line;
+        loc.range.end.character = sym->selection_range.end.character;
+        locs.push_back(loc);
+        
+        rsp.result = locs;
+        return rsp;
     }
 
-    void handle_doc_symbol(const json& req) {
-        std::string path = pyle::lsp::utils::file_uri_to_path(req["params"]["textDocument"]["uri"]);
-        Document* doc = docs.get(path);
-        if (!doc) {
-            JsonRpcTransport::write_message(pyle::lsp::utils::make_obj({{"jsonrpc", "2.0"}, {"id", req["id"]}, {"result", nullptr}}).dump());
-            return;
-        }
+    td_symbol::response handle_doc_symbol(const td_symbol::request& req) {
+        td_documentSymbol::response rsp;
+        rsp.id = req.id;
 
-        json arr = json::array();
+        std::string path = req.params.textDocument.uri.GetAbsolutePath();
+        Document* doc = docs.get(path);
+        if (!doc) return rsp;
+
+        std::vector<lsDocumentSymbol> symbols;
         for (const auto& sym : doc->symbols) {
             if (sym.is_method || sym.is_local) continue;
-            int k = 13;
+            
+            lsDocumentSymbol docSym;
+            docSym.name = sym.name;
+            docSym.detail = sym.detail;
+            
             switch (sym.kind) {
-                case SymbolKind::Function: k = 12; break;
-                case SymbolKind::Struct:   k = 23; break;
-                case SymbolKind::Module:   k = 2; break;
-                default: k = 13;
+                case SymbolKind::Function: docSym.kind = lsSymbolKind::Function; break;
+                case SymbolKind::Struct:   docSym.kind = lsSymbolKind::Struct; break;
+                case SymbolKind::Module:   docSym.kind = lsSymbolKind::Module; break;
+                default: docSym.kind = lsSymbolKind::Variable;
             }
-            arr.push_back(pyle::lsp::utils::make_obj({
-                {"name", sym.name}, {"kind", k}, {"detail", sym.detail},
-                {"range", pyle::lsp::utils::make_range(sym.range.start.line, sym.range.start.character, sym.range.end.line, sym.range.end.character)},
-                {"selectionRange", pyle::lsp::utils::make_range(sym.selection_range.start.line, sym.selection_range.start.character, sym.selection_range.end.line, sym.selection_range.end.character)}
-            }));
-        }
 
-        JsonRpcTransport::write_message(pyle::lsp::utils::make_obj({{"jsonrpc", "2.0"}, {"id", req["id"]}, {"result", arr}}).dump());
+            docSym.range.start.line = sym.range.start.line;
+            docSym.range.start.character = sym.range.start.character;
+            docSym.range.end.line = sym.range.end.line;
+            docSym.range.end.character = sym.range.end.character;
+
+            docSym.selectionRange.start.line = sym.selection_range.start.line;
+            docSym.selectionRange.start.character = sym.selection_range.start.character;
+            docSym.selectionRange.end.line = sym.selection_range.end.line;
+            docSym.selectionRange.end.character = sym.selection_range.end.character;
+
+            symbols.push_back(docSym);
+        }
+        
+        rsp.result = symbols;
+        return rsp;
     }
 
-    void handle_semantic(const json& req) {
-        std::string path = pyle::lsp::utils::file_uri_to_path(req["params"]["textDocument"]["uri"]);
+    td_semanticTokens_full::response handle_semantic(const td_semanticTokens_full::request& req) {
+        td_semanticTokens_full::response rsp;
+        rsp.id = req.id;
+        
+        std::string path = req.params.textDocument.uri.GetAbsolutePath();
         Document* doc = docs.get(path);
-        json data = json::array();
+        if (!doc) return rsp;
 
-        if (doc) {
-            auto sorted = doc->symbols;
-            std::sort(sorted.begin(), sorted.end(), [](const auto& a, const auto& b) {
-                if (a.selection_range.start.line != b.selection_range.start.line)
-                    return a.selection_range.start.line < b.selection_range.start.line;
-                return a.selection_range.start.character < b.selection_range.start.character;
-            });
+        auto sorted = doc->symbols;
+        std::sort(sorted.begin(), sorted.end(), [](const auto& a, const auto& b) {
+            if (a.selection_range.start.line != b.selection_range.start.line)
+                return a.selection_range.start.line < b.selection_range.start.line;
+            return a.selection_range.start.character < b.selection_range.start.character;
+        });
 
-            auto tok_type = [](SymbolKind k) -> int {
-                switch (k) {
-                    case SymbolKind::Function:  return 0;
-                    case SymbolKind::Struct:    return 1;
-                    case SymbolKind::Parameter: return 3;
-                    case SymbolKind::Field:     return 8;
-                    case SymbolKind::Module:    return 9;
-                    default: return 2;
-                }
-            };
-
-            int prev_line = 0, prev_col = 0;
-            for (const auto& sym : sorted) {
-                int l = static_cast<int>(sym.selection_range.start.line);
-                int c = static_cast<int>(sym.selection_range.start.character);
-                int len = static_cast<int>(sym.name.size());
-                
-                if (l < prev_line) continue;
-                
-                data.push_back(l - prev_line);
-                data.push_back((l == prev_line) ? (c - prev_col) : c);
-                data.push_back(len);
-                data.push_back(tok_type(sym.kind));
-                data.push_back(0);
-                prev_line = l;
-                prev_col = c + len;
+        auto tok_type = [](SymbolKind k) -> int {
+            switch (k) {
+                case SymbolKind::Function:  return 0;
+                case SymbolKind::Struct:    return 1;
+                case SymbolKind::Parameter: return 3;
+                case SymbolKind::Field:     return 8;
+                case SymbolKind::Module:    return 9;
+                default: return 2;
             }
+        };
+
+        int prev_line = 0, prev_col = 0;
+        lsSemanticTokens tokens;
+        
+        for (const auto& sym : sorted) {
+            int l = static_cast<int>(sym.selection_range.start.line);
+            int c = static_cast<int>(sym.selection_range.start.character);
+            int len = static_cast<int>(sym.name.size());
+            
+            if (l < prev_line) continue;
+            
+            tokens.data.push_back(l - prev_line);
+            tokens.data.push_back((l == prev_line) ? (c - prev_col) : c);
+            tokens.data.push_back(len);
+            tokens.data.push_back(tok_type(sym.kind));
+            tokens.data.push_back(0); 
+            
+            prev_line = l;
+            
+            prev_col = c;
         }
 
-        JsonRpcTransport::write_message(pyle::lsp::utils::make_obj({
-            {"jsonrpc", "2.0"}, {"id", req["id"]},
-            {"result", pyle::lsp::utils::make_obj({{"data", data}})}
-        }).dump());
+        rsp.result = tokens;
+        return rsp;
     }
 };
 
-} // namespace pyle::lsp
+} 

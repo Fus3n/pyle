@@ -48,6 +48,10 @@ function activate(context) {
         const config = vscode.workspace.getConfiguration('pyle');
         let exePath = config.get('executablePath') || '';
         if (!exePath) exePath = findFirstPyle();
+        if (!exePath) {
+            const rel = context.asAbsolutePath('../../build/mingw/x86_64/release/pyle.exe');
+            if (fs.existsSync(rel)) exePath = rel;
+        }
 
         const args = [];
         if (exePath) {

@@ -13,10 +13,14 @@ int main(int argc, char* argv[]) {
     }
 
     fs::path exe_dir = fs::path(argv[0]).parent_path();
-    fs::path std_dir = exe_dir / "std";
-    if (fs::exists(std_dir)) {
-        srv.document_manager().default_import_paths.push_back(std_dir.string());
+    for (const auto& candidate : {exe_dir / "std", exe_dir.parent_path() / "std"}) {
+        if (fs::exists(candidate / "core")) {
+            srv.document_manager().default_import_paths.push_back(candidate.string());
+            break;
+        }
     }
+
+    srv.document_manager().preload_core_types(srv.document_manager().default_import_paths);
 
     srv.run();
     return 0;

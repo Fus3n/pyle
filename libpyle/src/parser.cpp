@@ -153,12 +153,33 @@ namespace pyle {
 
     std::unique_ptr<Stmt> Parser::function_declaration() {
         Token name = consume(TokenType::IDENTIFIER, "Expected function name.");
-        std::vector<Token> params = parse_params();
+        std::vector<Token> params;
+        std::vector<std::string> param_types;
+        if (check(TokenType::LEFT_PAREN)) {
+            consume(TokenType::LEFT_PAREN, "");
+            if (!check(TokenType::RIGHT_PAREN)) {
+                do {
+                    params.push_back(consume(TokenType::IDENTIFIER, "Expected parameter name."));
+                    if (match({TokenType::COLON})) {
+                        param_types.push_back(std::string(consume(TokenType::IDENTIFIER, "Expected type name.").lexeme));
+                    } else {
+                        param_types.push_back("");
+                    }
+                } while (match({TokenType::COMMA}));
+            }
+            consume(TokenType::RIGHT_PAREN, "Expected ')' after parameters.");
+        }
         std::unique_ptr<BlockStmt> body;
+        std::string return_type;
 
-        if (match({TokenType::ARROW})) {
+        if (match({TokenType::COLON})) {
+            // .pyl.d style return type: fn name(params): RetType { body }
+            return_type = std::string(consume(TokenType::IDENTIFIER, "Expected return type name.").lexeme);
+            consume(TokenType::LEFT_BRACE, "Expected '{' before function body.");
+            body = block();
+        } else if (match({TokenType::ARROW})) {
             if (check(TokenType::IDENTIFIER) && peek_next() == TokenType::LEFT_BRACE) {
-                advance();
+                return_type = std::string(advance().lexeme);
                 consume(TokenType::LEFT_BRACE, "Expected '{' before function body.");
                 body = block();
             } else {
@@ -174,19 +195,22 @@ namespace pyle {
             body = block();
         }
         
-        return std::make_unique<FuncDeclStmt>(std::move(name), std::move(params), std::move(body));
+        return std::make_unique<FuncDeclStmt>(std::move(name), std::move(params), std::move(body), return_type, param_types);
     }
 
     std::unique_ptr<Stmt> Parser::struct_declaration() {
         Token name = consume(TokenType::IDENTIFIER, "Expected struct name.");
         std::vector<Token> fields;
+        std::vector<std::string> field_types;
         if (match({TokenType::LEFT_PAREN})) {
             Token open_paren = previous();
             if (!check(TokenType::RIGHT_PAREN)) {
                 do {
                     fields.push_back(consume(TokenType::IDENTIFIER, "Expected field name."));
                     if (match({TokenType::COLON})) {
-                        consume(TokenType::IDENTIFIER, "Expected type name.");
+                        field_types.push_back(std::string(consume(TokenType::IDENTIFIER, "Expected type name.").lexeme));
+                    } else {
+                        field_types.push_back("");
                     }
                 } while (match({TokenType::COMMA}));
             }
@@ -208,10 +232,12 @@ namespace pyle {
             consume(TokenType::LEFT_PAREN, "Expected '(' after method name.");
             
             std::vector<Token> params;
+            std::vector<std::string> method_param_types;
             Token self_tok(TokenType::IDENTIFIER, "self", method_name.selection);
 
             if (!is_static) {
                 params.push_back(self_tok);
+                method_param_types.push_back("");
             } else {
                 if (method_name.lexeme == "_init") {
                     reporter.report(method_name.selection, ErrorType::Compile, 
@@ -224,12 +250,18 @@ namespace pyle {
                 do {
                     params.push_back(consume(TokenType::IDENTIFIER, "Expected parameter name."));
                     if (match({TokenType::COLON})) {
-                        consume(TokenType::IDENTIFIER, "Expected type name.");
+                        method_param_types.push_back(std::string(consume(TokenType::IDENTIFIER, "Expected type name.").lexeme));
+                    } else {
+                        method_param_types.push_back("");
                     }
                 } while (match({TokenType::COMMA}));
             }
             
             consume(TokenType::RIGHT_PAREN, "Expected ')' after parameters.");
+            std::string method_return_type;
+            if (match({TokenType::COLON})) {
+                method_return_type = std::string(consume(TokenType::IDENTIFIER, "Expected return type name.").lexeme);
+            }
             consume(TokenType::LEFT_BRACE, "Expected '{' before method body.");
             std::unique_ptr<BlockStmt> body = block();
             
@@ -237,10 +269,10 @@ namespace pyle {
                 auto return_self = std::make_unique<ReturnStmt>(std::make_unique<VariableExpr>(self_tok));
                 body->statements.push_back(std::move(return_self));
             }
-            methods.push_back(std::make_unique<FuncDeclStmt>(method_name, std::move(params), std::move(body)));
+            methods.push_back(std::make_unique<FuncDeclStmt>(method_name, std::move(params), std::move(body), method_return_type, method_param_types));
         }
         consume(TokenType::RIGHT_BRACE, "Expected '}' after struct body.");
-        return std::make_unique<StructDeclStmt>(name, std::move(fields), std::move(methods));
+        return std::make_unique<StructDeclStmt>(name, std::move(fields), std::move(methods), field_types);
     }
 
     std::unique_ptr<Stmt> Parser::enum_declaration() {
@@ -360,8 +392,9 @@ namespace pyle {
 
     std::unique_ptr<Stmt> Parser::var_declaration() {
         Token name = consume(TokenType::IDENTIFIER, "Expected variable name.");
+        std::string type_annotation;
         if (match({TokenType::COLON})) {
-            consume(TokenType::IDENTIFIER, "Expected type name.");
+            type_annotation = std::string(consume(TokenType::IDENTIFIER, "Expected type name.").lexeme);
         }
 
         std::unique_ptr<Expr> initializer = nullptr;
@@ -370,7 +403,7 @@ namespace pyle {
         }
 
         consume_statement_end();
-        return std::make_unique<VarDeclStmt>(name, std::move(initializer));
+        return std::make_unique<VarDeclStmt>(name, std::move(initializer), type_annotation);
     }
 
     std::unique_ptr<Stmt> Parser::expression_statement() {
@@ -670,7 +703,14 @@ namespace pyle {
     std::unique_ptr<Expr> Parser::primary() {
         if (match({TokenType::INT, TokenType::FLOAT, TokenType::STRING, 
                 TokenType::TRUE, TokenType::FALSE, TokenType::NONE})) {
-            return std::make_unique<LiteralExpr>(previous());
+            Token tok = previous();
+            auto lit = std::make_unique<LiteralExpr>(tok);
+            if (tok.type == TokenType::STRING) lit->resolved_type = "string";
+            else if (tok.type == TokenType::INT) lit->resolved_type = "int";
+            else if (tok.type == TokenType::FLOAT) lit->resolved_type = "float";
+            else if (tok.type == TokenType::TRUE || tok.type == TokenType::FALSE) lit->resolved_type = "bool";
+            else if (tok.type == TokenType::NONE) lit->resolved_type = "none";
+            return lit;
         }
 
         if (match({TokenType::FN})) { 
@@ -709,7 +749,9 @@ namespace pyle {
                 throw ParserError();
             }
             consume(TokenType::RIGHT_BRACKET, "Expected ']' after array elements.");
-            return std::make_unique<ArrayExpr>(std::move(elements));
+            auto arr = std::make_unique<ArrayExpr>(std::move(elements));
+            arr->resolved_type = "array";
+            return arr;
         }
 
         if (match({TokenType::LEFT_BRACE})) {
@@ -736,7 +778,9 @@ namespace pyle {
                 throw ParserError();
             }
             consume(TokenType::RIGHT_BRACE, "Expected '}' after map entries.");
-            return std::make_unique<MapExpr>(std::move(entries));
+            auto map_expr = std::make_unique<MapExpr>(std::move(entries));
+            map_expr->resolved_type = "map";
+            return map_expr;
         }
 
         if (match({TokenType::YIELD})) {

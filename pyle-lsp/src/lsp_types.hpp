@@ -3,12 +3,11 @@
 #include <string>
 #include <vector>
 #include <map>
-#include <nlohmann/json.hpp>
+#include <memory>
 #include <pyle/error_reporter.hpp>
+#include <pyle/ast.hpp>
 
 namespace pyle::lsp {
-
-using json = nlohmann::json;
 
 struct Position { 
     size_t line; 
@@ -53,6 +52,7 @@ struct Document {
     std::map<std::string, std::string> imports;
     std::vector<std::string> import_paths;
     bool type_decls_loaded = false;
+    std::vector<std::unique_ptr<pyle::Stmt>> ast;
 };
 
 inline const std::vector<std::pair<std::string, std::string>> LSP_KEYWORDS = {
@@ -65,4 +65,4 @@ inline const std::vector<std::pair<std::string, std::string>> LSP_KEYWORDS = {
     {"yield", "yield"}, {"loop", "loop"}, {"static", "static"}
 };
 
-} // namespace pyle::lsp
+} 

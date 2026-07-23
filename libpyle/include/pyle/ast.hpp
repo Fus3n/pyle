@@ -13,6 +13,7 @@ namespace pyle {
     };
 
     struct Expr: public ASTNode {
+        std::string resolved_type;
         virtual void accept(Visitor* visitor) = 0;
     };
 
@@ -58,9 +59,10 @@ namespace pyle {
     struct VarDeclStmt: public Stmt {
         Token name;
         std::unique_ptr<Expr> initializer;
+        std::string type_annotation;
 
-        VarDeclStmt(Token name, std::unique_ptr<Expr> initializer)
-            : name(name), initializer(std::move(initializer)) {}
+        VarDeclStmt(Token name, std::unique_ptr<Expr> initializer, std::string type_annotation = "")
+            : name(name), initializer(std::move(initializer)), type_annotation(type_annotation) {}
 
         void accept(Visitor* visitor) override;
     };
@@ -196,9 +198,11 @@ namespace pyle {
     struct FuncDeclStmt: public Stmt {
         Token name;
         std::vector<Token> params;
+        std::vector<std::string> param_types;
         std::unique_ptr<BlockStmt> body;
-        FuncDeclStmt(Token name, std::vector<Token> params, std::unique_ptr<BlockStmt> body)
-            : name(std::move(name)), params(std::move(params)), body(std::move(body)) {}
+        std::string return_type;
+        FuncDeclStmt(Token name, std::vector<Token> params, std::unique_ptr<BlockStmt> body, std::string return_type = "", std::vector<std::string> param_types = {})
+            : name(std::move(name)), params(std::move(params)), param_types(std::move(param_types)), body(std::move(body)), return_type(return_type) {}
         void accept(Visitor* visitor) override;
     };
 
@@ -236,9 +240,10 @@ namespace pyle {
     struct StructDeclStmt : public Stmt {
         Token name;
         std::vector<Token> fields;
+        std::vector<std::string> field_types;
         std::vector<std::unique_ptr<FuncDeclStmt>> methods; 
-        StructDeclStmt(Token name, std::vector<Token> fields, std::vector<std::unique_ptr<FuncDeclStmt>> methods)
-            : name(name), fields(std::move(fields)), methods(std::move(methods)) {}
+        StructDeclStmt(Token name, std::vector<Token> fields, std::vector<std::unique_ptr<FuncDeclStmt>> methods, std::vector<std::string> field_types = {})
+            : name(name), fields(std::move(fields)), methods(std::move(methods)), field_types(std::move(field_types)) {}
         void accept(Visitor* visitor) override;
     };
 

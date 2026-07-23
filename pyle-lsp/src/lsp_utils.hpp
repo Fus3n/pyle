@@ -8,20 +8,6 @@
 
 namespace pyle::lsp::utils {
 
-inline json make_obj(std::initializer_list<std::pair<std::string, json>> items) {
-    json o = json::object();
-    for (const auto& [k, v] : items) o[k] = v;
-    return o;
-}
-
-inline json make_pos(size_t line, size_t character) {
-    return make_obj({{"line", line}, {"character", character}});
-}
-
-inline json make_range(size_t sl, size_t sc, size_t el, size_t ec) {
-    return make_obj({{"start", make_pos(sl, sc)}, {"end", make_pos(el, ec)}});
-}
-
 inline std::vector<std::string> get_lines(const std::string& str) {
     std::vector<std::string> lines;
     std::stringstream ss(str);
@@ -88,4 +74,4 @@ inline std::string read_file_contents(const std::string& path) {
                         std::istreambuf_iterator<char>());
 }
 
-} // namespace pyle::lsp::utils
+} 
