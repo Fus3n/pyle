@@ -1,4 +1,4 @@
 struct bytes {
-    fn size(self) { }
-    fn to_string(self) { }
+    fn size() { }
+    fn to_string() { }
 }

@@ -96,6 +96,7 @@ namespace pyle {
 
     struct BlockStmt: public Stmt {
         std::vector<std::unique_ptr<Stmt>> statements;
+        int close_line = -1;
 
       explicit BlockStmt(std::vector<std::unique_ptr<Stmt>> statements)
           : statements(std::move(statements)) {}
@@ -258,8 +259,9 @@ namespace pyle {
         std::unique_ptr<Expr> obj;
         Token name;
         std::unique_ptr<Expr> value;
-        SetFieldExpr(std::unique_ptr<Expr> obj, Token name, std::unique_ptr<Expr> value)
-            : obj(std::move(obj)), name(name), value(std::move(value)) {}
+        std::string type_annotation; // optional: self.field: Type = value
+        SetFieldExpr(std::unique_ptr<Expr> obj, Token name, std::unique_ptr<Expr> value, std::string type_annotation = "")
+            : obj(std::move(obj)), name(name), value(std::move(value)), type_annotation(std::move(type_annotation)) {}
         void accept(Visitor* visitor) override;
     };
 

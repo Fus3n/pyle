@@ -15,73 +15,10 @@ if is_mode("debug") then
     set_policy("build.sanitizer.undefined", true)    
 end
 
-package("lspcpp")
-    set_homepage("https://github.com/kuafuwang/LspCpp")
-    set_description("A Language Server Protocol implementation in C++")
-    
-    add_urls("https://github.com/kuafuwang/LspCpp.git")
-    add_versions("master", "master")
-    
-    add_deps("cmake")
-
-    if is_plat("windows") then
-        add_syslinks("ws2_32", "userenv", "bcrypt")
-    elseif is_plat("linux") then
-        add_syslinks("pthread")
-    end
-
-    on_install(function (package)
-        -- PATCH: Fix MinGW build failing on MSVC-only ppltasks.h
-        if package:is_plat("mingw", "msys") then
-            for _, file in ipairs(os.files("include/**/*.h")) do
-                local content = io.readfile(file)
-                if content and content:find("ppltasks.h", 1, true) then
-                    content = content:gsub("_WIN32", "_MSC_VER")
-                    io.writefile(file, content)
-                end
-            end
-            for _, file in ipairs(os.files("src/**/*.cpp")) do
-                local content = io.readfile(file)
-                if content and content:find("ppltasks.h", 1, true) then
-                    content = content:gsub("_WIN32", "_MSC_VER")
-                    io.writefile(file, content)
-                end
-            end
-        end
-
-        local configs = {
-            "-DLSPCPP_BUILD_TESTS=OFF",
-            "-DLSPCPP_BUILD_EXAMPLES=OFF",
-            "-DLSPCPP_USE_CPP17=ON",
-            "-DUSE_TLS=OFF",
-            "-DUSE_ZLIB=OFF",
-            "-DLSPCPP_INSTALL=ON" -- CRITICAL: Tells CMake to actually output the headers/lib
-        }
-        
-        if package:is_plat("mingw", "msys", "linux", "macosx") then
-            table.insert(configs, "-DCMAKE_CXX_FLAGS=-Wno-error -Wno-shorten-64-to-32")
-        end
-        
-        if package:is_plat("windows") and package:config("vs_runtime") == "MT" then
-            table.insert(configs, "-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded")
-        end
-        
-        import("package.tools.cmake").install(package, configs)
-        
-        -- LspCpp's CMake install step forgets to install the 3rd party headers it relies on.
-        -- We manually merge them into the package's include directory so your app can find them.
-        local incdir = package:installdir("include")
-        os.cp("third_party/rapidjson/include/*", incdir)
-        os.cp("third_party/utfcpp/source/*", incdir)
-        os.cp("third_party/asio/asio/include/*", incdir)
-    end)
-package_end()
-
 add_requires("fmt 12.2.0", {configs = {header_only = true}})
 add_requires("unordered_dense 4.8.1", "argparse 3.2", "simdjson 4.2.4")
 add_requires("raylib 5.5")
 add_requires("nlohmann_json 3.11.3")
-add_requires("lspcpp") 
 add_cxxflags("/utf-8", {tools = "cl"})
 add_rules("plugin.compile_commands.autoupdate")
 
@@ -144,7 +81,7 @@ target("example_class_binding")
 target("pyle-lsp")
     set_kind("binary")
     add_files("pyle-lsp/src/main.cpp")
-    add_packages("nlohmann_json", "lspcpp")
+    add_packages("nlohmann_json")
     add_deps("libpyle")
     set_rundir("$(projectdir)")
     set_runtimes("MT")
@@ -152,6 +89,15 @@ target("pyle-lsp")
     if is_plat("mingw", "msys") then
         add_ldflags("-static", {force = true})
     end
+
+    -- Ship layout: <build>/pyle-lsp/pyle-lsp.exe so the extension and manual
+    -- installs can pick it up next to the interpreter.
+    after_build(function (target)
+        import("core.project.project")
+        local outdir = path.join(target:targetdir(), "pyle-lsp")
+        os.mkdir(outdir)
+        os.cp(target:targetfile(), path.join(outdir, "pyle-lsp.exe"))
+    end)
 
 target("example_async_binding")
     set_kind("binary")

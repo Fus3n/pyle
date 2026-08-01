@@ -42,6 +42,10 @@
       {
         "command": "pyle.selectInterpreter",
         "title": "Pyle: Select Interpreter Path"
+      },
+      {
+        "command": "pyle.selectLsp",
+        "title": "Pyle: Select LSP Server Binary"
       }
     ],
     "configuration": {
@@ -51,6 +55,11 @@
           "type": "string",
           "default": "",
           "description": "Path to the pyle.exe interpreter. If empty, the extension searches PATH."
+        },
+        "pyle.lspPath": {
+          "type": "string",
+          "default": "",
+          "description": "Path to the pyle-lsp.exe language server binary. If empty, the extension auto-detects it (next to the interpreter or the bundled copy)."
         }
       }
     }

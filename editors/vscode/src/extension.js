@@ -25,6 +25,10 @@ function findPyleStdPath(pyleExePath) {
     return null;
 }
 
+function lspExecutableName() {
+    return process.platform === 'win32' ? 'pyle-lsp.exe' : 'pyle-lsp';
+}
+
 let client = null;
 let clientDisposable = null;
 
@@ -39,57 +43,69 @@ async function stopClient() {
     }
 }
 
-function activate(context) {
-    const binPath = context.asAbsolutePath(path.join('bin', 'pyle-lsp.exe'));
-    const outputChannel = vscode.window.createOutputChannel('Pyle LSP');
-    outputChannel.show(true);
+function findLspBinary(context, interpreterPath) {
+    const config = vscode.workspace.getConfiguration('pyle');
+    const explicit = config.get('lspPath') || '';
+    if (explicit && fs.existsSync(explicit)) return explicit;
 
-    function buildServerOptions() {
-        const config = vscode.workspace.getConfiguration('pyle');
-        let exePath = config.get('executablePath') || '';
-        if (!exePath) exePath = findFirstPyle();
-        if (!exePath) {
-            const rel = context.asAbsolutePath('../../build/mingw/x86_64/release/pyle.exe');
-            if (fs.existsSync(rel)) exePath = rel;
-        }
-
-        const args = [];
-        if (exePath) {
-            const stdPath = findPyleStdPath(exePath);
-            if (stdPath) args.push('--std-path', stdPath);
-        } else {
-            outputChannel.appendLine('[pyle] pyle.exe not found. Use Pyle: Select Interpreter Path to set it.');
-        }
-
-        return {
-            run: { command: binPath, args, transport: TransportKind.stdio },
-            debug: { command: binPath, args, transport: TransportKind.stdio }
-        };
+    if (interpreterPath) {
+        const nextTo = path.join(path.dirname(interpreterPath), 'pyle-lsp', lspExecutableName());
+        if (fs.existsSync(nextTo)) return nextTo;
     }
 
+    const bundled = context.asAbsolutePath(path.join('bin', lspExecutableName()));
+    if (fs.existsSync(bundled)) return bundled;
+
+    return null;
+}
+
+function findInterpreter() {
+    const config = vscode.workspace.getConfiguration('pyle');
+    const exePath = config.get('executablePath') || '';
+    return exePath || findFirstPyle();
+}
+
+function activate(context) {
+    const outputChannel = vscode.window.createOutputChannel('Pyle LSP');
+
     function startClient() {
-        if (!fs.existsSync(binPath)) {
-            const msg = `LSP binary not found at ${binPath}. Build and copy pyle-lsp.exe there, or update the extension path.`;
-            outputChannel.appendLine('[pyle] ERROR: ' + msg);
-            vscode.window.showErrorMessage(msg);
+        if (client) return;
+
+        const interpreterPath = findInterpreter();
+        const lspBinary = findLspBinary(context, interpreterPath);
+
+        if (!lspBinary) {
+            outputChannel.appendLine('[pyle] pyle-lsp not found; language server not started.');
+            vscode.window.showWarningMessage(
+                'Pyle language server (pyle-lsp) not found. Set its location to enable Pyle language features.',
+                'Select LSP Binary'
+            ).then(choice => {
+                if (choice === 'Select LSP Binary') vscode.commands.executeCommand('pyle.selectLsp');
+            });
             return;
         }
 
-        const config = vscode.workspace.getConfiguration('pyle');
-        const exePath = config.get('executablePath') || findFirstPyle();
-        if (!exePath) {
-            outputChannel.appendLine('[pyle] pyle.exe not found in PATH and pyle.executablePath not set.');
-            setTimeout(() => {
-                vscode.window.showWarningMessage(
-                    'Pyle interpreter not found. Use Pyle: Select Interpreter Path to locate pyle.exe.',
-                    'Select Interpreter'
-                ).then(choice => {
-                    if (choice === 'Select Interpreter') vscode.commands.executeCommand('pyle.selectInterpreter');
-                });
-            }, 1000);
+        if (!interpreterPath) {
+            outputChannel.appendLine('[pyle] pyle.exe not found; running without std-path.');
+            vscode.window.showWarningMessage(
+                'Pyle interpreter not found. Set its location for std library support.',
+                'Select Interpreter'
+            ).then(choice => {
+                if (choice === 'Select Interpreter') vscode.commands.executeCommand('pyle.selectInterpreter');
+            });
         }
 
-        const serverOptions = buildServerOptions();
+        outputChannel.appendLine(`[pyle] interpreter: ${interpreterPath || '(none)'}`);
+        outputChannel.appendLine(`[pyle] lsp binary:  ${lspBinary}`);
+
+        const args = [];
+        if (interpreterPath) {
+            const stdPath = findPyleStdPath(interpreterPath);
+            if (stdPath) args.push('--std-path', stdPath);
+            outputChannel.appendLine(`[pyle] std:        ${stdPath || '(none)'}`);
+        }
+
+        const serverOptions = { run: { command: lspBinary, args, transport: TransportKind.stdio } };
         const clientOptions = {
             documentSelector: [{ scheme: 'file', language: 'pyle' }],
             synchronize: {
@@ -171,11 +187,68 @@ function activate(context) {
 
         await config.update('executablePath', selected, vscode.ConfigurationTarget.Global);
         vscode.window.showInformationMessage(`Pyle interpreter set to: ${selected}`);
-        await stopClient();
-        startClient();
     });
 
-    context.subscriptions.push(restartCmd, selectInterpreterCmd);
+    const selectLspCmd = vscode.commands.registerCommand('pyle.selectLsp', async () => {
+        const config = vscode.workspace.getConfiguration('pyle');
+        const current = config.get('lspPath') || '';
+        const interpreterPath = findInterpreter();
+
+        const items = [];
+        const candidates = [];
+        if (current && fs.existsSync(current)) candidates.push(current);
+        if (interpreterPath) {
+            candidates.push(path.join(path.dirname(interpreterPath), 'pyle-lsp', lspExecutableName()));
+        }
+        candidates.push(context.asAbsolutePath(path.join('bin', lspExecutableName())));
+
+        const seen = new Set();
+        for (const c of candidates) {
+            if (!c || seen.has(c) || !fs.existsSync(c)) continue;
+            seen.add(c);
+            items.push({
+                label: (c === current ? '$(check) ' : '') + c,
+                description: c === current ? '(currently set)' : '',
+                path: c
+            });
+        }
+        items.push({
+            label: '$(file-directory) Browse for pyle-lsp.exe...',
+            description: '',
+            detail: 'Pick a custom location',
+            path: ''
+        });
+
+        const pick = await vscode.window.showQuickPick(items, {
+            title: 'Select Pyle LSP Server Binary',
+            placeHolder: current || 'Pick a pyle-lsp.exe'
+        });
+        if (!pick) return;
+
+        let selected;
+        if (pick.label.includes('Browse')) {
+            const opts = {
+                canSelectFiles: true, canSelectFolders: false, canSelectMany: false,
+                filters: { Executables: ['exe'], All: ['*'] },
+                title: 'Select pyle-lsp.exe'
+            };
+            const result = await vscode.window.showOpenDialog(opts);
+            if (!result || result.length === 0) return;
+            selected = result[0].fsPath;
+        } else {
+            selected = pick.path;
+        }
+
+        await config.update('lspPath', selected, vscode.ConfigurationTarget.Global);
+        vscode.window.showInformationMessage(`Pyle LSP binary set to: ${selected}`);
+    });
+
+    const configWatcher = vscode.workspace.onDidChangeConfiguration(e => {
+        if (!e.affectsConfiguration('pyle.executablePath') && !e.affectsConfiguration('pyle.lspPath')) return;
+        stopClient().then(() => startClient());
+    });
+
+    context.subscriptions.push(restartCmd, selectInterpreterCmd, selectLspCmd, configWatcher);
     startClient();
 }
 

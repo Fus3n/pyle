@@ -55,6 +55,7 @@ namespace pyle {
         std::unique_ptr<Stmt> enum_declaration();
 
         std::unique_ptr<BlockStmt> block();
+        std::unique_ptr<BlockStmt> function_body();
 
         std::unique_ptr<Expr> expression();
         std::unique_ptr<Expr> assignment();

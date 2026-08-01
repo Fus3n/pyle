@@ -9,50 +9,73 @@
 
 namespace pyle::lsp {
 
-struct Position { 
-    size_t line; 
-    size_t character; 
+struct DocumentModel;
+
+struct Position {
+    size_t line = 0;
+    size_t character = 0;
 };
 
-struct Range { 
-    Position start; 
-    Position end; 
+struct Range {
+    Position start;
+    Position end;
 };
 
 enum class SymbolKind {
-    Function, 
-    Struct, 
-    Variable, 
-    Parameter, 
-    Field, 
-    Module, 
+    Function,
+    Method,
+    StaticFunction,
+    Struct,
+    Variable,
+    Parameter,
+    Field,
+    Module,
     Keyword
 };
 
 struct SymbolInfo {
     std::string name;
-    SymbolKind kind;
+    SymbolKind kind = SymbolKind::Variable;
     std::string detail;
+    std::string documentation;
     std::string file_path;
     Range range;
     Range selection_range;
     std::string type_name;
     bool has_type_hint = false;
-    bool is_method = false;
     bool is_local = false;
+    int scope_end_line = -1;
     std::string parent_struct = "";
     std::string scope_func = "";
+    bool is_static = false;
+    const DocumentModel* owner_doc = nullptr;
 };
 
-struct Document {
+struct DocumentModel {
     std::string file_path;
     std::string source;
     pyle::ErrorReporter reporter;
     std::vector<SymbolInfo> symbols;
     std::map<std::string, std::string> imports;
     std::vector<std::string> import_paths;
-    bool type_decls_loaded = false;
     std::vector<std::unique_ptr<pyle::Stmt>> ast;
+    std::vector<pyle::Token> tokens;
+    bool is_definition_file = false;
+};
+
+inline const std::vector<std::string> BUILTIN_TYPES = {
+    "string", "int", "float", "bool", "array", "map",
+    "bytes", "coro", "function", "range", "iterator", "none"
+};
+
+inline const std::string ANY_TYPE = "any";
+
+struct Diagnostic {
+    size_t line = 0;
+    size_t character = 0;
+    size_t length = 1;
+    int severity = 1;
+    std::string message;
 };
 
 inline const std::vector<std::pair<std::string, std::string>> LSP_KEYWORDS = {
@@ -62,7 +85,8 @@ inline const std::vector<std::pair<std::string, std::string>> LSP_KEYWORDS = {
     {"return", "return"}, {"break", "break"}, {"continue", "continue"},
     {"true", "boolean"}, {"false", "boolean"}, {"none", "none"},
     {"import", "import"}, {"and", "and"}, {"or", "or"}, {"not", "not"},
-    {"yield", "yield"}, {"loop", "loop"}, {"static", "static"}
+    {"yield", "yield"}, {"loop", "loop"}, {"static", "static"},
+    {"enum", "enum"}
 };
 
-} 
+}

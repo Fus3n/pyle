@@ -20,18 +20,19 @@ namespace pyle {
         }
     }
 
+    struct ErrorRecord {
+        Span loc;
+        ErrorType type;
+        std::string message;
+        size_t length;
+    };
+
     class ErrorReporter {
     private:
         bool had_error = false;
         std::string_view source;
         std::string_view script_name;
 
-        struct ErrorRecord {
-            Span loc;
-            ErrorType type;
-            std::string message;
-            size_t length;
-        };
         std::vector<ErrorRecord> errors;
 
     public:

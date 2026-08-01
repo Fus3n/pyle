@@ -35,10 +35,11 @@ namespace pyle {
         std::vector<std::unique_ptr<Stmt>> stmts;
         try {
             while (!is_at_end()) {
+                size_t before = current;
                 stmts.push_back(statement());
+                if (current == before && !is_at_end()) advance();
             }
         } catch (ParserError& error) {
-            // return {};
         }
         return stmts;
     }
@@ -84,10 +85,11 @@ namespace pyle {
     }
 
     void Parser::synchronize() {
-        advance();
+        if (previous().type == TokenType::SEMICOLON) return;
 
         while (!is_at_end()) {
             if (previous().type == TokenType::SEMICOLON) return;
+            if (check(TokenType::RIGHT_BRACE)) return;
 
             switch (peek().type) {
                 case TokenType::IF:
@@ -106,6 +108,7 @@ namespace pyle {
     }
 
     std::unique_ptr<Stmt> Parser::statement() {
+        size_t start = current;
         try {
             if (match({TokenType::LET})) return var_declaration();
             if (match({TokenType::LEFT_BRACE})) return block();
@@ -123,6 +126,7 @@ namespace pyle {
             return expression_statement();
         } catch (ParserError& err) {
             synchronize();
+            if (current == start && !check(TokenType::RIGHT_BRACE) && !is_at_end()) advance();
             return nullptr;
         }
     }
@@ -176,12 +180,12 @@ namespace pyle {
             // .pyl.d style return type: fn name(params): RetType { body }
             return_type = std::string(consume(TokenType::IDENTIFIER, "Expected return type name.").lexeme);
             consume(TokenType::LEFT_BRACE, "Expected '{' before function body.");
-            body = block();
+            body = function_body();
         } else if (match({TokenType::ARROW})) {
             if (check(TokenType::IDENTIFIER) && peek_next() == TokenType::LEFT_BRACE) {
                 return_type = std::string(advance().lexeme);
                 consume(TokenType::LEFT_BRACE, "Expected '{' before function body.");
-                body = block();
+                body = function_body();
             } else {
                 std::unique_ptr<Expr> expr = expression();
                 consume_statement_end();
@@ -192,7 +196,7 @@ namespace pyle {
             }
         } else {
             consume(TokenType::LEFT_BRACE, "Expected '{' before function body.");
-            body = block();
+            body = function_body();
         }
         
         return std::make_unique<FuncDeclStmt>(std::move(name), std::move(params), std::move(body), return_type, param_types);
@@ -263,7 +267,7 @@ namespace pyle {
                 method_return_type = std::string(consume(TokenType::IDENTIFIER, "Expected return type name.").lexeme);
             }
             consume(TokenType::LEFT_BRACE, "Expected '{' before method body.");
-            std::unique_ptr<BlockStmt> body = block();
+            std::unique_ptr<BlockStmt> body = function_body();
             
             if (!is_static && method_name.lexeme == "_init") {
                 auto return_self = std::make_unique<ReturnStmt>(std::make_unique<VariableExpr>(self_tok));
@@ -271,7 +275,11 @@ namespace pyle {
             }
             methods.push_back(std::make_unique<FuncDeclStmt>(method_name, std::move(params), std::move(body), method_return_type, method_param_types));
         }
-        consume(TokenType::RIGHT_BRACE, "Expected '}' after struct body.");
+        if (!check(TokenType::RIGHT_BRACE)) {
+            reporter.report(peek().selection, ErrorType::Syntax, "Expected '}' after struct body.", peek().lexeme.size());
+        } else {
+            advance();
+        }
         return std::make_unique<StructDeclStmt>(name, std::move(fields), std::move(methods), field_types);
     }
 
@@ -423,8 +431,18 @@ namespace pyle {
             reporter.report(open_brace.selection, ErrorType::Syntax, "This '{' was never closed.", open_brace.lexeme.size());
             throw ParserError();
         }
-        consume(TokenType::RIGHT_BRACE, "Expected '}' after block.");
-        return std::make_unique<BlockStmt>(std::move(statements));
+        Token close_brace = consume(TokenType::RIGHT_BRACE, "Expected '}' after block.");
+        auto blk = std::make_unique<BlockStmt>(std::move(statements));
+        blk->close_line = (int)close_brace.selection.line;
+        return blk;
+    }
+
+    std::unique_ptr<BlockStmt> Parser::function_body() {
+        try {
+            return block();
+        } catch (const ParserError&) {
+            return std::make_unique<BlockStmt>(std::vector<std::unique_ptr<Stmt>>{});
+        }
     }
 
 
@@ -457,6 +475,22 @@ namespace pyle {
             }
 
             reporter.report(equals.selection, ErrorType::Syntax, "Invalid assignment target.");
+        }
+
+        if (match({TokenType::COLON})) {
+            Token colon = previous();
+            consume(TokenType::IDENTIFIER, "Expected type name after ':'.");
+            Token type_name = previous();
+            if (!match({TokenType::EQUAL})) {
+                reporter.report(colon.selection, ErrorType::Syntax, "Expected '=' after type annotation.");
+                throw ParserError();
+            }
+            std::unique_ptr<Expr> value = assignment();
+            if (auto* get_field = dynamic_cast<GetFieldExpr*>(expr.get())) {
+                return std::make_unique<SetFieldExpr>(std::move(get_field->obj), get_field->name, std::move(value), std::string(type_name.lexeme));
+            }
+            reporter.report(colon.selection, ErrorType::Syntax, "Invalid typed assignment target.");
+            throw ParserError();
         }
 
         if (match({TokenType::PLUS_EQUAL, TokenType::MINUS_EQUAL, TokenType::STAR_EQUAL, TokenType::SLASH_EQUAL})) {

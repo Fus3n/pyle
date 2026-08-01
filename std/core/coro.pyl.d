@@ -1,4 +1,4 @@
 struct coro {
-    fn resume(self, arg) { }
-    fn state(self) { }
+    fn resume(arg) { }
+    fn state() { }
 }
