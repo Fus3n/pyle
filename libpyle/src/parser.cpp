@@ -799,7 +799,7 @@ namespace pyle {
                     if (match({TokenType::IDENTIFIER})) {
                         key = std::make_unique<ImplicitStringExpr>(previous());
                     } else {
-                        key = expression();
+                        key = logical_or();
                     }
                     consume(TokenType::COLON, "Expected ':' after map key.");
                     std::unique_ptr<Expr> value = expression();
