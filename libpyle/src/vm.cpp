@@ -892,6 +892,8 @@ namespace pyle {
             &&op_SET_GLOBAL_SLOT,
             &&op_DEFINE_GLOBAL_SLOT,
             &&op_SET_LOCAL_POP,
+            &&op_INC_LOCAL,
+            &&op_DEC_LOCAL,
             &&op_SET_GLOBAL_SLOT_POP,
             &&op_GET_ITER,
             &&op_FOR_ITER,
@@ -1106,6 +1108,36 @@ namespace pyle {
 
                 OP(SET_LOCAL_POP) {
                     stack[frame->stack_base + ARG] = pop();
+                }
+                DISPATCH();
+
+                OP(INC_LOCAL) {
+                    Value& slot = stack[frame->stack_base + ARG];
+                    if (slot.tag == Value::Tag::Int) {
+                        slot.as_int++;
+                    } else if (slot.tag == Value::Tag::Float) {
+                        slot.as_float += 1.0;
+                    } else {
+                        sync_ip();
+                        runtime_error(RuntimeError::Type, fmt::format(
+                            "Unsupported operand types. a.tag={}, b.tag=int", slot.tag_to_string()));
+                        return;
+                    }
+                }
+                DISPATCH();
+
+                OP(DEC_LOCAL) {
+                    Value& slot = stack[frame->stack_base + ARG];
+                    if (slot.tag == Value::Tag::Int) {
+                        slot.as_int--;
+                    } else if (slot.tag == Value::Tag::Float) {
+                        slot.as_float -= 1.0;
+                    } else {
+                        sync_ip();
+                        runtime_error(RuntimeError::Type, fmt::format(
+                            "Unsupported operand types. a.tag={}, b.tag=int", slot.tag_to_string()));
+                        return;
+                    }
                 }
                 DISPATCH();
 
@@ -1787,57 +1819,73 @@ namespace pyle {
                 DISPATCH(); 
 
                 OP(GET_ITER) {
-                    Value container = peek(); 
+                    Value container = peek();
+                    Iterator::Kind kind;
                     switch (container.tag) {
-                        case Value::Tag::ArrayRef:
-                        case Value::Tag::StringRef:
-                        case Value::Tag::RangeRef:
-                        case Value::Tag::BytesRef: {
-                            HeapIdx idx = alloc(Object(Iterator{container, 0}));
-                            set_top(Value(Value::Tag::IteratorRef, idx)); // Replace the container 
-                            break;
-                        }
+                        case Value::Tag::ArrayRef:  kind = Iterator::Kind::Array; break;
+                        case Value::Tag::StringRef: kind = Iterator::Kind::String; break;
+                        case Value::Tag::RangeRef:  kind = Iterator::Kind::Range; break;
+                        case Value::Tag::BytesRef:  kind = Iterator::Kind::Bytes; break;
                         default: {
                             sync_ip();
                             runtime_error(RuntimeError::Type, "Object is not iterable");
                             return;
                         }
                     }
+                    HeapIdx idx = alloc(Object(Iterator{container, 0, kind}));
+                    set_top(Value(Value::Tag::IteratorRef, idx)); // Replace the container
                 }
                 DISPATCH();
-                
+
                 OP(FOR_ITER) {
-                    Value iter_val = peek(); 
+                    Value iter_val = peek();
                     Iterator& iter = std::get<Iterator>(get_heap_object(iter_val.as_ref).data);
                     Object& container_obj = get_heap_object(iter.container.as_ref);
-                    
-                    if (auto* array_ptr = std::get_if<ArrayType>(&container_obj.data)) {
-                        if (iter.index < array_ptr->size()) {
-                            push((*array_ptr)[iter.index++]); 
-                        } else {
-                            ip += ARG; 
+
+                    switch (iter.kind) {
+                        case Iterator::Kind::Array: {
+                            auto* array_ptr = std::get_if<ArrayType>(&container_obj.data);
+                            if (array_ptr && iter.index < array_ptr->size()) {
+                                push((*array_ptr)[iter.index++]);
+                            } else {
+                                ip += ARG;
+                            }
+                            break;
                         }
-                    } else if (auto* string_ptr = std::get_if<std::string>(&container_obj.data)) {
-                        if (iter.index < string_ptr->size()) {
-                            std::string char_str(1, (*string_ptr)[iter.index++]);
-                            HeapIdx char_idx = intern_string(char_str);
-                            push(Value(Value::Tag::StringRef, char_idx));
-                        } else {
-                            ip += ARG; 
+                        case Iterator::Kind::String: {
+                            auto* string_ptr = std::get_if<std::string>(&container_obj.data);
+                            if (string_ptr && iter.index < string_ptr->size()) {
+                                std::string char_str(1, (*string_ptr)[iter.index++]);
+                                HeapIdx char_idx = intern_string(char_str);
+                                push(Value(Value::Tag::StringRef, char_idx));
+                            } else {
+                                ip += ARG;
+                            }
+                            break;
                         }
-                    } else if (auto* range_ptr = std::get_if<Range>(&container_obj.data)) {
-                        int64_t current = range_ptr->start + iter.index;
-                        if (current < range_ptr->end) {
-                            push(Value(current));
-                            iter.index++;
-                        } else {
-                            ip += ARG;
+                        case Iterator::Kind::Range: {
+                            auto* range_ptr = std::get_if<Range>(&container_obj.data);
+                            if (range_ptr) {
+                                int64_t current = range_ptr->start + iter.index;
+                                if (current < range_ptr->end) {
+                                    push(Value(current));
+                                    iter.index++;
+                                } else {
+                                    ip += ARG;
+                                }
+                            } else {
+                                ip += ARG;
+                            }
+                            break;
                         }
-                    } else if (auto* bytes_ptr = std::get_if<BytesType>(&container_obj.data)) {
-                        if (iter.index < bytes_ptr->size()) {
-                            push(Value(static_cast<int64_t>((*bytes_ptr)[iter.index++])));
-                        } else {
-                            ip += ARG; 
+                        case Iterator::Kind::Bytes: {
+                            auto* bytes_ptr = std::get_if<BytesType>(&container_obj.data);
+                            if (bytes_ptr && iter.index < bytes_ptr->size()) {
+                                push(Value(static_cast<int64_t>((*bytes_ptr)[iter.index++])));
+                            } else {
+                                ip += ARG;
+                            }
+                            break;
                         }
                     }
                 }

@@ -242,8 +242,16 @@ namespace pyle {
     };
 
     struct Iterator {
-        Value container; 
+        enum class Kind : uint8_t {
+            Array,
+            String,
+            Range,
+            Bytes
+        };
+
+        Value container;
         size_t index = 0;
+        Kind kind = Kind::Array;
     };
 
     struct Range {

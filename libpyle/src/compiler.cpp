@@ -8,6 +8,7 @@
 #include <cmath>
 #include <cstdint>
 #include <cstring>
+#include <stdexcept>
 #include <vector>
 
 
@@ -445,8 +446,42 @@ namespace pyle {
         }
     }
 
+    bool Compiler::try_emit_local_increment(AssignExpr* expr) {
+        auto* bin = dynamic_cast<BinaryExpr*>(expr->value.get());
+        if (!bin) return false;
+
+        bool is_inc = bin->op.type == TokenType::PLUS;
+        bool is_dec = bin->op.type == TokenType::MINUS;
+        if (!is_inc && !is_dec) return false;
+
+        auto* target = dynamic_cast<VariableExpr*>(bin->left.get());
+        if (!target || target->name.lexeme != expr->name.lexeme) return false;
+
+        auto* one = dynamic_cast<LiteralExpr*>(bin->right.get());
+        if (!one || one->token.type != TokenType::INT) return false;
+
+        int64_t step = 0;
+        try {
+            step = std::stoll(std::string(one->token.lexeme), nullptr, 0);
+        } catch (const std::exception&) {
+            return false;
+        }
+        if (step != 1) return false;
+
+        const int arg = resolve_local(expr->name);
+        if (arg == -1) return false;
+
+        emit_instruction(is_inc ? OpCode::INC_LOCAL : OpCode::DEC_LOCAL,
+                         static_cast<uint32_t>(arg), expr->name.selection.line);
+        return true;
+    }
+
     void Compiler::visit_expression(ExpressionStmt *stmt) {
         if (auto* assign = dynamic_cast<AssignExpr*>(stmt->expression.get())) {
+            if (try_emit_local_increment(assign)) {
+                return;
+            }
+
             assign->value->accept(this);
             int arg = resolve_local(assign->name);
             if (arg != -1) {
