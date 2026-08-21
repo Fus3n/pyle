@@ -54,6 +54,12 @@ namespace pyle {
         }
     }
 
+    Value VM::canonicalize_map_key(const Value& key) {
+        if (key.tag != Value::Tag::StringRef) return key;
+        const std::string& str = std::get<std::string>(heap[key.as_ref].data);
+        return Value(Value::Tag::StringRef, intern_string(str));
+    }
+
     HeapIdx VM::intern_string(std::string_view str) {
         std::lock_guard<std::recursive_mutex> lock(vm_mutex); 
         auto it = interned_strings.find(str);
@@ -755,7 +761,7 @@ namespace pyle {
         } else if (a.tag == Value::Tag::StringRef && b.tag == Value::Tag::StringRef) { \
             const std::string& sa = std::get<std::string>(heap[a.as_ref].data);\
             const std::string& sb = std::get<std::string>(heap[b.as_ref].data);\
-            HeapIdx idx = intern_string(sa + sb);\
+            HeapIdx idx = alloc(Object(std::string(sa + sb)));\
             set_top(Value(Value::Tag::StringRef, idx));\
         } else { \
             std::string msg = fmt::format("Unsupported operand types. a.tag={}, b.tag={}", \
@@ -1056,14 +1062,22 @@ namespace pyle {
                 OP(EQ) {
                     Value b = pop();
                     Value a = peek();
-                    set_top(Value(a == b));
-                }   
+                    if (a.tag == Value::Tag::StringRef && b.tag == Value::Tag::StringRef && a.as_ref != b.as_ref) {
+                        set_top(Value(std::get<std::string>(heap[a.as_ref].data) == std::get<std::string>(heap[b.as_ref].data)));
+                    } else {
+                        set_top(Value(a == b));
+                    }
+                }
                 DISPATCH();
 
                 OP(NEQ) {
                     Value b = pop();
                     Value a = peek();
-                    set_top(Value(a != b));
+                    if (a.tag == Value::Tag::StringRef && b.tag == Value::Tag::StringRef && a.as_ref != b.as_ref) {
+                        set_top(Value(std::get<std::string>(heap[a.as_ref].data) != std::get<std::string>(heap[b.as_ref].data)));
+                    } else {
+                        set_top(Value(a != b));
+                    }
                 }
                 DISPATCH();
 
@@ -1697,11 +1711,12 @@ namespace pyle {
                             set_top(Value(Value::Tag::StringRef, char_idx));
                             break;
                         }
-                        case Value::Tag::MapRef: { 
-                            if (!is_hashable(index)) { 
+                        case Value::Tag::MapRef: {
+                            if (!is_hashable(index)) {
                                 runtime_error(RuntimeError::Type, fmt::format("Unhashable type '{}' cannot be used as a map key.", index.tag_to_string()));
                                 return;
                             }
+                            index = canonicalize_map_key(index);
                             auto& map = std::get<MapObject>(heap[container.as_ref].data).entries;
                             auto it = map.find(index);
                             if (it != map.end()) {
@@ -1746,10 +1761,11 @@ namespace pyle {
                         set_top(value);
 
                     } else if (container.tag == Value::Tag::MapRef) {
-                        if (!is_hashable(index)) { 
+                        if (!is_hashable(index)) {
                             runtime_error(RuntimeError::Type, fmt::format("Unhashable type '{}' cannot be used as a map key.", index.tag_to_string()));
                             return;
                         }
+                        index = canonicalize_map_key(index);
                         auto& map = std::get<MapObject>(heap[container.as_ref].data).entries;
                         map[index] = value;
                         sp -= 2;
@@ -2043,7 +2059,7 @@ namespace pyle {
                         runtime_error(RuntimeError::Type, fmt::format("Unhashable type '{}' cannot be used as a map key.", key.tag_to_string()));
                         return;
                     }
-                    map[key] = val;
+                    map[canonicalize_map_key(key)] = val;
                 }
                 
                 HeapIdx idx = alloc(Object(std::move(map)));

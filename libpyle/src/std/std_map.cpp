@@ -27,6 +27,7 @@ namespace pyle::MapMethods {
             vm.runtime_error(RuntimeError::Type, fmt::format("Unhashable type '{}' cannot be used as a map key.", key.tag_to_string()));
             return Value();
         }
+        key = vm.canonicalize_map_key(key);
 
         auto& map = vm.get_heap_object<MapObject>(obj_idx).entries;
 
@@ -84,8 +85,9 @@ namespace pyle::MapMethods {
         
         Value key = args[0];
         if (!vm.is_hashable(key)) {
-            return Value(false); 
+            return Value(false);
         }
+        key = vm.canonicalize_map_key(key);
 
         const auto& map = vm.get_heap_object<MapObject>(obj_idx).entries;
         return Value(map.find(key) != map.end());

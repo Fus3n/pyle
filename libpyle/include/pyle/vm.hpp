@@ -75,6 +75,8 @@ namespace pyle {
 
         bool is_truthy(const Value& v);
 
+        Value canonicalize_map_key(const Value& key);
+
         inline bool is_hashable(const Value& v) const {
             return v.tag != Value::Tag::ArrayRef &&
                 v.tag != Value::Tag::MapRef &&
