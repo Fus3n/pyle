@@ -805,7 +805,8 @@ namespace pyle {
 #ifdef PYLE_USE_COMPUTED_GOTO
     #define OP(name) op_##name:
     #define ARG get_operand(*(ip - 1))
-    #define DISPATCH() \
+#ifndef NDEBUG
+    #define PYLE_DISPATCH_GUARD() \
         do { \
             if (panicked) return; \
             if (ip >= ip_end) { \
@@ -813,12 +814,32 @@ namespace pyle {
                 this->runtime_error(RuntimeError::OutOfBounds, "Instruction pointer out of bounds."); \
                 return; \
             } \
+        } while (false)
+#else
+    #define PYLE_DISPATCH_GUARD() do {} while (false)
+#endif
+    #define DISPATCH() \
+        do { \
+            PYLE_DISPATCH_GUARD(); \
             uint32_t instruction = *ip++; \
             goto *dispatch_table[static_cast<uint8_t>(get_op(instruction))]; \
         } while (false)
 #else
     #define OP(name) case OpCode::name:
     #define ARG arg
+#ifndef NDEBUG
+    #define PYLE_DISPATCH_GUARD() \
+        do { \
+            if (panicked) return; \
+            if (ip >= ip_end) { \
+                sync_ip(); \
+                runtime_error(RuntimeError::OutOfBounds, "Instruction pointer out of bounds."); \
+                return; \
+            } \
+        } while (false)
+#else
+    #define PYLE_DISPATCH_GUARD() do {} while (false)
+#endif
     #define DISPATCH() break
 #endif
 
@@ -909,71 +930,75 @@ namespace pyle {
         };
 
 #ifdef PYLE_USE_COMPUTED_GOTO
-        static const void* dispatch_table[] = {
-            &&op_LOAD_CONST,
-            &&op_LOAD_LOCAL,
-            &&op_SET_LOCAL,
-            &&op_LOAD_GLOBAL_SLOT,
-            &&op_SET_GLOBAL_SLOT,
-            &&op_DEFINE_GLOBAL_SLOT,
-            &&op_SET_LOCAL_POP,
-            &&op_INC_LOCAL,
-            &&op_DEC_LOCAL,
-            &&op_SET_GLOBAL_SLOT_POP,
-            &&op_GET_ITER,
-            &&op_FOR_ITER,
-            &&op_NEW_RANGE,
-            &&op_CLOSURE,
-            &&op_LOAD_UPVALUE,
-            &&op_SET_UPVALUE,
-            &&op_SET_UPVALUE_POP,
-            &&op_GET_FIELD,
-            &&op_SET_FIELD,
-            &&op_ADD,
-            &&op_SUB,
-            &&op_MUL,
-            &&op_DIV,
-            &&op_MOD,
-            &&op_NEG,
-            &&op_EQ,
-            &&op_NEQ,
-            &&op_LT,
-            &&op_LTE,
-            &&op_GT,
-            &&op_GTE,
-            &&op_NOT,
-            &&op_JUMP,
-            &&op_JUMP_IF_FALSE,
-            &&op_JUMP_IF_TRUE,
-            &&op_POP_JUMP_IF_FALSE,
-            &&op_POP_JUMP_IF_TRUE,
-            &&op_LOOP,
-            &&op_CALL,
-            &&op_CALL_METHOD,
-            &&op_RETURN,
-            &&op_POP,
-            &&op_NEW_ARRAY,
-            &&op_NEW_MAP,
-            &&op_CALL_KW,
-            &&op_GET_INDEX,
-            &&op_SET_INDEX,
-            &&op_YIELD,
-            &&op_HALT
-        };
+        const void* dispatch_table_storage[256];
+        for (size_t i = 0; i < 256; ++i) {
+            dispatch_table_storage[i] = &&op_Invalid;
+        }
+        {
+            const void* labels[] = {
+                &&op_LOAD_CONST,
+                &&op_LOAD_LOCAL,
+                &&op_SET_LOCAL,
+                &&op_LOAD_GLOBAL_SLOT,
+                &&op_SET_GLOBAL_SLOT,
+                &&op_DEFINE_GLOBAL_SLOT,
+                &&op_SET_LOCAL_POP,
+                &&op_INC_LOCAL,
+                &&op_DEC_LOCAL,
+                &&op_SET_GLOBAL_SLOT_POP,
+                &&op_GET_ITER,
+                &&op_FOR_ITER,
+                &&op_NEW_RANGE,
+                &&op_CLOSURE,
+                &&op_LOAD_UPVALUE,
+                &&op_SET_UPVALUE,
+                &&op_SET_UPVALUE_POP,
+                &&op_GET_FIELD,
+                &&op_SET_FIELD,
+                &&op_ADD,
+                &&op_SUB,
+                &&op_MUL,
+                &&op_DIV,
+                &&op_MOD,
+                &&op_NEG,
+                &&op_EQ,
+                &&op_NEQ,
+                &&op_LT,
+                &&op_LTE,
+                &&op_GT,
+                &&op_GTE,
+                &&op_NOT,
+                &&op_JUMP,
+                &&op_JUMP_IF_FALSE,
+                &&op_JUMP_IF_TRUE,
+                &&op_POP_JUMP_IF_FALSE,
+                &&op_POP_JUMP_IF_TRUE,
+                &&op_LOOP,
+                &&op_CALL,
+                &&op_CALL_METHOD,
+                &&op_RETURN,
+                &&op_POP,
+                &&op_NEW_ARRAY,
+                &&op_NEW_MAP,
+                &&op_CALL_KW,
+                &&op_GET_INDEX,
+                &&op_SET_INDEX,
+                &&op_YIELD,
+                &&op_HALT
+            };
+            for (size_t i = 0; i < sizeof(labels) / sizeof(labels[0]); ++i) {
+                dispatch_table_storage[i] = labels[i];
+            }
+        }
+        const void* const* dispatch_table = dispatch_table_storage;
         if (ip >= ip_end) {
             runtime_error(RuntimeError::OutOfBounds, "Instruction pointer out of bounds.");
             return;
         }
-        DISPATCH(); 
+        DISPATCH();
 #else
         while (true) {
-            if (panicked) return;
-
-            if (ip >= ip_end) { 
-                sync_ip();
-                runtime_error(RuntimeError::OutOfBounds, "Instruction pointer out of bounds.");
-                return;
-            }
+            PYLE_DISPATCH_GUARD();
             uint32_t instruction = *ip++;
 
             OpCode op = get_op(instruction);
@@ -1215,7 +1240,8 @@ namespace pyle {
                             ArgView args_view{args_ptr, static_cast<size_t>(arg_count)};
                             sync_ip();
                             Value result = native(*this, args_view);
-                            sp -= arg_count; 
+                            if (panicked) return;
+                            sp -= arg_count;
                             set_top(result);
                             break;
                         }
@@ -1229,10 +1255,11 @@ namespace pyle {
                                 
                                 sync_ip();
                                 Value result = native(*this, args_view);
+                                if (panicked) return;
                                 sp -= arg_count;
                                 set_top(result);
                             } else {
-                                sync_ip(); 
+                                sync_ip();
                                 if (instantiate_struct(callee.as_ref, arg_count, frame)) {
                                     frame = &frames[frame_count - 1];
                                     Function& fn_post_clos = get_func_from_frame(*frame);
@@ -1402,6 +1429,7 @@ namespace pyle {
                                     ArgView args_view{args_ptr, static_cast<size_t>(arg_count)};
                                     sync_ip();
                                     Value result = native(*this, args_view);
+                                    if (panicked) return;
                                     sp -= arg_count;
                                     set_top(result);
                                 } else if (resolved_fn.tag == Value::Tag::StructTypeRef) {
@@ -1420,6 +1448,7 @@ namespace pyle {
                                         ArgView args_view{args_ptr, static_cast<size_t>(arg_count)};
                                         sync_ip();
                                         Value result = native(*this, args_view);
+                                        if (panicked) return;
                                         sp -= arg_count;
                                         set_top(result);
                                     } else {
@@ -2172,10 +2201,16 @@ namespace pyle {
 
                 OP(HALT) {
                     if (sp > stack) {
-                        last_result = peek(); 
+                        last_result = peek();
                     } else {
                         last_result = Value();
                     }
+                    return;
+                }
+
+                OP(Invalid) {
+                    sync_ip();
+                    runtime_error(RuntimeError::Runtime, "Corrupted bytecode: invalid opcode.");
                     return;
                 }
 

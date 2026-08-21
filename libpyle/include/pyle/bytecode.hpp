@@ -54,7 +54,8 @@ namespace pyle {
         GET_INDEX,
         SET_INDEX,
         YIELD,
-        HALT
+        HALT,
+        Invalid = 0xFF
     };
 
     inline uint32_t encode(OpCode op, const uint32_t operand = 0) {

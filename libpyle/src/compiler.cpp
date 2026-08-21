@@ -197,6 +197,9 @@ namespace pyle {
 
         end_scope();
 
+        fn.chunk.instr.push_back(encode(OpCode::Invalid, 0));
+        fn.chunk.lines.push_back(0);
+
         for (const auto& uv : current_state->upvalues) {
             fn.upvalues.push_back(Function::UpvalueInfo{uv.index, uv.is_local});
         }
@@ -227,6 +230,8 @@ namespace pyle {
             }
         }
         emit_instruction(OpCode::HALT, 0, 0);
+        main_chunk.instr.push_back(encode(OpCode::Invalid, 0));
+        main_chunk.lines.push_back(0);
         main_chunk.field_ic.resize(main_chunk.instr.size());
         vm.set_gc_enabled(true);
         return std::move(main_chunk);
