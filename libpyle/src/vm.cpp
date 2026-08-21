@@ -918,6 +918,8 @@ namespace pyle {
             &&op_JUMP,
             &&op_JUMP_IF_FALSE,
             &&op_JUMP_IF_TRUE,
+            &&op_POP_JUMP_IF_FALSE,
+            &&op_POP_JUMP_IF_TRUE,
             &&op_LOOP,
             &&op_CALL,
             &&op_CALL_METHOD,
@@ -1718,6 +1720,20 @@ namespace pyle {
 
                 OP(JUMP_IF_TRUE) {
                     if (is_truthy(peek()))  {
+                        ip += ARG;
+                    }
+                }
+                DISPATCH();
+
+                OP(POP_JUMP_IF_FALSE) {
+                    if (!is_truthy(pop())) {
+                        ip += ARG;
+                    }
+                }
+                DISPATCH();
+
+                OP(POP_JUMP_IF_TRUE) {
+                    if (is_truthy(pop())) {
                         ip += ARG;
                     }
                 }

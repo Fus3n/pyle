@@ -49,6 +49,8 @@ namespace pyle {
                 case OpCode::GTE: fmt::print("GTE\n"); break;
                 case OpCode::JUMP_IF_FALSE: fmt::print("{:16} {:4}\n", "JUMP_IF_FALSE", operand); break;
                 case OpCode::JUMP_IF_TRUE: fmt::print("{:16} {:4}\n", "JUMP_IF_TRUE", operand); break;
+                case OpCode::POP_JUMP_IF_FALSE: fmt::print("{:16} {:4}\n", "POP_JUMP_IF_FALSE", operand); break;
+                case OpCode::POP_JUMP_IF_TRUE: fmt::print("{:16} {:4}\n", "POP_JUMP_IF_TRUE", operand); break;
                 case OpCode::JUMP:          fmt::print("{:16} {:4}\n", "JUMP", operand); break;
                 case OpCode::LOOP:          fmt::print("{:16} {:4}\n", "LOOP", operand); break;
                 case OpCode::NEW_ARRAY: fmt::print("{:16} {:4} (elements)\n", "NEW_ARRAY", operand); break;

@@ -185,7 +185,9 @@ namespace pyle {
         }
 
         for (const auto& s : body->statements) {
-            if (s) s->accept(this);
+            if (!s) continue;
+            s->accept(this);
+            if (dynamic_cast<ReturnStmt*>(s.get()) != nullptr) break;
         }
 
         uint32_t none_idx = make_constant(Value());
@@ -517,7 +519,9 @@ namespace pyle {
     void Compiler::visit_block(BlockStmt *stmt) {
         begin_scope();
         for (const auto& s : stmt->statements) {
-            if (s) s->accept(this);
+            if (!s) continue;
+            s->accept(this);
+            if (dynamic_cast<ReturnStmt*>(s.get()) != nullptr) break;
         }
         end_scope();
     }
@@ -558,15 +562,12 @@ namespace pyle {
     void Compiler::visit_if(IfStmt* stmt) {
         stmt->condition->accept(this);
 
-        size_t then_jump = emit_jump(OpCode::JUMP_IF_FALSE, 0);
-        emit_instruction(OpCode::POP, 0, 0);
-
+        size_t then_jump = emit_jump(OpCode::POP_JUMP_IF_FALSE, 0);
         stmt->then_branch->accept(this);
 
         size_t else_jump = emit_jump(OpCode::JUMP, 0);
 
         patch_jump(then_jump);
-        emit_instruction(OpCode::POP, 0, 0);
 
         if (stmt->else_branch) {
             stmt->else_branch->accept(this);
@@ -582,16 +583,14 @@ namespace pyle {
         size_t loop_start = current_chunk->instr.size();
         loop_continue_targets.push_back(loop_start);
         stmt->condition->accept(this);
-        
-        size_t exit_jump = emit_jump(OpCode::JUMP_IF_FALSE, 0);
-        emit_instruction(OpCode::POP, 0, 0);
+
+        size_t exit_jump = emit_jump(OpCode::POP_JUMP_IF_FALSE, 0);
 
         stmt->body->accept(this);
-        
+
         emit_loop(loop_start, 0);
-        
-        patch_jump(exit_jump);               
-        emit_instruction(OpCode::POP, 0, 0); 
+
+        patch_jump(exit_jump);
 
         for (size_t break_jump : loop_breaks.back()) {
             patch_jump(break_jump);

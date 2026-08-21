@@ -39,6 +39,8 @@ namespace pyle {
         JUMP,
         JUMP_IF_FALSE,
         JUMP_IF_TRUE,
+        POP_JUMP_IF_FALSE,
+        POP_JUMP_IF_TRUE,
         LOOP,
         CALL,
         CALL_METHOD,
