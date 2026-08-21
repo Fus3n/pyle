@@ -61,13 +61,13 @@ namespace pyle {
     }
 
     HeapIdx VM::intern_string(std::string_view str) {
-        std::lock_guard<std::recursive_mutex> lock(vm_mutex); 
+        std::lock_guard<std::recursive_mutex> lock(vm_mutex);
         auto it = interned_strings.find(str);
         if (it != interned_strings.end()) {
             return it->second;
         }
 
-        HeapIdx idx = alloc(Object(std::string(str)));
+        HeapIdx idx = alloc_permanent(Object(std::string(str)));
         auto& stored = std::get<std::string>(heap[idx].data);
         interned_strings.try_emplace(stored, idx);
         return idx;
@@ -219,8 +219,16 @@ namespace pyle {
         return idx;
     }
 
+    HeapIdx VM::alloc_permanent(Object obj) {
+        const HeapIdx idx = alloc(std::move(obj));
+        heap[idx].permanent = true;
+        return idx;
+    }
+
     void VM::gc_sweep() {
         for (HeapIdx i = 0; i < heap.size(); ++i) {
+            if (heap[i].permanent) continue;
+
             if (std::holds_alternative<std::monostate>(heap[i].data))
                 continue;
 
@@ -264,6 +272,9 @@ namespace pyle {
             case Value::Tag::CoroutineRef: 
             case Value::Tag::BytesRef: {
                 HeapIdx idx = val.as_ref;
+                if (heap[idx].permanent) {
+                    return;
+                }
                 if (!heap[idx].gc_marked) {
                     heap[idx].gc_marked = true;
                     gc_worklist.push_back(idx);
@@ -712,33 +723,36 @@ namespace pyle {
 
     HeapIdx VM::capture_upvalue(size_t stack_index) {
         Value* local_ptr = &stack[stack_index];
-        
-        // if an upvalue exists for this variable, share it
-        for (HeapIdx uv_idx : open_upvalues) {
-            Upvalue& uv = std::get<Upvalue>(heap[uv_idx].data);
+
+        size_t pos = open_upvalues.size();
+        for (size_t i = open_upvalues.size(); i-- > 0;) {
+            Upvalue& uv = std::get<Upvalue>(heap[open_upvalues[i]].data);
             if (uv.location == local_ptr) {
-                return uv_idx;
+                return open_upvalues[i];
             }
+            if (uv.location < local_ptr) {
+                pos = i + 1;
+                break;
+            }
+            pos = i;
         }
-        
-        // new upvalue
+
         Upvalue uv;
         uv.location = local_ptr;
         HeapIdx idx = alloc(Object(uv));
-        open_upvalues.push_back(idx);
+        open_upvalues.insert(open_upvalues.begin() + static_cast<long>(pos), idx);
         return idx;
     }
 
     void VM::close_upvalues(Value* limit) {
-        for (auto it = open_upvalues.begin(); it != open_upvalues.end(); ) {
-            Upvalue& uv = std::get<Upvalue>(heap[*it].data);
-            if (uv.location >= limit) {
-                uv.closed = *(uv.location);
-                uv.location = &uv.closed;
-                it = open_upvalues.erase(it);
-            } else {
-                ++it;
+        while (!open_upvalues.empty()) {
+            Upvalue& uv = std::get<Upvalue>(heap[open_upvalues.back()].data);
+            if (uv.location < limit) {
+                break;
             }
+            uv.closed = *(uv.location);
+            uv.location = &uv.closed;
+            open_upvalues.pop_back();
         }
     }
 
@@ -2235,9 +2249,9 @@ namespace pyle {
         return slot;
     }
 
-     void VM::define_native(const std::string &name, NativeFn function) {
+    void VM::define_native(const std::string &name, NativeFn function) {
         HeapIdx name_idx = intern_string(name);
-        HeapIdx fn_idx = alloc(Object(function));
+        HeapIdx fn_idx = alloc_permanent(Object(function));
 
         Value fn_val(Value::Tag::NativeFuncRef, fn_idx);
         int slot = declare_global(name_idx);

@@ -360,6 +360,7 @@ namespace pyle {
 
     struct Object {
         bool gc_marked = false;
+        bool permanent = false;
         std::variant<
             std::monostate,
             std::string,

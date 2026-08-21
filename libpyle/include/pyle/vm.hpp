@@ -49,6 +49,7 @@ namespace pyle {
         ankerl::unordered_dense::map<HeapIdx, int> global_slot_map;
 
         HeapIdx alloc(Object obj);
+        HeapIdx alloc_permanent(Object obj);
         HeapIdx intern_string(std::string_view str);
 
         void gc_collect_now() { gc_collect(); } 
