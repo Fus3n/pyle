@@ -201,6 +201,8 @@ namespace pyle {
             fn.upvalues.push_back(Function::UpvalueInfo{uv.index, uv.is_local});
         }
 
+        fn.chunk.field_ic.resize(fn.chunk.instr.size());
+
         // Restore parent state
         const_lookup = std::move(enclosing_lookup);
         current_chunk = enclosing_chunk;
@@ -225,6 +227,7 @@ namespace pyle {
             }
         }
         emit_instruction(OpCode::HALT, 0, 0);
+        main_chunk.field_ic.resize(main_chunk.instr.size());
         vm.set_gc_enabled(true);
         return std::move(main_chunk);
     }

@@ -18,12 +18,13 @@ namespace pyle {
     PYLE_FORCEINLINE void sync_frame_cache(CallFrame* f, Function& fn,
                                 const uint32_t*& instr_data, const uint32_t*& ip,
                                 const uint32_t*& ip_end, const Value*& const_pool,
-                                size_t& const_pool_size) {
+                                size_t& const_pool_size, Chunk*& cur_chunk) {
         instr_data = fn.chunk.instr.data();
         ip = instr_data + f->ip;
         ip_end = instr_data + fn.chunk.instr.size();
         const_pool = fn.chunk.const_pool.data();
         const_pool_size = fn.chunk.const_pool.size();
+        cur_chunk = &fn.chunk;
     }
 
     void VM::grow_stack() {
@@ -68,6 +69,14 @@ namespace pyle {
 
     HeapIdx VM::build_closure_for_call(HeapIdx fn_idx, CallFrame* caller_frame) {
         Function& fn = std::get<Function>(heap[fn_idx].data);
+
+        if (fn.upvalues.empty()) {
+            auto it = closure_memo.find(fn_idx);
+            if (it != closure_memo.end()) {
+                return it->second;
+            }
+        }
+
         Closure closure;
         closure.function = fn_idx;
         for (const auto& uv : fn.upvalues) {
@@ -78,7 +87,12 @@ namespace pyle {
                 closure.upvalues.push_back(parent_closure.upvalues[uv.index]);
             }
         }
-        return alloc(Object(closure));
+        HeapIdx idx = alloc(Object(closure));
+
+        if (fn.upvalues.empty()) {
+            closure_memo[fn_idx] = idx;
+        }
+        return idx;
     }
 
     bool VM::instantiate_struct(HeapIdx struct_type_idx, int arg_count, CallFrame* current_frame) {
@@ -282,6 +296,10 @@ namespace pyle {
 
         for (HeapIdx uv_idx : open_upvalues) {
             mark_value(Value(Value::Tag::UpvalueRef, uv_idx));
+        }
+
+        for (const auto& [fn_idx, closure_idx] : closure_memo) {
+            mark_value(Value(Value::Tag::ClosureRef, closure_idx));
         }
 
         auto mark_storage = [this](HeapIdx s) {
@@ -873,7 +891,8 @@ namespace pyle {
         const uint32_t* ip_end;
         const Value* const_pool;
         size_t const_pool_size;
-        sync_frame_cache(frame, fn, instr_data, ip, ip_end, const_pool, const_pool_size);
+        Chunk* cur_chunk = nullptr;
+        sync_frame_cache(frame, fn, instr_data, ip, ip_end, const_pool, const_pool_size, cur_chunk);
         auto sync_ip = [&]() {
             frame->ip = ip - instr_data;
         };
@@ -1173,7 +1192,7 @@ namespace pyle {
                                     }
                             frames[frame_count++] = new_frame;
                             frame = &frames[frame_count - 1];
-                            sync_frame_cache(frame, fn, instr_data, ip, ip_end, const_pool, const_pool_size);
+                            sync_frame_cache(frame, fn, instr_data, ip, ip_end, const_pool, const_pool_size, cur_chunk);
                             break;
                         }
                         case Value::Tag::NativeFuncRef: {
@@ -1203,7 +1222,7 @@ namespace pyle {
                                 if (instantiate_struct(callee.as_ref, arg_count, frame)) {
                                     frame = &frames[frame_count - 1];
                                     Function& fn_post_clos = get_func_from_frame(*frame);
-                                    sync_frame_cache(frame, fn_post_clos, instr_data, ip, ip_end, const_pool, const_pool_size);
+                                    sync_frame_cache(frame, fn_post_clos, instr_data, ip, ip_end, const_pool, const_pool_size, cur_chunk);
                                 }
                             }
                             break;
@@ -1251,7 +1270,7 @@ namespace pyle {
 
                         frame = &frames[frame_count - 1];
                         Function& fn_next = get_func_from_frame(*frame);
-                        sync_frame_cache(frame, fn_next, instr_data, ip, ip_end, const_pool, const_pool_size);
+                        sync_frame_cache(frame, fn_next, instr_data, ip, ip_end, const_pool, const_pool_size, cur_chunk);
 
                         #ifdef PYLE_USE_COMPUTED_GOTO
                         DISPATCH();
@@ -1264,7 +1283,7 @@ namespace pyle {
                     sp = stack + stack_base; 
                     frame = &frames[frame_count - 1];
                     Function& fn = get_func_from_frame(*frame);
-                    sync_frame_cache(frame, fn, instr_data, ip, ip_end, const_pool, const_pool_size);
+                    sync_frame_cache(frame, fn, instr_data, ip, ip_end, const_pool, const_pool_size, cur_chunk);
                 }
                 DISPATCH();
 
@@ -1362,7 +1381,7 @@ namespace pyle {
                                     }
                                     frames[frame_count++] = new_frame;
                                     frame = &frames[frame_count - 1];
-                                    sync_frame_cache(frame, fn, instr_data, ip, ip_end, const_pool, const_pool_size);
+                                    sync_frame_cache(frame, fn, instr_data, ip, ip_end, const_pool, const_pool_size, cur_chunk);
                                 } else if (resolved_fn.tag == Value::Tag::NativeFuncRef) {
                                     NativeFn native = std::get<NativeFn>(heap[resolved_fn.as_ref].data);
                                     const Value* args_ptr = arg_count > 0 ? (sp - arg_count) : nullptr;
@@ -1394,7 +1413,7 @@ namespace pyle {
                                         if (instantiate_struct(resolved_fn.as_ref, arg_count, frame)) {
                                             frame = &frames[frame_count - 1];
                                             Function& fn_post_clos = get_func_from_frame(*frame);
-                                            sync_frame_cache(frame, fn_post_clos, instr_data, ip, ip_end, const_pool, const_pool_size);
+                                            sync_frame_cache(frame, fn_post_clos, instr_data, ip, ip_end, const_pool, const_pool_size, cur_chunk);
                                         }
                                     }
                                 } else {
@@ -1510,7 +1529,7 @@ namespace pyle {
                                     }
                                     frames[frame_count++] = new_frame;
                                     frame = &frames[frame_count - 1];
-                                    sync_frame_cache(frame, fn, instr_data, ip, ip_end, const_pool, const_pool_size);
+                                    sync_frame_cache(frame, fn, instr_data, ip, ip_end, const_pool, const_pool_size, cur_chunk);
                                 }
                             } else {
                                 runtime_error(RuntimeError::Name, 
@@ -1555,7 +1574,7 @@ namespace pyle {
                                 }
                                 frames[frame_count++] = new_frame;
                                 frame = &frames[frame_count - 1];
-                                sync_frame_cache(frame, fn, instr_data, ip, ip_end, const_pool, const_pool_size);
+                                sync_frame_cache(frame, fn, instr_data, ip, ip_end, const_pool, const_pool_size, cur_chunk);
                             } else {
                                 runtime_error(RuntimeError::Name, fmt::format("Method '{}' not found.", method_name));
                                 return;
@@ -1576,7 +1595,7 @@ namespace pyle {
                             if (coro_switched) {
                                 frame = &frames[frame_count - 1];
                                 Function& fn_next = get_func_from_frame(*frame);
-                                sync_frame_cache(frame, fn_next, instr_data, ip, ip_end, const_pool, const_pool_size);
+                                sync_frame_cache(frame, fn_next, instr_data, ip, ip_end, const_pool, const_pool_size, cur_chunk);
                             } else {
                                 push(result);
                             }
@@ -1933,14 +1952,24 @@ namespace pyle {
                             return;
                         }
                         Struct& s = std::get<Struct>(heap[obj_val.as_ref].data);
-                        StructType& type = std::get<StructType>(heap[s.type_idx].data);
-                        size_t offset = type.get_offset(field_id);
-                        if (offset == size_t(-1)) {
-                            sync_ip();
-                            runtime_error(RuntimeError::Name, "Struct has no field with name.");
-                            return;
+
+                        const size_t site = static_cast<size_t>((ip - 1) - instr_data);
+                        FieldIC& ic = cur_chunk->field_ic[site];
+
+                        if (ic.type_idx == s.type_idx) {
+                            push(s.fields[ic.offset]);
+                        } else {
+                            StructType& type = std::get<StructType>(heap[s.type_idx].data);
+                            size_t offset = type.get_offset(field_id);
+                            if (offset == size_t(-1)) {
+                                sync_ip();
+                                runtime_error(RuntimeError::Name, "Struct has no field with name.");
+                                return;
+                            }
+                            ic.type_idx = s.type_idx;
+                            ic.offset = offset;
+                            push(s.fields[offset]);
                         }
-                        push(s.fields[offset]);
                     }
                 }
                 DISPATCH();
@@ -1975,15 +2004,26 @@ namespace pyle {
                             return;
                         }
                         Struct& s = std::get<Struct>(heap[obj_val.as_ref].data);
-                        StructType& type = std::get<StructType>(heap[s.type_idx].data);
-                        size_t offset = type.get_offset(field_id);
-                        if (offset == size_t(-1)) {
-                            sync_ip();
-                            runtime_error(RuntimeError::Name, "Struct has no field with that name.");
-                            return;
+
+                        const size_t site = static_cast<size_t>((ip - 1) - instr_data);
+                        FieldIC& ic = cur_chunk->field_ic[site];
+
+                        if (ic.type_idx == s.type_idx) {
+                            s.fields[ic.offset] = val;
+                            push(val);
+                        } else {
+                            StructType& type = std::get<StructType>(heap[s.type_idx].data);
+                            size_t offset = type.get_offset(field_id);
+                            if (offset == size_t(-1)) {
+                                sync_ip();
+                                runtime_error(RuntimeError::Name, "Struct has no field with that name.");
+                                return;
+                            }
+                            ic.type_idx = s.type_idx;
+                            ic.offset = offset;
+                            s.fields[offset] = val;
+                            push(val);
                         }
-                        s.fields[offset] = val;
-                        push(val); 
                     }
                 }
                 DISPATCH();
@@ -2079,7 +2119,7 @@ namespace pyle {
                         new_frame.stack_base = stack_size() - 1;
                         frames[frame_count++] = new_frame;
                         frame = &frames[frame_count - 1];
-                        sync_frame_cache(frame, fn_post_clos, instr_data, ip, ip_end, const_pool, const_pool_size);
+                        sync_frame_cache(frame, fn_post_clos, instr_data, ip, ip_end, const_pool, const_pool_size, cur_chunk);
                     }
                 }
                 DISPATCH();
@@ -2110,7 +2150,7 @@ namespace pyle {
 
                     frame = &frames[frame_count - 1];
                     Function& fn_next = get_func_from_frame(*frame);
-                    sync_frame_cache(frame, fn_next, instr_data, ip, ip_end, const_pool, const_pool_size);
+                    sync_frame_cache(frame, fn_next, instr_data, ip, ip_end, const_pool, const_pool_size, cur_chunk);
                 }
                 DISPATCH();
 

@@ -63,9 +63,15 @@ namespace pyle {
     inline OpCode   get_op (const uint32_t instr) { return static_cast<OpCode>(instr & 0xFF); }
     inline uint32_t get_operand (const uint32_t instr) { return instr >> 8; }
 
+    struct FieldIC {
+        size_t type_idx = static_cast<size_t>(-1);
+        size_t offset = 0;
+    };
+
     struct Chunk {
         std::vector<uint32_t> instr;
         std::vector<Value>    const_pool;
         std::vector<size_t>   lines;
+        std::vector<FieldIC>  field_ic;
     };
 }

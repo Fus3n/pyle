@@ -113,6 +113,7 @@ namespace pyle {
         ankerl::unordered_dense::map<HeapIdx, ModuleFactory> module_registry;
         ankerl::unordered_dense::map<HeapIdx, Value> loaded_modules;
         ankerl::unordered_dense::map<std::string, std::string> source_cache;
+        ankerl::unordered_dense::map<HeapIdx, HeapIdx> closure_memo;
 
         size_t builtin_count = 0;
         bool builtins_finalized = false;
