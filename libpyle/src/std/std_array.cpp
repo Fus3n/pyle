@@ -153,6 +153,7 @@ namespace pyle::ArrayMethods {
         auto it = methods.find(name);
         if (it == methods.end()) {
             vm.runtime_error(RuntimeError::Name, fmt::format("array has no method '{}'", name));
+            return Value();
         }
 
         return it->second(vm, obj_idx, args);
