@@ -6,7 +6,7 @@ struct Vector3(x: float, y: float, z: float) { }
 struct Matrix(m0: float, m1: float, m2: float, m3: float, m4: float, m5: float, m6: float, m7: float, m8: float, m9: float, m10: float, m11: float, m12: float, m13: float, m14: float, m15: float) { }
 struct Image(width: int, height: int, mipmaps: int, format: int) { }
 struct Texture(id: int, width: int, height: int, mipmaps: int, format: int) { }
-struct Font { }
+struct Font(texture: Texture) { }
 struct Sound { }
 struct Music(looping: bool) { }
 struct Camera3D(position: Vector3, target: Vector3, up: Vector3, fovy: float, projection: int) { }
@@ -166,6 +166,7 @@ fn LoadImage(fileName: string): Image { }
 fn UnloadImage(image: Image) { }
 fn LoadTexture(fileName: string): Texture { }
 fn LoadTextureFromImage(image: Image): Texture { }
+fn SetTextureFilter(texture: Texture, filter: int) { }
 fn UnloadTexture(texture: Texture) { }
 fn DrawTexture(texture: Texture, posX: int, posY: int, tint: Color) { }
 fn DrawTextureV(texture: Texture, position: Vector2, tint: Color) { }

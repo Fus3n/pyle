@@ -10,6 +10,10 @@ namespace raylib_binding {
         font.custom_constructor(+[](VM& vm, ArgView) -> Value {
             return to_value_owned<Font>(vm, new Font{});
         });
+        font.custom_getter("texture", +[](VM& vm, HeapIdx obj_idx, ArgView) -> Value {
+            auto* f = static_cast<Font*>(std::get<NativeObject>(vm.get_heap_object(obj_idx).data).ptr);
+            return to_value_owned<Texture2D>(vm, new Texture2D{ f->texture.id, f->texture.width, f->texture.height, f->texture.mipmaps, f->texture.format });
+        });
         mod.class_type(font);
 
         mod.raw_function("LoadFont", +[](VM& vm, ArgView args) -> Value {

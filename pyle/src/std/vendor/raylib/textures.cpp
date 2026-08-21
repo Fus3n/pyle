@@ -58,6 +58,14 @@ namespace raylib_binding {
             UnloadTexture(*t);
             return Value();
         });
+        mod.raw_function("SetTextureFilter", +[](VM& vm, ArgView args) -> Value {
+            if (args.size() != 2) { vm.runtime_error(RuntimeError::ArgumentError, "SetTextureFilter expects (texture, filter)."); return Value(); }
+            Texture2D* t = as_native<Texture2D>(vm, args[0], "Texture");
+            int filter = from_value<int64_t>(vm, args[1]);
+            if (!t) return Value();
+            SetTextureFilter(*t, filter);
+            return Value();
+        });
         mod.raw_function("DrawTexture", +[](VM& vm, ArgView args) -> Value {
             if (args.size() != 4) { vm.runtime_error(RuntimeError::ArgumentError, "DrawTexture expects (texture, posX, posY, tint)."); return Value(); }
             Texture2D* t = as_native<Texture2D>(vm, args[0], "Texture");
