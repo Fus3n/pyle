@@ -4,11 +4,31 @@
 #include "pyle/bytecode.hpp"
 #include "pyle/error_reporter.hpp"
 #include "pyle/value.hpp"
+#include <ankerl/unordered_dense.h>
 #include <cstddef>
+#include <cstdint>
 
 namespace pyle {
 
     class VM;
+
+    struct ConstPoolKey {
+        uint8_t tag;
+        uint64_t bits;
+
+        bool operator==(const ConstPoolKey& other) const {
+            return tag == other.tag && bits == other.bits;
+        }
+    };
+
+    struct ConstPoolKeyHash {
+        using is_avalanching = void;
+
+        uint64_t operator()(const ConstPoolKey& key) const noexcept {
+            const uint64_t tag_hash = ankerl::unordered_dense::hash<uint64_t>{}(key.tag);
+            return ankerl::unordered_dense::hash<uint64_t>{}(key.bits) ^ (tag_hash * 0x9E3779B97F4A7C15ULL);
+        }
+    };
 
     struct Local {
         Token name;
@@ -41,6 +61,16 @@ namespace pyle {
         void patch_jump(size_t offset);
         void emit_loop(size_t loop_start, size_t line);
         uint32_t make_constant(Value value);
+
+        uint64_t value_bits(const Value& value) const;
+        bool instruction_is_load_const(size_t offset, uint32_t& const_idx) const;
+        void pop_instructions(size_t count);
+        bool fold_arithmetic(TokenType op, const Value& lhs, const Value& rhs, Value& out);
+        bool fold_comparison(TokenType op, const Value& lhs, const Value& rhs, Value& out);
+        bool try_fold_binary(BinaryExpr* expr, uint32_t lhs_idx, uint32_t rhs_idx);
+        bool try_fold_unary(UnaryExpr* expr, uint32_t operand_idx);
+
+        ankerl::unordered_dense::map<ConstPoolKey, uint32_t, ConstPoolKeyHash> const_lookup;
 
         void begin_scope();
         void end_scope();

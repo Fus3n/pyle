@@ -5,7 +5,9 @@
 #include "pyle/token.hpp"
 #include "pyle/value.hpp"
 #include "pyle/vm.hpp"
+#include <cmath>
 #include <cstdint>
+#include <cstring>
 #include <vector>
 
 
@@ -68,9 +70,24 @@ namespace pyle {
         emit_instruction(OpCode::LOOP, static_cast<uint32_t>(jump), line);
     }
 
+    uint64_t Compiler::value_bits(const Value& value) const {
+        uint64_t bits = 0;
+        static_assert(sizeof(bits) == sizeof(value.as_int), "Unsupported Value payload size");
+        std::memcpy(&bits, &value.as_int, sizeof(bits));
+        return bits;
+    }
+
     uint32_t Compiler::make_constant(Value value) {
+        const ConstPoolKey key{static_cast<uint8_t>(value.tag), value_bits(value)};
+        auto it = const_lookup.find(key);
+        if (it != const_lookup.end()) {
+            return it->second;
+        }
+
         current_chunk->const_pool.push_back(value);
-        return static_cast<uint32_t>(current_chunk->const_pool.size() - 1);
+        const uint32_t idx = static_cast<uint32_t>(current_chunk->const_pool.size() - 1);
+        const_lookup.emplace(key, idx);
+        return idx;
     }
 
     void Compiler::begin_scope() {
@@ -151,36 +168,38 @@ namespace pyle {
         
         Chunk* enclosing_chunk = current_chunk;
         int enclosing_scope = current_state->scope_depth;
+        decltype(const_lookup) enclosing_lookup(std::move(const_lookup));
 
         // Push the nested compiler state
         CompileState state;
         state.enclosing = current_state;
-        state.is_init = (name == "_init"); 
+        state.is_init = (name == "_init");
         current_state = &state;
 
         current_chunk = &fn.chunk;
         current_state->scope_depth = 0;
-        
+
         begin_scope();
         for (const auto& param : params) {
             current_state->locals.push_back(Local{param, current_state->scope_depth});
         }
-        
+
         for (const auto& s : body->statements) {
             if (s) s->accept(this);
         }
-        
+
         uint32_t none_idx = make_constant(Value());
         emit_instruction(OpCode::LOAD_CONST, none_idx, 0);
         emit_instruction(OpCode::RETURN, 0, 0);
-        
+
         end_scope();
 
         for (const auto& uv : current_state->upvalues) {
             fn.upvalues.push_back(Function::UpvalueInfo{uv.index, uv.is_local});
         }
-        
+
         // Restore parent state
+        const_lookup = std::move(enclosing_lookup);
         current_chunk = enclosing_chunk;
         current_state = state.enclosing;
         current_state->scope_depth = enclosing_scope;
@@ -239,9 +258,170 @@ namespace pyle {
         expr->expression->accept(this);
     }
 
+    bool Compiler::instruction_is_load_const(size_t offset, uint32_t& const_idx) const {
+        if (offset >= current_chunk->instr.size()) return false;
+        const uint32_t instr = current_chunk->instr[offset];
+        if (get_op(instr) != OpCode::LOAD_CONST) return false;
+        const_idx = get_operand(instr);
+        return true;
+    }
+
+    void Compiler::pop_instructions(size_t count) {
+        current_chunk->instr.resize(current_chunk->instr.size() - count);
+        current_chunk->lines.resize(current_chunk->lines.size() - count);
+    }
+
+    bool Compiler::fold_arithmetic(TokenType op, const Value& lhs, const Value& rhs, Value& out) {
+        const bool lhs_num = lhs.tag == Value::Tag::Int || lhs.tag == Value::Tag::Float;
+        const bool rhs_num = rhs.tag == Value::Tag::Int || rhs.tag == Value::Tag::Float;
+
+        if (lhs_num && rhs_num) {
+            if (op == TokenType::SLASH || op == TokenType::PERCENT) {
+                const bool zero_divisor = (rhs.tag == Value::Tag::Int && rhs.as_int == 0) ||
+                    (rhs.tag == Value::Tag::Float && rhs.as_float == 0.0);
+                if (zero_divisor) return false;
+            }
+
+            if (lhs.tag == Value::Tag::Int && rhs.tag == Value::Tag::Int) {
+                switch (op) {
+                    case TokenType::PLUS:    out = Value(lhs.as_int + rhs.as_int); break;
+                    case TokenType::MINUS:   out = Value(lhs.as_int - rhs.as_int); break;
+                    case TokenType::STAR:    out = Value(lhs.as_int * rhs.as_int); break;
+                    case TokenType::SLASH:   out = Value(lhs.as_int / rhs.as_int); break;
+                    case TokenType::PERCENT: out = Value(lhs.as_int % rhs.as_int); break;
+                    default: return false;
+                }
+                return true;
+            }
+
+            const double da = (lhs.tag == Value::Tag::Int) ? static_cast<double>(lhs.as_int) : lhs.as_float;
+            const double db = (rhs.tag == Value::Tag::Int) ? static_cast<double>(rhs.as_int) : rhs.as_float;
+            switch (op) {
+                case TokenType::PLUS:    out = Value(da + db); break;
+                case TokenType::MINUS:   out = Value(da - db); break;
+                case TokenType::STAR:    out = Value(da * db); break;
+                case TokenType::SLASH:   out = Value(da / db); break;
+                case TokenType::PERCENT: out = Value(std::fmod(da, db)); break;
+                default: return false;
+            }
+            return true;
+        }
+
+        if (op == TokenType::PLUS &&
+            lhs.tag == Value::Tag::StringRef && rhs.tag == Value::Tag::StringRef) {
+            const std::string& sa = std::get<std::string>(vm.get_heap_object(lhs.as_ref).data);
+            const std::string& sb = std::get<std::string>(vm.get_heap_object(rhs.as_ref).data);
+            const HeapIdx idx = vm.intern_string(sa + sb);
+            out = Value(Value::Tag::StringRef, idx);
+            return true;
+        }
+
+        return false;
+    }
+
+    bool Compiler::fold_comparison(TokenType op, const Value& lhs, const Value& rhs, Value& out) {
+        const bool lhs_num = lhs.tag == Value::Tag::Int || lhs.tag == Value::Tag::Float;
+        const bool rhs_num = rhs.tag == Value::Tag::Int || rhs.tag == Value::Tag::Float;
+        if (!lhs_num || !rhs_num) return false;
+
+        bool result = false;
+        if (lhs.tag == Value::Tag::Int && rhs.tag == Value::Tag::Int) {
+            switch (op) {
+                case TokenType::LESS:          result = lhs.as_int < rhs.as_int; break;
+                case TokenType::LESS_EQUAL:    result = lhs.as_int <= rhs.as_int; break;
+                case TokenType::GREATER:       result = lhs.as_int > rhs.as_int; break;
+                case TokenType::GREATER_EQUAL: result = lhs.as_int >= rhs.as_int; break;
+                default: return false;
+            }
+        } else {
+            const double da = (lhs.tag == Value::Tag::Int) ? static_cast<double>(lhs.as_int) : lhs.as_float;
+            const double db = (rhs.tag == Value::Tag::Int) ? static_cast<double>(rhs.as_int) : rhs.as_float;
+            switch (op) {
+                case TokenType::LESS:          result = da < db; break;
+                case TokenType::LESS_EQUAL:    result = da <= db; break;
+                case TokenType::GREATER:       result = da > db; break;
+                case TokenType::GREATER_EQUAL: result = da >= db; break;
+                default: return false;
+            }
+        }
+
+        out = Value(result);
+        return true;
+    }
+
+    bool Compiler::try_fold_binary(BinaryExpr* expr, uint32_t lhs_idx, uint32_t rhs_idx) {
+        const Value& lhs = current_chunk->const_pool[lhs_idx];
+        const Value& rhs = current_chunk->const_pool[rhs_idx];
+        const TokenType op = expr->op.type;
+
+        Value result;
+        switch (op) {
+            case TokenType::PLUS:
+            case TokenType::MINUS:
+            case TokenType::STAR:
+            case TokenType::SLASH:
+            case TokenType::PERCENT:
+                if (!fold_arithmetic(op, lhs, rhs, result)) return false;
+                break;
+            case TokenType::EQUAL_EQUAL: result = Value(lhs == rhs); break;
+            case TokenType::BANG_EQUAL:  result = Value(!(lhs == rhs)); break;
+            case TokenType::LESS:
+            case TokenType::LESS_EQUAL:
+            case TokenType::GREATER:
+            case TokenType::GREATER_EQUAL:
+                if (!fold_comparison(op, lhs, rhs, result)) return false;
+                break;
+            default:
+                return false;
+        }
+
+        pop_instructions(2);
+        emit_instruction(OpCode::LOAD_CONST, make_constant(std::move(result)), expr->op.selection.line);
+        return true;
+    }
+
+    bool Compiler::try_fold_unary(UnaryExpr* expr, uint32_t operand_idx) {
+        const Value& operand = current_chunk->const_pool[operand_idx];
+
+        Value result;
+        switch (expr->op.type) {
+            case TokenType::MINUS:
+                if (operand.tag == Value::Tag::Int) {
+                    result = Value(-operand.as_int);
+                } else if (operand.tag == Value::Tag::Float) {
+                    result = Value(-operand.as_float);
+                } else {
+                    return false;
+                }
+                break;
+            case TokenType::NOT:
+                result = Value(!vm.is_truthy(operand));
+                break;
+            default:
+                return false;
+        }
+
+        pop_instructions(1);
+        emit_instruction(OpCode::LOAD_CONST, make_constant(std::move(result)), expr->op.selection.line);
+        return true;
+    }
+
     void Compiler::visit_binary(BinaryExpr *expr) {
+        const size_t left_start = current_chunk->instr.size();
         expr->left->accept(this);
+
+        const size_t right_start = current_chunk->instr.size();
         expr->right->accept(this);
+
+        uint32_t lhs_idx = 0;
+        uint32_t rhs_idx = 0;
+        if (left_start + 1 == right_start &&
+            right_start + 1 == current_chunk->instr.size() &&
+            instruction_is_load_const(left_start, lhs_idx) &&
+            instruction_is_load_const(right_start, rhs_idx) &&
+            try_fold_binary(expr, lhs_idx, rhs_idx)) {
+            return;
+        }
 
         auto line = expr->op.selection.line;
         switch (expr->op.type) {
@@ -517,18 +697,25 @@ namespace pyle {
     }
 
     void Compiler::visit_unary(UnaryExpr* expr) {
+        const size_t operand_start = current_chunk->instr.size();
         expr->right->accept(this);
 
+        uint32_t operand_idx = 0;
+        if (operand_start + 1 == current_chunk->instr.size() &&
+            instruction_is_load_const(operand_start, operand_idx) &&
+            try_fold_unary(expr, operand_idx)) {
+            return;
+        }
 
         switch (expr->op.type) {
             case TokenType::NOT: {
                 emit_instruction(OpCode::NOT, 0, expr->op.selection.line);
                 break;
-            }   
+            }
             case TokenType::MINUS: {
                 emit_instruction(OpCode::NEG, 0, expr->op.selection.line);
                 break;
-            } 
+            }
             case TokenType::PLUS: break;
             default:
                 reporter.report(expr->op.selection, ErrorType::Compile, "Unknown unary operator.");
