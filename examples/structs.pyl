@@ -29,7 +29,7 @@ struct Player(name, health, pos, _private_prop) {
         self.health -= n
     }
     
-    fn distanceFrom(other) {
+    fn distanceFrom(other): Pos {
         return Pos(
             x: self.pos.x - other.x, 
             y: self.pos.y - other.y
@@ -40,7 +40,7 @@ struct Player(name, health, pos, _private_prop) {
         print(msg)
     }
 
-    fn status() {
+    fn status(): string {
         return format("Name: {}\nHealth: {}", self.name, self.health)
     }
 

@@ -74,6 +74,7 @@ namespace pyle {
         std::unique_ptr<Expr> primary();
 
         std::vector<Token> parse_params();
+        std::string parse_type_name();
 
         struct ParserError: public std::exception {};
         void synchronize();

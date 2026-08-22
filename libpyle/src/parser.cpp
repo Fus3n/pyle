@@ -131,6 +131,23 @@ namespace pyle {
         }
     }
 
+    std::string Parser::parse_type_name() {
+        std::string out = std::string(consume(TokenType::IDENTIFIER, "Expected type name.").lexeme);
+        while (match({TokenType::LEFT_BRACKET})) {
+            out += "[";
+            if (!check(TokenType::RIGHT_BRACKET)) {
+                do {
+                    out += parse_type_name();
+                    if (!match({TokenType::COMMA})) break;
+                    out += ",";
+                } while (true);
+            }
+            consume(TokenType::RIGHT_BRACKET, "Expected ']' to close this type.");
+            out += "]";
+        }
+        return out;
+    }
+
     std::vector<Token> Parser::parse_params() {
         Token open_paren = consume(TokenType::LEFT_PAREN, "Expected '(' for parameters.");
         std::vector<Token> params;
@@ -142,7 +159,7 @@ namespace pyle {
                 }
                 params.push_back(consume(TokenType::IDENTIFIER, "Expected parameter name."));
                 if (match({TokenType::COLON})) {
-                    consume(TokenType::IDENTIFIER, "Expected type name.");
+                    parse_type_name();
                 }
             } while (match({TokenType::COMMA}));
         }
@@ -165,7 +182,7 @@ namespace pyle {
                 do {
                     params.push_back(consume(TokenType::IDENTIFIER, "Expected parameter name."));
                     if (match({TokenType::COLON})) {
-                        param_types.push_back(std::string(consume(TokenType::IDENTIFIER, "Expected type name.").lexeme));
+                        param_types.push_back(parse_type_name());
                     } else {
                         param_types.push_back("");
                     }
@@ -177,23 +194,18 @@ namespace pyle {
         std::string return_type;
 
         if (match({TokenType::COLON})) {
-            // .pyl.d style return type: fn name(params): RetType { body }
-            return_type = std::string(consume(TokenType::IDENTIFIER, "Expected return type name.").lexeme);
+            // return type annotation: fn name(params): RetType { body }
+            return_type = parse_type_name();
             consume(TokenType::LEFT_BRACE, "Expected '{' before function body.");
             body = function_body();
         } else if (match({TokenType::ARROW})) {
-            if (check(TokenType::IDENTIFIER) && peek_next() == TokenType::LEFT_BRACE) {
-                return_type = std::string(advance().lexeme);
-                consume(TokenType::LEFT_BRACE, "Expected '{' before function body.");
-                body = function_body();
-            } else {
-                std::unique_ptr<Expr> expr = expression();
-                consume_statement_end();
-                
-                std::vector<std::unique_ptr<Stmt>> statements;
-                statements.push_back(std::make_unique<ReturnStmt>(std::move(expr)));
-                body = std::make_unique<BlockStmt>(std::move(statements));
-            }
+            // expression-bodied function: fn name(params) => expr
+            std::unique_ptr<Expr> expr = expression();
+            consume_statement_end();
+
+            std::vector<std::unique_ptr<Stmt>> statements;
+            statements.push_back(std::make_unique<ReturnStmt>(std::move(expr)));
+            body = std::make_unique<BlockStmt>(std::move(statements));
         } else {
             consume(TokenType::LEFT_BRACE, "Expected '{' before function body.");
             body = function_body();
@@ -212,7 +224,7 @@ namespace pyle {
                 do {
                     fields.push_back(consume(TokenType::IDENTIFIER, "Expected field name."));
                     if (match({TokenType::COLON})) {
-                        field_types.push_back(std::string(consume(TokenType::IDENTIFIER, "Expected type name.").lexeme));
+                        field_types.push_back(parse_type_name());
                     } else {
                         field_types.push_back("");
                     }
@@ -254,7 +266,7 @@ namespace pyle {
                 do {
                     params.push_back(consume(TokenType::IDENTIFIER, "Expected parameter name."));
                     if (match({TokenType::COLON})) {
-                        method_param_types.push_back(std::string(consume(TokenType::IDENTIFIER, "Expected type name.").lexeme));
+                        method_param_types.push_back(parse_type_name());
                     } else {
                         method_param_types.push_back("");
                     }
@@ -264,7 +276,7 @@ namespace pyle {
             consume(TokenType::RIGHT_PAREN, "Expected ')' after parameters.");
             std::string method_return_type;
             if (match({TokenType::COLON})) {
-                method_return_type = std::string(consume(TokenType::IDENTIFIER, "Expected return type name.").lexeme);
+                method_return_type = parse_type_name();
             }
             consume(TokenType::LEFT_BRACE, "Expected '{' before method body.");
             std::unique_ptr<BlockStmt> body = function_body();
@@ -402,7 +414,7 @@ namespace pyle {
         Token name = consume(TokenType::IDENTIFIER, "Expected variable name.");
         std::string type_annotation;
         if (match({TokenType::COLON})) {
-            type_annotation = std::string(consume(TokenType::IDENTIFIER, "Expected type name.").lexeme);
+            type_annotation = parse_type_name();
         }
 
         std::unique_ptr<Expr> initializer = nullptr;
@@ -479,15 +491,14 @@ namespace pyle {
 
         if (match({TokenType::COLON})) {
             Token colon = previous();
-            consume(TokenType::IDENTIFIER, "Expected type name after ':'.");
-            Token type_name = previous();
+            std::string annotation = parse_type_name();
             if (!match({TokenType::EQUAL})) {
                 reporter.report(colon.selection, ErrorType::Syntax, "Expected '=' after type annotation.");
                 throw ParserError();
             }
             std::unique_ptr<Expr> value = assignment();
             if (auto* get_field = dynamic_cast<GetFieldExpr*>(expr.get())) {
-                return std::make_unique<SetFieldExpr>(std::move(get_field->obj), get_field->name, std::move(value), std::string(type_name.lexeme));
+                return std::make_unique<SetFieldExpr>(std::move(get_field->obj), get_field->name, std::move(value), std::move(annotation));
             }
             reporter.report(colon.selection, ErrorType::Syntax, "Invalid typed assignment target.");
             throw ParserError();

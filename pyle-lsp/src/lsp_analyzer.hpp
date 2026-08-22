@@ -37,6 +37,7 @@ inline std::string expr_to_chain_string(const pyle::Expr* expr) {
 struct ChainPart {
     std::string text;
     bool is_call = false;
+    bool is_index = false;
 };
 
 inline std::vector<ChainPart> tokenize_chain(const std::string& chain) {
@@ -70,9 +71,10 @@ inline std::vector<ChainPart> tokenize_chain(const std::string& chain) {
                 j++;
             }
             if (parts.empty()) {
-                parts.push_back({chain.substr(i, j - i), c == '('});
+                parts.push_back({chain.substr(i, j - i), c == '(', c == '['});
             } else {
-                parts.back().is_call = true;
+                parts.back().is_call = (c == '(');
+                parts.back().is_index = (c == '[');
             }
             i = j;
         } else {

@@ -359,6 +359,7 @@ public:
         if (chain == "[]") return "array[any]";
         if (chain == "{}") return "map[any,any]";
         if (is_number(chain)) return is_float(chain) ? "float" : "int";
+        if (chain.find('[') != std::string::npos && utils::is_type_annotation(chain)) return chain;
 
         auto parts = tokenize_chain(chain);
         if (parts.empty()) return ANY_TYPE;
@@ -397,14 +398,47 @@ public:
         for (size_t i = 1; i < parts.size(); ++i) {
             const auto& part = parts[i];
             if (current == ANY_TYPE || current == "none") return ANY_TYPE;
-            bool call = part.is_call;
-            current = member_type(current, part.text, call, doc, depth, self_hint);
+            current = member_type(current, part.text, part.is_call, doc, depth, self_hint);
+            if (part.is_index) {
+                current = apply_index(current);
+            }
         }
         return current;
     }
 
 
 private:
+    static std::string apply_index(const std::string& t) {
+        if (utils::has_prefix(t, "array[") && utils::has_suffix(t, "]")) {
+            std::string inner = t.substr(6, t.size() - 7);
+            int depth = 0;
+            for (size_t i = 0; i < inner.size(); ++i) {
+                if (inner[i] == '[') depth++;
+                else if (inner[i] == ']') depth--;
+                else if (inner[i] == ',' && depth == 0) {
+                    // array of pairs is unusual; treat first segment
+                    break;
+                }
+            }
+            return inner;
+        }
+        if (utils::has_prefix(t, "map[")) {
+            size_t end = t.rfind(']');
+            if (end != std::string::npos) {
+                std::string inner = t.substr(4, end - 4);
+                int depth = 0;
+                for (size_t i = 0; i < inner.size(); ++i) {
+                    if (inner[i] == '[') depth++;
+                    else if (inner[i] == ']') depth--;
+                    else if (inner[i] == ',' && depth == 0) {
+                        return inner.substr(i + 1);
+                    }
+                }
+            }
+        }
+        return ANY_TYPE;
+    }
+
     std::string member_type(const std::string& owner_type, const std::string& member, bool is_call,
                             const DocumentModel& context_doc, int depth, const std::string& self_hint = "") {
         if (owner_type == ANY_TYPE || owner_type == "none") return ANY_TYPE;
