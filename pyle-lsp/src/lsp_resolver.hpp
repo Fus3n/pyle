@@ -287,6 +287,16 @@ public:
         return result;
     }
 
+    void infer_loop_variables(DocumentModel& doc) {
+        for (auto& s : doc.symbols) {
+            if (s.iterable_chain.empty()) continue;
+            if (!s.has_type_hint && s.type_name != ANY_TYPE) continue;
+            std::string base = resolve_chain(s.iterable_chain, doc, s.range.start.line);
+            std::string elem = element_of(base);
+            if (!elem.empty()) s.type_name = elem;
+        }
+    }
+
     std::string resolve_base(const std::string& name, DocumentModel& doc, int depth = 8) {
         if (name.empty()) return ANY_TYPE;
 
@@ -359,7 +369,7 @@ public:
         if (chain == "[]") return "array[any]";
         if (chain == "{}") return "map[any,any]";
         if (is_number(chain)) return is_float(chain) ? "float" : "int";
-        if (chain.find('[') != std::string::npos && utils::is_type_annotation(chain)) return chain;
+        if (chain.find('[') != std::string::npos && chain_is_annotation(chain, doc)) return chain;
 
         auto parts = tokenize_chain(chain);
         if (parts.empty()) return ANY_TYPE;
@@ -398,16 +408,83 @@ public:
         for (size_t i = 1; i < parts.size(); ++i) {
             const auto& part = parts[i];
             if (current == ANY_TYPE || current == "none") return ANY_TYPE;
-            current = member_type(current, part.text, part.is_call, doc, depth, self_hint);
             if (part.is_index) {
                 current = apply_index(current);
+                continue;
             }
+            current = member_type(current, part.text, part.is_call, doc, depth, self_hint);
         }
         return current;
     }
 
 
 private:
+    bool is_known_type(const std::string& name, DocumentModel& doc) {
+        for (const auto& b : BUILTIN_TYPES) {
+            if (b == name) return true;
+        }
+        if (doc.struct_symbols.count(name)) return true;
+        for (auto* d : modules.all_docs()) {
+            if (d->struct_symbols.count(name)) return true;
+        }
+        return false;
+    }
+
+    bool chain_is_annotation(const std::string& s, DocumentModel& doc) {
+        int depth = 0;
+        bool saw_bracket = false;
+        bool had_ident = false;
+        std::string cur;
+        auto flush = [&]() -> bool {
+            if (cur.empty()) return false;
+            bool ok = is_known_type(cur, doc);
+            cur.clear();
+            return ok;
+        };
+        for (char c : s) {
+            if (isalnum(static_cast<unsigned char>(c)) || c == '_') {
+                cur += c;
+                had_ident = true;
+                continue;
+            }
+            if (c == '[') {
+                if (!cur.empty()) {
+                    if (!flush()) return false;
+                }
+                depth++;
+                saw_bracket = true;
+                continue;
+            }
+            if (c == ']') {
+                if (!cur.empty()) {
+                    if (!flush()) return false;
+                }
+                depth--;
+                if (depth < 0) return false;
+                continue;
+            }
+            if (c == ',') {
+                if (depth <= 0) return false;
+                if (!cur.empty()) {
+                    if (!flush()) return false;
+                }
+                continue;
+            }
+            return false;
+        }
+        if (!cur.empty()) {
+            if (!flush()) return false;
+        }
+        return depth == 0 && saw_bracket && had_ident;
+    }
+
+    static std::string element_of(const std::string& t) {
+        if (t == "string") return "string";
+        if (t == "bytes" || t == "range") return "int";
+        std::string indexed = apply_index(t);
+        return (indexed == ANY_TYPE || indexed.empty()) ? "" : indexed;
+    }
+
     static std::string apply_index(const std::string& t) {
         if (utils::has_prefix(t, "array[") && utils::has_suffix(t, "]")) {
             std::string inner = t.substr(6, t.size() - 7);

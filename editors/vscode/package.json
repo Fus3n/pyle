@@ -59,7 +59,7 @@
         "pyle.lspPath": {
           "type": "string",
           "default": "",
-          "description": "Path to the pyle-lsp.exe language server binary. If empty, the extension auto-detects it (next to the interpreter or the bundled copy)."
+          "description": "Path to the pyle-lsp.exe language server binary. If empty, the extension auto-detects it next to the selected interpreter."
         }
       }
     }

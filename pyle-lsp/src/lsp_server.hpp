@@ -140,7 +140,11 @@ private:
     }
 
     DocumentModel* get_document(const std::string& uri) {
-        return resolver.load_file(utils::file_uri_to_path(uri), false);
+        DocumentModel* doc = resolver.load_file(utils::file_uri_to_path(uri), false);
+        if (doc) {
+            types.infer_loop_variables(*doc);
+        }
+        return doc;
     }
 
     std::vector<std::string> lines_of(const DocumentModel& doc) const {

@@ -110,22 +110,6 @@ inline bool has_suffix(const std::string& str, const std::string& suffix) {
     return str.size() >= suffix.size() && str.compare(str.size() - suffix.size(), suffix.size(), suffix) == 0;
 }
 
-inline bool is_type_annotation(const std::string& s) {
-    if (s.empty()) return false;
-    int depth = 0;
-    for (char c : s) {
-        if (!(isalnum(static_cast<unsigned char>(c)) || c == '_' || c == '[' || c == ']' || c == ',')) {
-            return false;
-        }
-        if (c == '[') {
-            depth++;
-        } else if (c == ']') {
-            if (--depth < 0) return false;
-        }
-    }
-    return depth == 0 && s.find('[') != std::string::npos;
-}
-
 inline std::string word_at(const std::string& source, const Position& pos) {
     auto lines = get_lines(source);
     if (pos.line >= lines.size()) return "";
@@ -188,10 +172,11 @@ inline std::string base_expression_before_dot(const std::string& text) {
         else if (c == '}') brace++;
 
         if (paren < 0 || bracket < 0 || brace < 0) {
+            if (i == 0) return raw;
             return raw.substr(i + 1);
         }
         if (paren == 0 && bracket == 0 && brace == 0) {
-            if (c == ' ' || c == '\t' || c == '\n' || c == '(' || c == '[' || c == '{' ||
+            if (c == ' ' || c == '\t' || c == '\n' ||
                 c == ',' || c == '=' || c == '+' || c == '-' || c == '*' || c == '/' || c == '%' ||
                 c == ';' || c == ':' ) {
                 return raw.substr(i + 1);

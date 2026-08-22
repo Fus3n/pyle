@@ -48,13 +48,14 @@ function findLspBinary(context, interpreterPath) {
     const explicit = config.get('lspPath') || '';
     if (explicit && fs.existsSync(explicit)) return explicit;
 
+    const exe = lspExecutableName();
     if (interpreterPath) {
-        const nextTo = path.join(path.dirname(interpreterPath), 'pyle-lsp', lspExecutableName());
-        if (fs.existsSync(nextTo)) return nextTo;
+        const dir = path.dirname(interpreterPath);
+        const sibling = path.join(dir, exe);
+        if (fs.existsSync(sibling)) return sibling;
+        const subfolder = path.join(dir, 'pyle-lsp', exe);
+        if (fs.existsSync(subfolder)) return subfolder;
     }
-
-    const bundled = context.asAbsolutePath(path.join('bin', lspExecutableName()));
-    if (fs.existsSync(bundled)) return bundled;
 
     return null;
 }
@@ -198,9 +199,10 @@ function activate(context) {
         const candidates = [];
         if (current && fs.existsSync(current)) candidates.push(current);
         if (interpreterPath) {
-            candidates.push(path.join(path.dirname(interpreterPath), 'pyle-lsp', lspExecutableName()));
+            const dir = path.dirname(interpreterPath);
+            candidates.push(path.join(dir, lspExecutableName()));
+            candidates.push(path.join(dir, 'pyle-lsp', lspExecutableName()));
         }
-        candidates.push(context.asAbsolutePath(path.join('bin', lspExecutableName())));
 
         const seen = new Set();
         for (const c of candidates) {

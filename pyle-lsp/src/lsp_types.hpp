@@ -50,6 +50,7 @@ struct SymbolInfo {
     std::string scope_func = "";
     bool is_static = false;
     const DocumentModel* owner_doc = nullptr;
+    std::string iterable_chain;
 };
 
 struct DocumentModel {

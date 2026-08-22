@@ -72,9 +72,10 @@ inline std::vector<ChainPart> tokenize_chain(const std::string& chain) {
             }
             if (parts.empty()) {
                 parts.push_back({chain.substr(i, j - i), c == '(', c == '['});
+            } else if (c == '[') {
+                parts.push_back({"", false, true});
             } else {
-                parts.back().is_call = (c == '(');
-                parts.back().is_index = (c == '[');
+                parts.back().is_call = true;
             }
             i = j;
         } else {
@@ -174,6 +175,9 @@ private:
             v.is_local = !c.current_func.empty();
             v.scope_func = c.current_func;
             v.scope_end_line = c.block_ends.empty() ? -1 : c.block_ends.back();
+            if (fr->iterable) {
+                v.iterable_chain = expr_to_chain_string(fr->iterable.get());
+            }
             doc.symbols.push_back(v);
             if (fr->body) walk_stmt(fr->body.get(), doc, c);
         } else if (auto* ret = dynamic_cast<pyle::ReturnStmt*>(stmt)) {

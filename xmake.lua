@@ -77,7 +77,15 @@ target("example_class_binding")
     set_languages("c++17")
     add_files("examples_cpp/03_class_binding.cpp")
     add_deps("libpyle")
-    
+
+
+target("example_async_binding")
+    set_kind("binary")
+    set_languages("c++17")
+    add_files("examples_cpp/04_async_binding.cpp")
+    add_deps("libpyle")
+
+
 target("pyle-lsp")
     set_kind("binary")
     add_files("pyle-lsp/src/main.cpp")
@@ -97,15 +105,5 @@ target("pyle-lsp")
         local outdir = path.join(target:targetdir(), "pyle-lsp")
         os.mkdir(outdir)
         os.cp(target:targetfile(), path.join(outdir, "pyle-lsp.exe"))
-        local bundled = path.join("$(projectdir)", "editors", "vscode", "bin", "pyle-lsp.exe")
-        if os.isfile(path.join("$(projectdir)", "editors", "vscode", "package.json")) then
-            os.cp(target:targetfile(), bundled)
-            print("synced bundled language server: editors/vscode/bin/pyle-lsp.exe")
-        end
     end)
 
-target("example_async_binding")
-    set_kind("binary")
-    set_languages("c++17")
-    add_files("examples_cpp/04_async_binding.cpp")
-    add_deps("libpyle")
