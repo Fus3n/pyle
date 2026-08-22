@@ -51,6 +51,7 @@ private:
         if (!msg.is_object()) return;
         if (msg.contains("method")) {
             std::string method = msg["method"].get<std::string>();
+            fprintf(stderr, "[pyle-lsp] >> %s\n", method.c_str());
             auto id = msg.contains("id") ? msg["id"] : json();
             json params = msg.contains("params") ? msg["params"] : json();
             if (is_notification(method)) {
@@ -163,6 +164,13 @@ private:
             root = utils::file_uri_to_path(params["rootUri"].get<std::string>());
         }
         resolver.set_workspace_root(root);
+        if (!root.empty()) {
+            std::string candidate = root + "/std";
+            if (resolver.add_std_path(candidate)) {
+                resolver.preload_std();
+                log("added workspace std path: " + candidate);
+            }
+        }
         return json{
             {"capabilities", json{
                 {"textDocumentSync", json{{"openClose", true}, {"change", 1}}},
@@ -391,6 +399,11 @@ private:
         if (!base_text.empty()) {
             bool is_self = (base_text == "self");
             std::string base_type = types.resolve_chain(base_text, *doc, pos.line);
+            if (base_type == ANY_TYPE) {
+                for (const auto& b : BUILTIN_TYPES) {
+                    if (b == base_text) { base_type = b; break; }
+                }
+            }
             bool is_static = false;
             if (!is_self && base_type != ANY_TYPE) {
                 for (auto* d : resolver.all_docs()) {

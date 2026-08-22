@@ -85,7 +85,10 @@ inline std::vector<ChainPart> tokenize_chain(const std::string& chain) {
 class Analyzer {
 public:
     static void parse(DocumentModel& doc) {
-        doc.symbols.clear();
+        std::vector<SymbolInfo> previous;
+        previous.swap(doc.symbols);
+        doc.struct_members.clear();
+        doc.struct_symbols.clear();
         doc.imports.clear();
         doc.import_paths.clear();
         doc.ast.clear();
@@ -100,6 +103,20 @@ public:
 
         Ctx c;
         walk_stmts(doc.ast, doc, c);
+
+        if (doc.reporter.has_errors() && !previous.empty() &&
+            doc.symbols.size() < previous.size()) {
+            doc.symbols = std::move(previous);
+        }
+
+        for (auto& s : doc.symbols) {
+            if (!s.parent_struct.empty()) {
+                doc.struct_members[s.parent_struct].push_back(&s);
+            }
+            if (s.kind == SymbolKind::Struct) {
+                doc.struct_symbols[s.name] = &s;
+            }
+        }
 
         if (!doc.reporter.has_errors()) {
             try {
@@ -358,10 +375,11 @@ private:
                     std::string ftype = sf->type_annotation.empty()
                         ? expr_to_chain_string(sf->value.get())
                         : sf->type_annotation;
+                    bool in_ctor = (c.current_func == "_init");
                     bool found = false;
                     for (auto& sym : doc.symbols) {
                         if (sym.kind == SymbolKind::Field && sym.parent_struct == c.current_struct && sym.name == fname) {
-                            if (!sym.has_type_hint && !ftype.empty()) {
+                            if (!sym.has_type_hint && !ftype.empty() && (sym.type_name.empty() || in_ctor)) {
                                 sym.type_name = ftype;
                                 sym.detail = "self." + fname + ": " + ftype;
                             }

@@ -97,6 +97,11 @@ target("pyle-lsp")
         local outdir = path.join(target:targetdir(), "pyle-lsp")
         os.mkdir(outdir)
         os.cp(target:targetfile(), path.join(outdir, "pyle-lsp.exe"))
+        local bundled = path.join("$(projectdir)", "editors", "vscode", "bin", "pyle-lsp.exe")
+        if os.isfile(path.join("$(projectdir)", "editors", "vscode", "package.json")) then
+            os.cp(target:targetfile(), bundled)
+            print("synced bundled language server: editors/vscode/bin/pyle-lsp.exe")
+        end
     end)
 
 target("example_async_binding")

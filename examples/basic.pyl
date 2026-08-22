@@ -10,6 +10,7 @@ print(format("Hello {}!", "world"))
 # Importing works through the `import` function, you can also import other files like: import("math.pyl") or without the .pyl
 let os = import("os") 
 
+
 # You can add custom import paths to look for pyl files 
 # add_import_path("examples")
 
@@ -29,6 +30,7 @@ let maps = {
     "string-keys": 420,
     5+5: 10
 }
+
 
 print(maps["aKey"])
 print(maps[10])

@@ -3,6 +3,7 @@
 #include <string>
 #include <vector>
 #include <map>
+#include <set>
 #include <memory>
 #include <pyle/error_reporter.hpp>
 #include <pyle/ast.hpp>
@@ -61,6 +62,8 @@ struct DocumentModel {
     std::vector<std::unique_ptr<pyle::Stmt>> ast;
     std::vector<pyle::Token> tokens;
     bool is_definition_file = false;
+    std::map<std::string, std::vector<SymbolInfo*>> struct_members;
+    std::map<std::string, SymbolInfo*> struct_symbols;
 };
 
 inline const std::vector<std::string> BUILTIN_TYPES = {

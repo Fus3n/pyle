@@ -27,6 +27,18 @@ public:
         }
     }
 
+    bool add_std_path(const std::string& path) {
+        std::string canon;
+        try { canon = fs::weakly_canonical(path).string(); } catch (...) { canon = path; }
+        std::error_code ec;
+        if (!fs::exists(canon, ec) || ec) return false;
+        for (const auto& p : std_paths) {
+            if (utils::has_prefix(p, canon) || utils::has_prefix(canon, p)) return false;
+        }
+        std_paths.push_back(canon);
+        return true;
+    }
+
     const std::vector<std::string>& get_std_paths() const { return std_paths; }
 
     void set_workspace_root(const std::string& root) {
@@ -245,8 +257,10 @@ public:
         if (utils::has_prefix(type_name, "map[")) base = "map";
 
         for (auto* doc : modules.all_docs()) {
-            for (const auto& s : doc->symbols) {
-                if (s.parent_struct != base) continue;
+            auto it = doc->struct_members.find(base);
+            if (it == doc->struct_members.end()) continue;
+            for (const SymbolInfo* sp : it->second) {
+                const SymbolInfo& s = *sp;
                 bool is_private = !s.name.empty() && s.name[0] == '_';
                 if (is_private && !include_private) continue;
                 if (static_only && s.kind != SymbolKind::StaticFunction) continue;
@@ -316,25 +330,26 @@ public:
             if (b == name) return b;
         }
         for (auto* d : modules.all_docs()) {
-            for (const auto& s : d->symbols) {
-                if (s.kind == SymbolKind::Struct && s.name == name) {
-                    return s.type_name.empty() ? s.name : s.type_name;
-                }
+            auto it = d->struct_symbols.find(name);
+            if (it != d->struct_symbols.end()) {
+                const SymbolInfo* s = it->second;
+                return s->type_name.empty() ? s->name : s->type_name;
             }
         }
         for (const auto& [var, module] : doc.imports) {
             if (auto* m = modules.resolve(module, doc.file_path)) {
-                for (const auto& s : m->symbols) {
-                    if (s.kind == SymbolKind::Struct && s.name == name) {
-                        return s.type_name.empty() ? s.name : s.type_name;
-                    }
+                auto it = m->struct_symbols.find(name);
+                if (it != m->struct_symbols.end()) {
+                    const SymbolInfo* s = it->second;
+                    return s->type_name.empty() ? s->name : s->type_name;
                 }
             }
         }
         return ANY_TYPE;
     }
 
-    std::string resolve_chain(const std::string& chain, DocumentModel& doc, size_t cursor_line = SIZE_MAX, int depth = 8) {
+    std::string resolve_chain(const std::string& chain, DocumentModel& doc, size_t cursor_line = SIZE_MAX, int depth = 8,
+                              const std::string& self_hint = "") {
         if (chain.empty()) return ANY_TYPE;
         if (depth <= 0) return ANY_TYPE;
 
@@ -363,6 +378,8 @@ public:
             }
             if (enclosing) {
                 current = enclosing->parent_struct;
+            } else if (!self_hint.empty()) {
+                current = self_hint;
             } else if (cursor_line == SIZE_MAX) {
                 for (const auto& s : doc.symbols) {
                     if (s.kind == SymbolKind::Field && !s.parent_struct.empty()) {
@@ -381,7 +398,7 @@ public:
             const auto& part = parts[i];
             if (current == ANY_TYPE || current == "none") return ANY_TYPE;
             bool call = part.is_call;
-            current = member_type(current, part.text, call, doc, depth);
+            current = member_type(current, part.text, call, doc, depth, self_hint);
         }
         return current;
     }
@@ -389,7 +406,7 @@ public:
 
 private:
     std::string member_type(const std::string& owner_type, const std::string& member, bool is_call,
-                            const DocumentModel& context_doc, int depth) {
+                            const DocumentModel& context_doc, int depth, const std::string& self_hint = "") {
         if (owner_type == ANY_TYPE || owner_type == "none") return ANY_TYPE;
 
         if (utils::has_prefix(owner_type, "array[")) {
@@ -404,6 +421,10 @@ private:
                 debug_log("member_type hop: " + owner_type + "." + member + " kind=" + std::to_string((int)s.kind) +
                     " stored=[" + s.type_name + "] line=" + std::to_string(s.range.start.line) + " depth=" + std::to_string(depth));
             }
+            if (s.type_name == "self") {
+                result = owner_type;
+                break;
+            }
             if (s.kind == SymbolKind::Field || s.kind == SymbolKind::Variable ||
                 s.kind == SymbolKind::Function || s.kind == SymbolKind::Method ||
                 s.kind == SymbolKind::StaticFunction) {
@@ -413,7 +434,8 @@ private:
                                      s.kind == SymbolKind::StaticFunction)
                                         ? s.range.start.line
                                         : SIZE_MAX;
-                result = depth > 0 ? resolve_chain(s.type_name, const_cast<DocumentModel&>(target), scope_line, depth - 1)
+                result = depth > 0 ? resolve_chain(s.type_name, const_cast<DocumentModel&>(target), scope_line, depth - 1,
+                                                   utils::has_prefix(owner_type, "module:") ? "" : owner_type)
                                    : ANY_TYPE;
                 if (result != ANY_TYPE) break;
             } else if (s.kind == SymbolKind::Struct) {
@@ -421,18 +443,8 @@ private:
                 break;
             }
         }
-        if (result == ANY_TYPE && is_call && is_declared_struct(owner_type)) return owner_type;
         return result;
-    }
-
-    bool is_declared_struct(const std::string& name) const {
-        for (auto* doc : modules.all_docs()) {
-            for (const auto& s : doc->symbols) {
-                if (s.kind == SymbolKind::Struct && s.name == name) return true;
-            }
-        }
-        return false;
-    }
+    };
 
     std::vector<DocumentModel*> module_docs(const std::string& module_name, const DocumentModel* context_doc = nullptr) {
         std::vector<DocumentModel*> out;
