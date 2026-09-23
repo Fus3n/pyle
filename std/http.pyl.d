@@ -52,3 +52,4 @@ fn head_async(url: string, options: map): Future { }
 fn url_encode(text: string): string { }
 fn url_decode(text: string): string { }
 fn mime(extension: string, content_type: string) { }
+fn html(body: string, status: int): map { }

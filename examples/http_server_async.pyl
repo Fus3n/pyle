@@ -11,7 +11,7 @@ server.get("/hello", fn(req) {
 })
 
 server.get("/", fn(req) {
-    return "Welcome to the Pyle Async HTTP server"
+  return http.html("<html><body><h1>Welcome to the Pyle HTTP server</h1></body></html>")
 }) 
 
 server.get("/stats", fn(req) {

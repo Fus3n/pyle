@@ -360,6 +360,35 @@ namespace http_binding {
             return pyle::Value();
         });
 
+        mod.raw_function("html", [](pyle::VM& m, pyle::ArgView args) -> pyle::Value {
+            if (args.size() < 1 || args.size() > 2 || args[0].tag != pyle::Value::Tag::StringRef) {
+                m.runtime_error(pyle::RuntimeError::ArgumentError, "http.html expects (body: string, status = 200).");
+                return pyle::Value();
+            }
+            int64_t status = 200;
+            if (args.size() == 2) {
+                if (args[1].tag != pyle::Value::Tag::Int) {
+                    m.runtime_error(pyle::RuntimeError::ArgumentError, "http.html status expects an int.");
+                    return pyle::Value();
+                }
+                status = args[1].as_int;
+            }
+            const std::string& body = std::get<std::string>(m.get_heap_object(args[0].as_ref).data);
+
+            GcDisable gc(m);
+            MapType headers;
+            headers[Value(Value::Tag::StringRef, m.intern_string("Content-Type"))] =
+                Value(Value::Tag::StringRef, m.intern_string("text/html; charset=utf-8"));
+
+            MapType out;
+            out[Value(Value::Tag::StringRef, m.intern_string("status"))] = Value(status);
+            out[Value(Value::Tag::StringRef, m.intern_string("headers"))] =
+                Value(Value::Tag::MapRef, m.alloc(Object(std::move(headers))));
+            out[Value(Value::Tag::StringRef, m.intern_string("body"))] =
+                Value(Value::Tag::StringRef, m.intern_string(body));
+            return Value(Value::Tag::MapRef, m.alloc(Object(std::move(out))));
+        });
+
         {
             pyle::ClassBinder<HttpRequestData> binder(vm, "Request");
             binder.custom_getter("method", [](pyle::VM& m, pyle::HeapIdx self, pyle::ArgView) -> pyle::Value {
