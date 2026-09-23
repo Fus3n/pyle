@@ -1,0 +1,36 @@
+let http = import("http")
+let json = import("json")
+
+let server = http.Server("127.0.0.1", 8090)
+
+server.get("/hello", fn(req) {
+    print("Got request on hello")
+    if not req.query.has("name")
+        return "hello stranger"
+    return "hello " + req.query["name"]
+})
+
+server.post("/echo", fn(req) {
+    return {
+        status: 201,
+        headers: {"content-type": "application/json", "x-powered-by": "pyle"},
+        body: req.body
+    }
+})
+
+server.get("/", fn(req) {
+    return "Welcome to the Pyle HTTP server"
+}) 
+
+server.get("/users/(\\d+)", fn(req) {
+    return json.stringify({id: req.captures[0], path: req.path})
+})
+
+let count = 0
+server.get("/count", fn(req) {
+    count += 1
+    return format("visits: {}", count)
+})
+
+print("serving on http://127.0.0.1:8090")
+server.run()

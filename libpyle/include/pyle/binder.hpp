@@ -3,6 +3,10 @@
 #include <utility>
 #include <string>
 #include <vector>
+#include <map>
+#include <unordered_map>
+#include <deque>
+#include <mutex>
 #include <memory.h>
 #include "pyle/vm.hpp"
 #include "pyle/value.hpp"
@@ -24,6 +28,18 @@ namespace pyle {
 
     template <typename T>
     inline constexpr bool is_vector_v = is_vector<T>::value;
+
+    template <typename T>
+    struct is_string_map : std::false_type {};
+
+    template <>
+    struct is_string_map<std::map<std::string, std::string>> : std::true_type {};
+
+    template <>
+    struct is_string_map<std::unordered_map<std::string, std::string>> : std::true_type {};
+
+    template <typename T>
+    inline constexpr bool is_string_map_v = is_string_map<T>::value;
 
     template <typename T>
     auto from_value(VM& vm, const Value& val) {
@@ -72,6 +88,17 @@ namespace pyle {
                 result.push_back(from_value<ElementType>(vm, elem));
             }
             return result;
+        } else if constexpr (is_string_map_v<DecayedT>) {
+            if (val.tag != Value::Tag::MapRef) {
+                vm.runtime_error(RuntimeError::Type, "Expected map.");
+                return DecayedT();
+            }
+            const auto& entries = std::get<MapObject>(vm.get_heap_object(val.as_ref).data).entries;
+            DecayedT result;
+            for (const auto& [k, v] : entries) {
+                result[vm.value_to_string(k)] = vm.value_to_string(v);
+            }
+            return result;
         } else {
             static_assert(sizeof(T) == 0, "Unsupported binding conversion type.");
         }
@@ -108,6 +135,15 @@ namespace pyle {
             }
             HeapIdx idx = vm.alloc(Object(std::move(arr)));
             return Value(Value::Tag::ArrayRef, idx);
+        } else if constexpr (is_string_map_v<T>) {
+            MapType out;
+            out.reserve(val.size());
+            for (const auto& [k, v] : val) {
+                Value key(Value::Tag::StringRef, vm.intern_string(k));
+                out[key] = Value(Value::Tag::StringRef, vm.intern_string(v));
+            }
+            HeapIdx idx = vm.alloc(Object(std::move(out)));
+            return Value(Value::Tag::MapRef, idx);
         } else {
             static_assert(sizeof(T) == 0, "Unsupported return type.");
         }
@@ -837,6 +873,14 @@ namespace pyle {
         }
 
         template <typename T>
+        NativeModule& class_binder(SharedClassBinder<T>& binder) {
+            Value ctor = binder.get_constructor();
+            Value key(Value::Tag::StringRef, vm.intern_string(BindRegistry<std::shared_ptr<T>>::class_name));
+            exports[key] = ctor;
+            return *this;
+        }
+
+        template <typename T>
         NativeModule& class_type(ClassBinder<T>& binder) {
             return class_binder<T>(binder);
         }
@@ -851,6 +895,26 @@ namespace pyle {
     inline void register_module(VM& vm, const std::string& name, ModuleFactory factory) {
         HeapIdx name_id = vm.intern_string(name);
         vm.module_registry[name_id] = factory;
+    }
+
+    inline std::vector<NativeFn>& background_ticks() {
+        static std::vector<NativeFn> fns;
+        return fns;
+    }
+
+    inline std::mutex& ready_tasks_mutex() {
+        static std::mutex m;
+        return m;
+    }
+
+    inline std::deque<Value>& ready_tasks() {
+        static std::deque<Value> q;
+        return q;
+    }
+
+    inline size_t& ready_tasks_owner() {
+        static size_t owner = 0;
+        return owner;
     }
 
 

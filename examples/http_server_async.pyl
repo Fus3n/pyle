@@ -1,0 +1,28 @@
+let http = import("http")
+
+let server = http.Server("127.0.0.1", 8095)
+let hits = 0
+
+server.get("/hello", fn(req) {
+    let name = "stranger"
+    if req.query.has("name")
+        name = req.query["name"]
+    return "hello " + name
+})
+
+server.get("/", fn(req) {
+    return "Welcome to the Pyle Async HTTP server"
+}) 
+
+server.get("/stats", fn(req) {
+    hits += 1
+    return format("hits: {}", hits)
+})
+
+fn main() {
+    let stopped = server.serve_async()
+    print("serving on http://127.0.0.1:8095")
+    waitfor(stopped)
+}
+
+async.run(main)

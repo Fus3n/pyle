@@ -4,7 +4,8 @@
 #include <iostream>
 #include <fstream>
 #include <sstream>
-#include <fmt/args.h> 
+#include <atomic>
+#include <fmt/args.h>
 #include <pyle/vm.hpp>
 #include <pyle/binder.hpp>
 #include "pyle/binder.hpp"
@@ -448,16 +449,58 @@ namespace pyle {
         return pyle::Value(pyle::Value::Tag::BytesRef, idx);
     }
 
+    static pyle::Value native_background_tick(pyle::VM& vm, pyle::ArgView) {
+        static std::atomic<bool> recursing{false};
+        if (recursing.exchange(true)) return pyle::Value();
+        for (auto& fn : pyle::background_ticks()) {
+            fn(vm, {});
+        }
+        recursing.store(false);
+        return pyle::Value();
+    }
+
+    static pyle::Value native_ready_pop(pyle::VM& vm, pyle::ArgView) {
+        if (pyle::ready_tasks_owner() != 0 && vm.active_coroutine_idx != pyle::ready_tasks_owner()) {
+            return pyle::Value();
+        }
+        std::lock_guard<std::mutex> lock(pyle::ready_tasks_mutex());
+        auto& q = pyle::ready_tasks();
+        for (auto it = q.begin(); it != q.end();) {
+            pyle::Value v = *it;
+            if (v.tag != pyle::Value::Tag::CoroutineRef) {
+                it = q.erase(it);
+                continue;
+            }
+            auto* c = std::get_if<pyle::Coroutine>(&vm.get_heap_object(v.as_ref).data);
+            if (!c) {
+                it = q.erase(it);
+                continue;
+            }
+            if (c->state == pyle::Coroutine::State::Dead) {
+                it = q.erase(it);
+                continue;
+            }
+            if (c->state == pyle::Coroutine::State::Suspended && v.as_ref != vm.active_coroutine_idx) {
+                it = q.erase(it);
+                return v;
+            }
+            ++it;
+        }
+        return pyle::Value();
+    }
+
     void register_core_natives(VM& vm, bool load_core_modules) {
         pyle::bind_function<native_print>(vm, "print");
         pyle::bind_function<native_printf>(vm, "printf");
         pyle::bind_function<native_format>(vm, "format");
         pyle::bind_function<native_input>(vm, "input");
         pyle::bind_function<native_import>(vm, "import");
-        pyle::bind_function<native_add_import_path>(vm, "add_import_path"); 
-        pyle::bind_function<native_typeof>(vm, "typeof"); 
+        pyle::bind_function<native_add_import_path>(vm, "add_import_path");
+        pyle::bind_function<native_typeof>(vm, "typeof");
         pyle::bind_function<native_coro_constructor>(vm, "Coro");
         pyle::bind_function<native_bytes>(vm, "Bytes");
+        pyle::bind_function<native_background_tick>(vm, "__tick");
+        pyle::bind_function<native_ready_pop>(vm, "__next_ready_task");
 
         auto add_type_const = [&](const std::string& name) {
             pyle::HeapIdx name_idx = vm.intern_string(name);

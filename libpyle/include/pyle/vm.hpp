@@ -212,6 +212,7 @@ namespace pyle {
         size_t gc_threshold = INITIAL_THRESHOLD;
 
         bool panicked = false;
+        int execute_depth = 0;
 
         inline void push(Value value) { 
             if (sp == stack_end) {
@@ -256,3 +257,5 @@ namespace pyle {
         }
     };
 }
+
+

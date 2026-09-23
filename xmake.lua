@@ -15,10 +15,21 @@ if is_mode("debug") then
     set_policy("build.sanitizer.undefined", true)    
 end
 
+package("unordered_dense")
+    set_homepage("https://github.com/martinus/unordered_dense")
+    add_urls("https://github.com/martinus/unordered_dense/archive/refs/tags/v$(version).tar.gz")
+    add_versions("4.11.0", "a232f7433b45872d43e4dc74a25cbd58effc0be76e3d704b34e5de3c637eed77")
+    on_install(function (package)
+        os.cp("include/*", package:installdir("include"))
+    end)
+package_end()
+
 add_requires("fmt 12.2.0", {configs = {header_only = true}})
-add_requires("unordered_dense 4.8.1", "argparse 3.2", "simdjson 4.2.4")
+add_requires("unordered_dense 4.11.0", "argparse 3.2", "simdjson 4.2.4")
 add_requires("raylib 5.5")
 add_requires("nlohmann_json 3.11.3")
+add_requires("cpp-httplib 0.50.1")
+add_requires("mbedtls 3.6.1")
 add_cxxflags("/utf-8", {tools = "cl"})
 add_rules("plugin.compile_commands.autoupdate")
 
@@ -35,7 +46,12 @@ target("pyle")
     set_kind("binary")
     add_files("pyle/src/main.cpp")
     add_files("pyle/src/std/std_json.cpp")
-    add_packages("argparse", "simdjson")
+    add_files("pyle/src/std/http/**.cpp")
+    add_packages("argparse", "simdjson", "cpp-httplib", "mbedtls")
+    add_defines("CPPHTTPLIB_MBEDTLS_SUPPORT")
+    if is_plat("mingw", "msys", "windows") then
+        add_syslinks("ws2_32", "crypt32", "bcrypt")
+    end
     add_deps("libpyle")
     set_rundir("$(projectdir)")
     if is_mode("release") then
@@ -106,4 +122,6 @@ target("pyle-lsp")
         os.mkdir(outdir)
         os.cp(target:targetfile(), path.join(outdir, "pyle-lsp.exe"))
     end)
+
+
 

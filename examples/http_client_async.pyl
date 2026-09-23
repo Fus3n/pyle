@@ -1,0 +1,29 @@
+let http = import("http")
+let os = import("os")
+
+fn fetch_all() {
+    let base = "http://127.0.0.1:8090"
+
+    let f1 = http.get_async(base + "/hello?name=a")
+    let f2 = http.get_async(base + "/hello?name=b")
+    let f3 = http.get_async(base + "/users/99")
+
+    let r1 = waitfor(f1)
+    let r2 = waitfor(f2)
+    let r3 = waitfor(f3)
+
+    print(r1.body)
+    print(r2.body)
+    print(r3.body)
+
+    let bad = http.get_async("http://127.0.0.1:9/nope")
+    while not bad.is_done
+        waitfor(os.sleep_async(10))
+    if bad.has_failed {
+        print("failed request detected: " + bad.error)
+    } else {
+        print("unexpected success")
+    }
+}
+
+async.run(fetch_all)

@@ -6,13 +6,25 @@ namespace pyle {
     inline constexpr std::string_view PRELUDE_SOURCE = R"pyle(
         fn waitfor(task) {
             while not task.is_done {
-                yield
+                __tick()
+                let job = __next_ready_task()
+                if job != none {
+                    job.resume()
+                } else {
+                    yield
+                }
             }
             if task.has_failed {
                 print("Error: " + task.error)
                 return none
             }
             return task.data
+        }
+
+        fn __task_make(handler, arg, slot) {
+            return Coro(fn() {
+                slot.fulfill(handler(arg))
+            })
         }
 
         let async = {
@@ -61,6 +73,11 @@ namespace pyle {
                             }
                         }
                         j += 1
+                    }
+                    __tick()
+                    let job = __next_ready_task()
+                    if job != none {
+                        job.resume()
                     }
                     yield
                 }

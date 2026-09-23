@@ -629,11 +629,11 @@ namespace pyle {
         call_chunk.lines.push_back(0);
         
         execute(std::move(call_chunk));
-         
-        pyle::Value result = last_result; 
-        last_result = pyle::Value();     
-        
-        return result; 
+
+        pyle::Value result = last_result;
+        last_result = pyle::Value();
+
+        return result;
     }
 
     void VM::runtime_error(const RuntimeError &type, const std::string &msg) {
@@ -869,9 +869,11 @@ namespace pyle {
             size_t saved_frame_count;
             std::string_view saved_source_code;
             std::string_view saved_script_name;
+            int entry_depth;
 
             ~ExecutionGuard() {
-                if (vm.main_coroutine_idx != 0 && vm.active_coroutine_idx != vm.main_coroutine_idx) {
+                if (entry_depth == 0 &&
+                    vm.main_coroutine_idx != 0 && vm.active_coroutine_idx != vm.main_coroutine_idx) {
                     Coroutine& active = std::get<Coroutine>(vm.heap[vm.active_coroutine_idx].data);
                     vm.save_coroutine_state(active);
                     active.state = Coroutine::State::Suspended;
@@ -893,8 +895,15 @@ namespace pyle {
             saved_sp_offset,
             saved_frame_count,
             saved_source_code,
-            saved_script_name
+            saved_script_name,
+            execute_depth
         };
+
+        struct DepthDecrement {
+            VM& vm;
+            ~DepthDecrement() { vm.execute_depth--; }
+        } depth_decrement{*this};
+        execute_depth++;
 
         panicked = false;
 
@@ -1307,6 +1316,7 @@ namespace pyle {
                         current.state = Coroutine::State::Dead;
 
                         if (current.is_main) {
+                            last_result = ret_val;
                             return;
                         }
 
