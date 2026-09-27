@@ -67,7 +67,6 @@ pyle::Value native_json_parse(pyle::VM& vm, pyle::ArgView args) {
     auto error = parser.parse(raw_str).get(doc);
 
     if (error) {
-        vm.runtime_error(pyle::RuntimeError::Runtime, std::string("simdjson Parse error: ") + simdjson::error_message(error));
         return pyle::Value();
     }
 
