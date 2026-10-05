@@ -44,7 +44,7 @@ namespace http_binding {
     struct HttpResponseData {
         int64_t status = 0;
         std::string body;
-        std::map<std::string, std::string> headers;
+        std::multimap<std::string, std::string> headers;
     };
 
     void register_client(NativeModule& mod);

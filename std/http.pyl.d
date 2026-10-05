@@ -1,6 +1,8 @@
 struct Response(status: int, body: string, headers: map, ok: bool) { }
 
-struct Request(method: string, path: string, query: map, headers: map, body: string, captures: array, remote_addr: string) { }
+struct Request(method: string, path: string, query: map, headers: map, cookies: map, body: string, captures: array, remote_addr: string) {
+    fn cookie(name: string): string { }
+}
 
 struct Client(base_url: string) {
     fn set_header(name: string, value: string) { }
@@ -53,3 +55,4 @@ fn url_encode(text: string): string { }
 fn url_decode(text: string): string { }
 fn mime(extension: string, content_type: string) { }
 fn html(body: string, status: int): map { }
+fn set_cookie(name: string, value: string, options: map): string { }

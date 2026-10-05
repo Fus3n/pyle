@@ -115,7 +115,7 @@ namespace http_binding {
             auto* data = new HttpResponseData();
             data->status = result->status;
             data->body = result->body;
-            for (const auto& [k, v] : result->headers) data->headers[k] = v;
+            for (const auto& [k, v] : result->headers) data->headers.insert({k, v});
             return pyle::to_value_owned(vm, data);
         }
 
@@ -150,7 +150,7 @@ namespace http_binding {
             HttpResponseData data;
             data.status = result->status;
             data.body = result->body;
-            for (const auto& [k, v] : result->headers) data.headers[k] = v;
+            for (const auto& [k, v] : result->headers) data.headers.insert({k, v});
             return data;
         }
 
@@ -495,7 +495,23 @@ namespace http_binding {
             });
             binder.custom_getter("headers", [](pyle::VM& m, pyle::HeapIdx self, pyle::ArgView) -> pyle::Value {
                 auto* d = static_cast<HttpResponseData*>(std::get<pyle::NativeObject>(m.get_heap_object(self).data).ptr);
-                return pyle::to_value(m, d->headers);
+                GcDisable gc(m);
+                MapType out;
+                for (const auto& [k, v] : d->headers) {
+                    Value key(Value::Tag::StringRef, m.intern_string(k));
+                    auto it = out.find(key);
+                    if (it == out.end()) {
+                        out[key] = pyle::to_value(m, v);
+                    } else if (it->second.tag == Value::Tag::ArrayRef) {
+                        std::get<ArrayType>(m.get_heap_object(it->second.as_ref).data).push_back(pyle::to_value(m, v));
+                    } else {
+                        ArrayType arr;
+                        arr.push_back(it->second);
+                        arr.push_back(pyle::to_value(m, v));
+                        it->second = Value(Value::Tag::ArrayRef, m.alloc(Object(std::move(arr))));
+                    }
+                }
+                return Value(Value::Tag::MapRef, m.alloc(Object(std::move(out))));
             });
             mod.class_binder(binder);
         }

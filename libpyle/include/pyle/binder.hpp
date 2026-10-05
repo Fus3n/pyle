@@ -815,9 +815,17 @@ namespace pyle {
         VM& vm;
         std::string name;
         MapType exports;
+        bool was_gc_enabled = true;
 
     public:
-        NativeModule(VM& vm, const std::string& name) : vm(vm), name(name) {}
+        NativeModule(VM& vm, const std::string& name) : vm(vm), name(name) {
+            was_gc_enabled = vm.is_gc_enabled();
+            vm.set_gc_enabled(false);
+        }
+
+        ~NativeModule() {
+            vm.set_gc_enabled(was_gc_enabled);
+        }
 
         VM& get_vm() { return vm; }
 
@@ -888,6 +896,7 @@ namespace pyle {
         Value build() {
             HeapIdx map_idx = vm.alloc(Object(std::move(exports)));
             vm.get_heap_object<MapObject>(map_idx).is_module = true;
+            vm.set_gc_enabled(was_gc_enabled);
             return Value(Value::Tag::MapRef, map_idx);
         }
     };

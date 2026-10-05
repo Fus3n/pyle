@@ -12,8 +12,32 @@ namespace http_binding {
             std::string remote_addr;
             std::map<std::string, std::string> headers;
             std::map<std::string, std::string> query;
+            std::map<std::string, std::string> cookies;
             std::vector<std::string> captures;
         };
+
+        void parse_cookie_header(const std::string& header, std::map<std::string, std::string>& out) {
+            auto trim = [](std::string s) {
+                while (!s.empty() && s.front() == ' ') s.erase(s.begin());
+                while (!s.empty() && s.back() == ' ') s.pop_back();
+                return s;
+            };
+            size_t pos = 0;
+            while (pos < header.size()) {
+                size_t end = header.find(';', pos);
+                if (end == std::string::npos) end = header.size();
+                std::string pair = header.substr(pos, end - pos);
+                size_t eq = pair.find('=');
+                if (eq != std::string::npos) {
+                    std::string k = trim(pair.substr(0, eq));
+                    std::string v = trim(pair.substr(eq + 1));
+                    if (v.size() >= 2 && v.front() == '"' && v.back() == '"')
+                        v = v.substr(1, v.size() - 2);
+                    if (!k.empty()) out[k] = v;
+                }
+                pos = end + 1;
+            }
+        }
 
         struct HttpSlot {
             std::promise<HttpResponseData> prom;
@@ -100,7 +124,12 @@ namespace http_binding {
                 rd->body = req.body;
                 rd->remote_addr = req.remote_addr;
                 for (const auto& [k, v] : req.params) rd->query[k] = v;
-                for (const auto& [k, v] : req.headers) rd->headers[k] = v;
+                for (const auto& [k, v] : req.headers) {
+                    rd->headers[k] = v;
+                    std::string lk = k;
+                    for (auto& c : lk) c = static_cast<char>(tolower(static_cast<unsigned char>(c)));
+                    if (lk == "cookie") parse_cookie_header(v, rd->cookies);
+                }
                 for (size_t i = 1; i < req.matches.size(); ++i) {
                     if (req.matches[i].matched) rd->captures.push_back(req.matches[i].str());
                 }
@@ -112,7 +141,7 @@ namespace http_binding {
                         return;
                     case pyle::Value::Tag::StringRef:
                         res.body = std::get<std::string>(m.get_heap_object(out.as_ref).data);
-                        res.headers["Content-Type"] = "text/plain";
+                        res.headers.insert({"Content-Type", "text/plain"});
                         return;
                     case pyle::Value::Tag::MapRef: {
                         const auto& entries = std::get<pyle::MapObject>(m.get_heap_object(out.as_ref).data).entries;
@@ -131,8 +160,30 @@ namespace http_binding {
                                 }
                                 res.body = std::get<std::string>(m.get_heap_object(v.as_ref).data);
                             } else if (key == "headers") {
-                                for (const auto& [hk, hv] : pyle::from_value<std::map<std::string, std::string>>(m, v)) {
-                                    res.headers[hk] = hv;
+                                if (v.tag != pyle::Value::Tag::MapRef) {
+                                    m.runtime_error(pyle::RuntimeError::Type, "handler response 'headers' expects a map.");
+                                    return;
+                                }
+                                const auto& hmap = std::get<pyle::MapObject>(m.get_heap_object(v.as_ref).data).entries;
+                                for (const auto& [hk, hv] : hmap) {
+                                    std::string hkey = m.value_to_string(hk);
+                                    if (hv.tag == pyle::Value::Tag::StringRef) {
+                                        res.headers.insert({hkey, std::get<std::string>(m.get_heap_object(hv.as_ref).data)});
+                                    } else if (hv.tag == pyle::Value::Tag::ArrayRef) {
+                                        const auto& arr = std::get<pyle::ArrayType>(m.get_heap_object(hv.as_ref).data);
+                                        for (const auto& item : arr) {
+                                            if (item.tag != pyle::Value::Tag::StringRef) {
+                                                m.runtime_error(pyle::RuntimeError::Type,
+                                                    "handler response header arrays must contain only strings.");
+                                                return;
+                                            }
+                                            res.headers.insert({hkey, std::get<std::string>(m.get_heap_object(item.as_ref).data)});
+                                        }
+                                    } else {
+                                        m.runtime_error(pyle::RuntimeError::Type,
+                                            "handler response header values must be a string or an array of strings.");
+                                        return;
+                                    }
                                 }
                             }
                         }
@@ -360,6 +411,66 @@ namespace http_binding {
             return pyle::Value();
         });
 
+        mod.raw_function("set_cookie", [](pyle::VM& m, pyle::ArgView args) -> pyle::Value {
+            if (args.size() < 2 || args.size() > 3 ||
+                args[0].tag != pyle::Value::Tag::StringRef || args[1].tag != pyle::Value::Tag::StringRef) {
+                m.runtime_error(pyle::RuntimeError::ArgumentError,
+                    "http.set_cookie expects (name: string, value: string, options: map = {}).");
+                return pyle::Value();
+            }
+            std::string out = std::get<std::string>(m.get_heap_object(args[0].as_ref).data);
+            out += "=";
+            out += std::get<std::string>(m.get_heap_object(args[1].as_ref).data);
+
+            if (args.size() == 3) {
+                if (args[2].tag != pyle::Value::Tag::MapRef) {
+                    m.runtime_error(pyle::RuntimeError::ArgumentError, "http.set_cookie options expects a map.");
+                    return pyle::Value();
+                }
+                const auto& opts = std::get<pyle::MapObject>(m.get_heap_object(args[2].as_ref).data).entries;
+                for (const auto& [k, v] : opts) {
+                    std::string key = m.value_to_string(k);
+                    if (key == "path" || key == "domain" || key == "expires" || key == "same_site") {
+                        if (v.tag != pyle::Value::Tag::StringRef) {
+                            m.runtime_error(pyle::RuntimeError::Type,
+                                fmt::format("http.set_cookie '{}' expects a string.", key));
+                            return pyle::Value();
+                        }
+                        const std::string& val = std::get<std::string>(m.get_heap_object(v.as_ref).data);
+                        if (key == "path") out += "; Path=" + val;
+                        else if (key == "domain") out += "; Domain=" + val;
+                        else if (key == "expires") out += "; Expires=" + val;
+                        else {
+                            out += "; SameSite=";
+                            if (val.empty()) out += "Lax";
+                            else {
+                                out += static_cast<char>(toupper(static_cast<unsigned char>(val[0])));
+                                out += val.substr(1);
+                            }
+                        }
+                    } else if (key == "max_age") {
+                        if (v.tag != pyle::Value::Tag::Int) {
+                            m.runtime_error(pyle::RuntimeError::Type, "http.set_cookie 'max_age' expects an int.");
+                            return pyle::Value();
+                        }
+                        out += "; Max-Age=" + std::to_string(v.as_int);
+                    } else if (key == "http_only" || key == "secure") {
+                        if (v.tag != pyle::Value::Tag::Bool) {
+                            m.runtime_error(pyle::RuntimeError::Type,
+                                fmt::format("http.set_cookie '{}' expects a bool.", key));
+                            return pyle::Value();
+                        }
+                        if (v.as_bool) out += key == "http_only" ? "; HttpOnly" : "; Secure";
+                    } else {
+                        m.runtime_error(pyle::RuntimeError::ArgumentError,
+                            fmt::format("http.set_cookie unknown option '{}'.", key));
+                        return pyle::Value();
+                    }
+                }
+            }
+            return pyle::to_value(m, out);
+        });
+
         mod.raw_function("html", [](pyle::VM& m, pyle::ArgView args) -> pyle::Value {
             if (args.size() < 1 || args.size() > 2 || args[0].tag != pyle::Value::Tag::StringRef) {
                 m.runtime_error(pyle::RuntimeError::ArgumentError, "http.html expects (body: string, status = 200).");
@@ -418,6 +529,21 @@ namespace http_binding {
             binder.custom_getter("captures", [](pyle::VM& m, pyle::HeapIdx self, pyle::ArgView) -> pyle::Value {
                 auto* d = static_cast<HttpRequestData*>(std::get<pyle::NativeObject>(m.get_heap_object(self).data).ptr);
                 return pyle::to_value(m, d->captures);
+            });
+            binder.custom_getter("cookies", [](pyle::VM& m, pyle::HeapIdx self, pyle::ArgView) -> pyle::Value {
+                auto* d = static_cast<HttpRequestData*>(std::get<pyle::NativeObject>(m.get_heap_object(self).data).ptr);
+                return pyle::to_value(m, d->cookies);
+            });
+            binder.custom_method("cookie", [](pyle::VM& m, pyle::HeapIdx self, pyle::ArgView args) -> pyle::Value {
+                if (args.size() != 1 || args[0].tag != pyle::Value::Tag::StringRef) {
+                    m.runtime_error(pyle::RuntimeError::ArgumentError, "req.cookie expects (name: string).");
+                    return pyle::Value();
+                }
+                auto* d = static_cast<HttpRequestData*>(std::get<pyle::NativeObject>(m.get_heap_object(self).data).ptr);
+                const std::string& name = std::get<std::string>(m.get_heap_object(args[0].as_ref).data);
+                auto it = d->cookies.find(name);
+                if (it == d->cookies.end()) return pyle::Value();
+                return pyle::to_value(m, it->second);
             });
             mod.class_binder(binder);
         }
