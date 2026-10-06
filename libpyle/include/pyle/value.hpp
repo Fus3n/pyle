@@ -197,6 +197,7 @@ namespace pyle {
         ankerl::unordered_dense::map<HeapIdx, HeapIdx> setters;
 
         HeapIdx native_constructor_idx = 0; 
+        HeapIdx name_idx = 0;
 
         size_t get_offset(HeapIdx field_id) const {
             if (field_names.size() <= 8) {

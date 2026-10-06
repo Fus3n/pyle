@@ -462,6 +462,7 @@ namespace pyle {
             
             StructType type_meta;
             BindRegistry<T>::type_idx = vm.alloc(Object(type_meta));
+            std::get<StructType>(vm.get_heap_object(BindRegistry<T>::type_idx).data).name_idx = vm.intern_string(name);
             
             type_val = Value(Value::Tag::StructTypeRef, BindRegistry<T>::type_idx);
         }
@@ -697,6 +698,7 @@ namespace pyle {
             
             StructType type_meta;
             BindRegistry<std::shared_ptr<T>>::type_idx = vm.alloc(Object(type_meta));
+            std::get<StructType>(vm.get_heap_object(BindRegistry<std::shared_ptr<T>>::type_idx).data).name_idx = vm.intern_string(name);
             
             type_val = Value(Value::Tag::StructTypeRef, BindRegistry<std::shared_ptr<T>>::type_idx);
         }

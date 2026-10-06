@@ -22,3 +22,6 @@ vm_verify
 
 # Handled by xmake
 CMakeLists.txt
+
+# Personal test webapp
+webapp/

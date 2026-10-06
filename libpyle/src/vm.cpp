@@ -585,6 +585,15 @@ namespace pyle {
             case Value::Tag::NativeObjectRef: {
                 HeapIdx idx = val.as_ref;
                 NativeObject& ud = std::get<NativeObject>(heap[idx].data);
+                if (ud.type_idx != 0 && ud.type_idx < heap.size() &&
+                    std::holds_alternative<StructType>(heap[ud.type_idx].data)) {
+                    const auto& type = std::get<StructType>(heap[ud.type_idx].data);
+                    if (type.name_idx != 0 && type.name_idx < heap.size() &&
+                        std::holds_alternative<std::string>(heap[type.name_idx].data)) {
+                        ss << "<" << std::get<std::string>(heap[type.name_idx].data) << " " << ud.ptr << ">";
+                        break;
+                    }
+                }
                 ss << "<native_object " << ud.ptr << ">";
                 break;
             }

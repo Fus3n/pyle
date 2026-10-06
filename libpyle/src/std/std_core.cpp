@@ -419,6 +419,18 @@ namespace pyle {
             return Value();
         }
 
+        if (args[0].tag == Value::Tag::NativeObjectRef && vm.heap_valid(args[0].as_ref)) {
+            const auto* ud = std::get_if<pyle::NativeObject>(&vm.get_heap_object(args[0].as_ref).data);
+            if (ud && ud->type_idx != 0 && vm.heap_valid(ud->type_idx)) {
+                const auto* type = std::get_if<pyle::StructType>(&vm.get_heap_object(ud->type_idx).data);
+                if (type && type->name_idx != 0 && vm.heap_valid(type->name_idx)) {
+                    if (const auto* name = std::get_if<std::string>(&vm.get_heap_object(type->name_idx).data)) {
+                        return Value(Value::Tag::StringRef, vm.intern_string(*name));
+                    }
+                }
+            }
+        }
+
         return Value(Value::Tag::StringRef, vm.intern_string(args[0].tag_to_string()));
     }
 

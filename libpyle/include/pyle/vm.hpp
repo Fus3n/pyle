@@ -59,6 +59,7 @@ namespace pyle {
         void set_panicked(bool v = true) { panicked = v; }
 
         Object& get_heap_object(const HeapIdx idx) { return heap[idx]; }
+        bool heap_valid(const HeapIdx idx) const { return idx < heap.size(); }
 
         template<typename T>
         T& get_heap_object(const HeapIdx idx) {
