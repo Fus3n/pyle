@@ -278,8 +278,18 @@ namespace pyle {
             if (match({TokenType::COLON})) {
                 method_return_type = parse_type_name();
             }
-            consume(TokenType::LEFT_BRACE, "Expected '{' before method body.");
-            std::unique_ptr<BlockStmt> body = function_body();
+            std::unique_ptr<BlockStmt> body;
+            if (match({TokenType::ARROW})) {
+                std::unique_ptr<Expr> expr = expression();
+                consume_statement_end();
+
+                std::vector<std::unique_ptr<Stmt>> statements;
+                statements.push_back(std::make_unique<ReturnStmt>(std::move(expr)));
+                body = std::make_unique<BlockStmt>(std::move(statements));
+            } else {
+                consume(TokenType::LEFT_BRACE, "Expected '{' before method body.");
+                body = function_body();
+            }
             
             if (!is_static && method_name.lexeme == "_init") {
                 auto return_self = std::make_unique<ReturnStmt>(std::make_unique<VariableExpr>(self_tok));

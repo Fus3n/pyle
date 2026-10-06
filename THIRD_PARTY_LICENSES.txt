@@ -1,0 +1,24 @@
+Pyle is licensed under the MIT License (see LICENSE).
+
+It builds on the following third-party libraries, each under its own
+permissive license:
+
+    fmt              MIT         https://github.com/fmtlib/fmt
+    unordered_dense  MIT         https://github.com/martinus/unordered_dense
+    argparse         MIT         https://github.com/p-ranav/argparse
+    cpp-httplib      MIT         https://github.com/yhirose/cpp-httplib
+    nlohmann_json    MIT         https://github.com/nlohmann/json
+    simdjson         Apache-2.0  https://github.com/simdjson/simdjson
+    Mbed TLS         Apache-2.0  https://github.com/Mbed-TLS/mbedtls
+    raylib           zlib        https://github.com/raysan5/raylib
+
+Versions are pinned in xmake.lua. All of these allow commercial use,
+modification and redistribution; MIT and zlib require the copyright notice
+be kept, Apache-2.0 requires a copy of the license. The full text of each
+is in the LICENSE file of its repository.
+
+raylib is linked into the raylib.pyled extension module. The binding code in
+pyle/src/std/vendor/raylib/ is part of Pyle, not raylib.
+
+If you embed libpyle in your own project, fmt and unordered_dense come along
+with it, so keep their notices in your credits too.
