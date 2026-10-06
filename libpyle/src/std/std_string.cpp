@@ -226,6 +226,87 @@ namespace  pyle::StringMethods {
         return Value(Value::Tag::BytesRef, idx);
     }
 
+    Value trim(VM& vm, HeapIdx obj_idx, ArgView args) {
+        if (args.size() != 0) {
+            vm.runtime_error(RuntimeError::ArgumentError, "string.trim() expects 0 arguments.");
+            return Value();
+        }
+
+        const auto& str = vm.get_heap_object<std::string>(obj_idx);
+        const size_t first = str.find_first_not_of(" \t\n\r\f\v");
+        if (first == std::string::npos) {
+            return Value(Value::Tag::StringRef, vm.intern_string(""));
+        }
+        const size_t last = str.find_last_not_of(" \t\n\r\f\v");
+        return Value(Value::Tag::StringRef, vm.intern_string(str.substr(first, last - first + 1)));
+    }
+
+    Value contains(VM& vm, HeapIdx obj_idx, ArgView args) {
+        if (args.size() != 1 || args[0].tag != Value::Tag::StringRef) {
+            vm.runtime_error(RuntimeError::ArgumentError, "string.contains() expects exactly 1 string argument.");
+            return Value();
+        }
+
+        const auto& str = vm.get_heap_object<std::string>(obj_idx);
+        const auto& sub = vm.get_heap_object<std::string>(args[0].as_ref);
+        return Value(str.find(sub) != std::string::npos);
+    }
+
+    Value starts_with(VM& vm, HeapIdx obj_idx, ArgView args) {
+        if (args.size() != 1 || args[0].tag != Value::Tag::StringRef) {
+            vm.runtime_error(RuntimeError::ArgumentError, "string.starts_with() expects exactly 1 string argument.");
+            return Value();
+        }
+
+        const auto& str = vm.get_heap_object<std::string>(obj_idx);
+        const auto& prefix = vm.get_heap_object<std::string>(args[0].as_ref);
+        if (prefix.size() > str.size()) {
+            return Value(false);
+        }
+        return Value(str.compare(0, prefix.size(), prefix) == 0);
+    }
+
+    Value ends_with(VM& vm, HeapIdx obj_idx, ArgView args) {
+        if (args.size() != 1 || args[0].tag != Value::Tag::StringRef) {
+            vm.runtime_error(RuntimeError::ArgumentError, "string.ends_with() expects exactly 1 string argument.");
+            return Value();
+        }
+
+        const auto& str = vm.get_heap_object<std::string>(obj_idx);
+        const auto& suffix = vm.get_heap_object<std::string>(args[0].as_ref);
+        if (suffix.size() > str.size()) {
+            return Value(false);
+        }
+        return Value(str.compare(str.size() - suffix.size(), suffix.size(), suffix) == 0);
+    }
+
+    Value replace(VM& vm, HeapIdx obj_idx, ArgView args) {
+        if (args.size() != 2 || args[0].tag != Value::Tag::StringRef || args[1].tag != Value::Tag::StringRef) {
+            vm.runtime_error(RuntimeError::ArgumentError, "string.replace() expects (old: string, new: string).");
+            return Value();
+        }
+
+        const auto& str = vm.get_heap_object<std::string>(obj_idx);
+        const auto& old = vm.get_heap_object<std::string>(args[0].as_ref);
+        const auto& replacement = vm.get_heap_object<std::string>(args[1].as_ref);
+        if (old.empty()) {
+            return Value(Value::Tag::StringRef, vm.intern_string(str));
+        }
+
+        std::string out;
+        out.reserve(str.size());
+        size_t pos = 0;
+        size_t found = str.find(old, pos);
+        while (found != std::string::npos) {
+            out.append(str, pos, found - pos);
+            out += replacement;
+            pos = found + old.size();
+            found = str.find(old, pos);
+        }
+        out.append(str, pos, std::string::npos);
+        return Value(Value::Tag::StringRef, vm.intern_string(out));
+    }
+
     static NativeMethodMap methods = {
         {"size", size},
         {"to_num", to_num},
@@ -239,6 +320,11 @@ namespace  pyle::StringMethods {
         {"upper", upper},
         {"split", split},
         {"to_bytes", to_bytes},
+        {"trim", trim},
+        {"contains", contains},
+        {"starts_with", starts_with},
+        {"ends_with", ends_with},
+        {"replace", replace},
     };
 
     Value dispatch(VM& vm, HeapIdx obj_idx, const std::string& name, ArgView args) {

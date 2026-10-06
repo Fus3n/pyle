@@ -2056,8 +2056,12 @@ namespace pyle {
                     HeapIdx field_id = ARG;
                     Value val = pop();
                     Value obj_val = pop();
-                    
-                    if (obj_val.tag == Value::Tag::NativeObjectRef) {
+
+                    if (obj_val.tag == Value::Tag::MapRef) {
+                        auto& map = std::get<MapObject>(heap[obj_val.as_ref].data).entries;
+                        map[Value(Value::Tag::StringRef, field_id)] = val;
+                        push(val);
+                    } else if (obj_val.tag == Value::Tag::NativeObjectRef) {
                         NativeObject& ud = std::get<NativeObject>(heap[obj_val.as_ref].data);
                         StructType& type = std::get<StructType>(heap[ud.type_idx].data);
                         auto it = type.setters.find(field_id);

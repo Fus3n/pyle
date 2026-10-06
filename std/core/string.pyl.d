@@ -11,4 +11,9 @@ struct string {
     fn upper() { }
     fn split(delimiter: string) { }
     fn to_bytes() { }
+    fn trim() { }
+    fn contains(sub: string) { }
+    fn starts_with(prefix: string) { }
+    fn ends_with(suffix: string) { }
+    fn replace(old: string, new: string) { }
 }

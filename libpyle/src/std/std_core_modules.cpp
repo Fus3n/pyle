@@ -5,6 +5,11 @@
 #include "pyle/std/std_future.hpp"
 #include <thread>
 #include <filesystem>
+#include <ctime>
+#include <iomanip>
+#include <sstream>
+#include <cstdlib>
+#include <algorithm>
 
 namespace pyle {
 
@@ -72,12 +77,141 @@ namespace pyle {
         return Value(Value::Tag::StringRef, vm.intern_string(p.parent_path().string()));
     }
 
+    pyle::Value os_mkdir(pyle::VM& vm, pyle::ArgView args) {
+        if (args.size() != 1 || args[0].tag != Value::Tag::StringRef) {
+            vm.runtime_error(RuntimeError::ArgumentError, "os.mkdir expects 1 string argument.");
+            return Value();
+        }
+
+        std::string dir = std::get<std::string>(vm.get_heap_object(args[0].as_ref).data);
+
+        std::error_code ec;
+        bool created = std::filesystem::create_directories(dir, ec);
+        return Value((created || std::filesystem::is_directory(dir, ec)) && !ec);
+    }
+
+    pyle::Value os_listdir(pyle::VM& vm, pyle::ArgView args) {
+        if (args.size() != 1 || args[0].tag != Value::Tag::StringRef) {
+            vm.runtime_error(RuntimeError::ArgumentError, "os.listdir expects 1 string argument.");
+            return Value();
+        }
+
+        std::string dir = std::get<std::string>(vm.get_heap_object(args[0].as_ref).data);
+
+        std::error_code ec;
+        if (!std::filesystem::is_directory(dir, ec) || ec) {
+            vm.runtime_error(RuntimeError::ArgumentError, "os.listdir path is not a readable directory.");
+            return Value();
+        }
+
+        ArrayType names;
+        for (const auto& entry : std::filesystem::directory_iterator(dir, ec)) {
+            if (ec) break;
+            names.push_back(Value(Value::Tag::StringRef,
+                vm.intern_string(entry.path().filename().string())));
+        }
+        if (ec) {
+            vm.runtime_error(RuntimeError::Runtime, "os.listdir failed while reading directory.");
+            return Value();
+        }
+        std::sort(names.begin(), names.end(), [&vm](const Value& a, const Value& b) {
+            return std::get<std::string>(vm.get_heap_object(a.as_ref).data) <
+                   std::get<std::string>(vm.get_heap_object(b.as_ref).data);
+        });
+
+        HeapIdx arr_idx = vm.alloc(Object(std::move(names)));
+        return Value(Value::Tag::ArrayRef, arr_idx);
+    }
+
+    pyle::Value os_rename(pyle::VM& vm, pyle::ArgView args) {
+        if (args.size() != 2 || args[0].tag != Value::Tag::StringRef || args[1].tag != Value::Tag::StringRef) {
+            vm.runtime_error(RuntimeError::ArgumentError, "os.rename expects (src: string, dst: string).");
+            return Value();
+        }
+
+        std::string src = std::get<std::string>(vm.get_heap_object(args[0].as_ref).data);
+        std::string dst = std::get<std::string>(vm.get_heap_object(args[1].as_ref).data);
+
+        std::error_code ec;
+        std::filesystem::rename(src, dst, ec);
+        return Value(!ec);
+    }
+
+    pyle::Value os_getenv(pyle::VM& vm, pyle::ArgView args) {
+        if (args.size() != 1 || args[0].tag != Value::Tag::StringRef) {
+            vm.runtime_error(RuntimeError::ArgumentError, "os.getenv expects 1 string argument.");
+            return Value();
+        }
+
+        std::string name = std::get<std::string>(vm.get_heap_object(args[0].as_ref).data);
+        const char* val = std::getenv(name.c_str());
+        if (!val) {
+            return Value();
+        }
+        return Value(Value::Tag::StringRef, vm.intern_string(val));
+    }
+
+    pyle::Value os_date(pyle::VM& vm, pyle::ArgView args) {
+        if (args.size() != 0) {
+            vm.runtime_error(RuntimeError::ArgumentError, "os.date() takes 0 arguments.");
+            return Value();
+        }
+
+        std::time_t now = std::time(nullptr);
+        std::tm local{};
+#if defined(_WIN32)
+        localtime_s(&local, &now);
+#else
+        localtime_r(&now, &local);
+#endif
+        std::ostringstream ss;
+        ss << std::put_time(&local, "%Y-%m-%d %H:%M:%S");
+        return Value(Value::Tag::StringRef, vm.intern_string(ss.str()));
+    }
+
+    pyle::Value os_strftime(pyle::VM& vm, pyle::ArgView args) {
+        if (args.size() < 1 || args.size() > 2 || args[0].tag != Value::Tag::StringRef) {
+            vm.runtime_error(RuntimeError::ArgumentError, "os.strftime expects (format: string, timestamp = now).");
+            return Value();
+        }
+        if (args.size() == 2 && args[1].tag != Value::Tag::Int && args[1].tag != Value::Tag::Float) {
+            vm.runtime_error(RuntimeError::ArgumentError, "os.strftime timestamp expects a number.");
+            return Value();
+        }
+
+        std::string fmt = std::get<std::string>(vm.get_heap_object(args[0].as_ref).data);
+        std::time_t when = std::time(nullptr);
+        if (args.size() == 2) {
+            when = (args[1].tag == Value::Tag::Int)
+                ? static_cast<std::time_t>(args[1].as_int)
+                : static_cast<std::time_t>(args[1].as_float);
+        }
+        std::tm local{};
+#if defined(_WIN32)
+        localtime_s(&local, &when);
+#else
+        localtime_r(&when, &local);
+#endif
+        char buf[256];
+        if (std::strftime(buf, sizeof(buf), fmt.c_str(), &local) == 0) {
+            vm.runtime_error(RuntimeError::ArgumentError, "os.strftime format produced no output.");
+            return Value();
+        }
+        return Value(Value::Tag::StringRef, vm.intern_string(buf));
+    }
+
     Value os_module_factory(VM& vm) {
         return NativeModule(vm, "os")
             .raw_function("system", os_sys)
             .function<os_time>("time")
             .function<os_file_exists>("file_exists")
             .raw_function("remove", os_remove)
+            .raw_function("mkdir", os_mkdir)
+            .raw_function("listdir", os_listdir)
+            .raw_function("rename", os_rename)
+            .raw_function("getenv", os_getenv)
+            .raw_function("date", os_date)
+            .raw_function("strftime", os_strftime)
             .raw_function("sleep", os_sleep)
             .raw_function("sleep_async", os_sleep_async)
             .raw_function("script_path", os_script_path)

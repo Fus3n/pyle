@@ -138,6 +138,103 @@ namespace pyle::ArrayMethods {
         return Value();
     }
 
+    Value map(VM& vm, HeapIdx obj_idx, ArgView args) {
+        if (args.size() != 1 ||
+            (args[0].tag != Value::Tag::ClosureRef && args[0].tag != Value::Tag::FuncRef)) {
+            vm.runtime_error(RuntimeError::ArgumentError, "array.map() expects exactly 1 function argument.");
+            return Value();
+        }
+        const Value fn = args[0];
+
+        HeapIdx arr_idx = vm.alloc(Object(ArrayType{}));
+        GCRoot guard(vm, arr_idx, Value::Tag::ArrayRef);
+        auto& out = std::get<ArrayType>(vm.get_heap_object(arr_idx).data);
+
+        auto& vec = std::get<ArrayType>(vm.get_heap_object(obj_idx).data);
+        const size_t count = vec.size();
+        out.reserve(count);
+        for (size_t i = 0; i < count && i < vec.size(); ++i) {
+            Value mapped = vm.call_func_raw(fn, {vec[i]});
+            if (vm.is_panicked()) {
+                return Value();
+            }
+            out.push_back(mapped);
+        }
+        return Value(Value::Tag::ArrayRef, arr_idx);
+    }
+
+    Value filter(VM& vm, HeapIdx obj_idx, ArgView args) {
+        if (args.size() != 1 ||
+            (args[0].tag != Value::Tag::ClosureRef && args[0].tag != Value::Tag::FuncRef)) {
+            vm.runtime_error(RuntimeError::ArgumentError, "array.filter() expects exactly 1 function argument.");
+            return Value();
+        }
+        const Value fn = args[0];
+
+        HeapIdx arr_idx = vm.alloc(Object(ArrayType{}));
+        GCRoot guard(vm, arr_idx, Value::Tag::ArrayRef);
+        auto& out = std::get<ArrayType>(vm.get_heap_object(arr_idx).data);
+
+        auto& vec = std::get<ArrayType>(vm.get_heap_object(obj_idx).data);
+        const size_t count = vec.size();
+        for (size_t i = 0; i < count && i < vec.size(); ++i) {
+            Value keep = vm.call_func_raw(fn, {vec[i]});
+            if (vm.is_panicked()) {
+                return Value();
+            }
+            if (vm.is_truthy(keep)) {
+                out.push_back(vec[i]);
+            }
+        }
+        return Value(Value::Tag::ArrayRef, arr_idx);
+    }
+
+    Value find(VM& vm, HeapIdx obj_idx, ArgView args) {        if (args.size() != 1 ||
+            (args[0].tag != Value::Tag::ClosureRef && args[0].tag != Value::Tag::FuncRef)) {
+            vm.runtime_error(RuntimeError::ArgumentError, "array.find() expects exactly 1 function argument.");
+            return Value();
+        }
+        const Value fn = args[0];
+
+        auto& vec = std::get<ArrayType>(vm.get_heap_object(obj_idx).data);
+        const size_t count = vec.size();
+        for (size_t i = 0; i < count && i < vec.size(); ++i) {
+            Value matched = vm.call_func_raw(fn, {vec[i]});
+            if (vm.is_panicked()) {
+                return Value();
+            }
+            if (vm.is_truthy(matched)) {
+                return vec[i];
+            }
+        }
+        return Value();
+    }
+
+    Value index_of(VM& vm, HeapIdx obj_idx, ArgView args) {
+        if (args.size() != 1) {
+            vm.runtime_error(RuntimeError::ArgumentError, "array.index_of() expects exactly 1 argument.");
+            return Value();
+        }
+
+        const auto& vec = vm.get_heap_object<ArrayType>(obj_idx);
+        const Value& target = args[0];
+        for (size_t i = 0; i < vec.size(); ++i) {
+            const Value& elem = vec[i];
+            bool eq;
+            if (elem.tag == Value::Tag::StringRef && target.tag == Value::Tag::StringRef &&
+                elem.as_ref != target.as_ref) {
+                eq = std::get<std::string>(vm.get_heap_object(elem.as_ref).data) ==
+                     std::get<std::string>(vm.get_heap_object(target.as_ref).data);
+            } else {
+                eq = (elem == target);
+            }
+            if (eq) {
+                return Value(static_cast<int64_t>(i));
+            }
+        }
+        return Value();
+    }
+
     static NativeMethodMap methods = {
         {"append", append},
         {"size", size},
@@ -146,7 +243,11 @@ namespace pyle::ArrayMethods {
         {"slice", slice},
         {"clear", clear},
         {"reserve", reserve},
-        {"resize", resize}
+        {"resize", resize},
+        {"map", map},
+        {"filter", filter},
+        {"find", find},
+        {"index_of", index_of}
     };
 
     Value dispatch(VM& vm, HeapIdx obj_idx, const std::string& name, ArgView args) {
