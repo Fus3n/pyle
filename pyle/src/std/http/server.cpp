@@ -1,4 +1,5 @@
 #include "http_binding.hpp"
+#include <regex>
 
 namespace pyle {
 namespace http_binding {
@@ -84,6 +85,8 @@ namespace http_binding {
                 std::string verb;
                 std::string pattern;
                 pyle::Value closure;
+                bool is_plain = true;
+                std::regex rx;
             };
 
             struct PendingJob {
@@ -129,7 +132,8 @@ namespace http_binding {
                 }
             }
 
-            static void fill_request_data(const httplib::Request& req, HttpRequestData* rd) {
+            static void fill_request_data(const httplib::Request& req, HttpRequestData* rd,
+                                            const std::vector<std::string>& captures) {
                 rd->method = req.method;
                 rd->path = req.path;
                 rd->body = req.body;
@@ -139,9 +143,7 @@ namespace http_binding {
                     rd->headers[k] = v;
                     if (is_cookie_header(k)) parse_cookie_header(v, rd->cookies);
                 }
-                for (size_t i = 1; i < req.matches.size(); ++i) {
-                    if (req.matches[i].matched) rd->captures.push_back(req.matches[i].str());
-                }
+                rd->captures = captures;
             }
 
             static void apply_result_data(pyle::VM& m, const pyle::Value& out, HttpResponseData& res) {
@@ -265,16 +267,27 @@ namespace http_binding {
             }
 
             void materialize(bool enqueue_mode) {
-                for (const auto& r : routes) {
-                    pyle::VM* m = vm;
-                    const pyle::Value cb = r.closure;
+                const char* verbs[] = {"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"};
+                for (const char* verb : verbs) {
+                    std::vector<Route> table;
+                    for (const auto& r : routes) {
+                        bool in_get = (std::string(verb) == "GET") && (r.verb == "GET" || r.verb == "HEAD");
+                        if (r.verb == verb || in_get) table.push_back(r);
+                    }
+                    if (table.empty()) continue;
                     if (enqueue_mode) {
-                        auto handler = [this, cb](const httplib::Request& req, httplib::Response& res) {
+                        auto handler = [this, table](const httplib::Request& req, httplib::Response& res) {
+                            std::vector<std::string> captures;
+                            const Route* hit = match_route(table, req.path, captures);
+                            if (!hit) {
+                                res.status = 404;
+                                return;
+                            }
                             auto* rd = new HttpRequestData();
-                            fill_request_data(req, rd);
+                            fill_request_data(req, rd, captures);
                             PendingJob job;
                             job.req = rd;
-                            job.closure = cb;
+                            job.closure = hit->closure;
                             auto fut = job.slot.get_future();
                             {
                                 std::lock_guard<std::mutex> lock(jobs_mutex);
@@ -289,15 +302,21 @@ namespace http_binding {
                                 res.body = std::move(out.body);
                             }
                         };
-                        register_handler(r.verb, r.pattern, handler);
+                        register_catch_all(verb, handler);
                     } else {
-                        auto handler = [m, cb](const httplib::Request& req, httplib::Response& res) {
+                        auto handler = [m = vm, table](const httplib::Request& req, httplib::Response& res) {
                             GcDisable gc(*m);
                             try {
+                                std::vector<std::string> captures;
+                                const Route* hit = match_route(table, req.path, captures);
+                                if (!hit) {
+                                    res.status = 404;
+                                    return;
+                                }
                                 auto* rd = new HttpRequestData();
-                                fill_request_data(req, rd);
+                                fill_request_data(req, rd, captures);
                                 pyle::Value req_val = pyle::to_value_owned(*m, rd);
-                                pyle::Value out = m->call_func(cb, req_val);
+                                pyle::Value out = m->call_func(hit->closure, req_val);
                                 HttpResponseData data;
                                 data.status = 200;
                                 if (!m->is_panicked()) apply_result_data(*m, out, data);
@@ -317,21 +336,53 @@ namespace http_binding {
                                 res.set_content("internal error", "text/plain");
                             }
                         };
-                        register_handler(r.verb, r.pattern, handler);
+                        register_catch_all(verb, handler);
                     }
                 }
             }
 
-            void register_handler(const std::string& verb, const std::string& pattern,
-                                  std::function<void(const httplib::Request&, httplib::Response&)> handler) {
-                if (verb == "GET" || verb == "HEAD") svr.Get(pattern, handler);
-                else if (verb == "POST")   svr.Post(pattern, handler);
-                else if (verb == "PUT")    svr.Put(pattern, handler);
-                else if (verb == "PATCH")  svr.Patch(pattern, handler);
-                else if (verb == "DELETE") svr.Delete(pattern, handler);
-                else                       svr.Options(pattern, handler);
+            static const Route* match_route(const std::vector<Route>& table, const std::string& path,
+                                            std::vector<std::string>& captures) {
+                captures.clear();
+                for (const auto& r : table) {
+                    if (r.is_plain) {
+                        if (r.pattern == path) return &r;
+                    } else {
+                        std::smatch m;
+                        if (std::regex_match(path, m, r.rx)) {
+                            for (size_t i = 1; i < m.size(); ++i) {
+                                if (m[i].matched) captures.push_back(m[i].str());
+                            }
+                            return &r;
+                        }
+                    }
+                }
+                return nullptr;
+            }
+
+            void register_catch_all(const std::string& verb,
+                                    std::function<void(const httplib::Request&, httplib::Response&)> handler) {
+                if (verb == "GET") svr.Get(".*", handler);
+                else if (verb == "POST")   svr.Post(".*", handler);
+                else if (verb == "PUT")    svr.Put(".*", handler);
+                else if (verb == "PATCH")  svr.Patch(".*", handler);
+                else if (verb == "DELETE") svr.Delete(".*", handler);
+                else                       svr.Options(".*", handler);
             }
         };
+
+        bool is_plain_pattern(const std::string& p) {
+            for (char c : p) {
+                switch (c) {
+                    case '^': case '$': case '.': case '*': case '+': case '?':
+                    case '(': case ')': case '[': case ']': case '{': case '}':
+                    case '|': case '\\':
+                        return false;
+                    default: break;
+                }
+            }
+            return true;
+        }
 
         pyle::Value server_route(pyle::VM& vm, pyle::HeapIdx self_idx, pyle::ArgView args, const std::string& verb) {
             if (args.size() != 2 || args[0].tag != pyle::Value::Tag::StringRef ||
@@ -343,7 +394,21 @@ namespace http_binding {
             auto& native = std::get<pyle::NativeObject>(vm.get_heap_object(self_idx).data);
             auto* server = static_cast<HttpServerWrapper*>(native.ptr);
             server->handlers.push_back(args[1]);
-            server->routes.push_back({verb, pyle::from_value<std::string>(vm, args[0]), args[1]});
+            HttpServerWrapper::Route r;
+            r.verb = verb;
+            r.pattern = pyle::from_value<std::string>(vm, args[0]);
+            r.closure = args[1];
+            r.is_plain = is_plain_pattern(r.pattern);
+            if (!r.is_plain) {
+                try {
+                    r.rx = std::regex(r.pattern);
+                } catch (const std::regex_error&) {
+                    vm.runtime_error(pyle::RuntimeError::ArgumentError,
+                        "server." + verb + " has an invalid route pattern.");
+                    return pyle::Value();
+                }
+            }
+            server->routes.push_back(std::move(r));
             return pyle::Value();
         }
 
