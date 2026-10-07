@@ -9,6 +9,7 @@
 
 #include "pyle/pyle.hpp"
 #include "pyle/std/std_core.hpp" 
+#include "pyle/std/std_process.hpp"
 #include "pyle/binder.hpp"
 #include "utils.hpp"
 
@@ -49,6 +50,8 @@ int main(int argc, char* argv[]) {
 
     std::string script_path = program.get<std::string>("script");
     pyle::Pyle pyle;
+    pyle.vm.executable_path = argv[0];
+    pyle::proc::worker_init_from_env(pyle.vm);
     pyle::register_core_natives(pyle.vm); 
     pyle::register_module(pyle.vm, "json", register_json_module);
     pyle::register_module(pyle.vm, "http", register_http_module);

@@ -201,8 +201,8 @@ namespace pyle {
     }
 
     Value os_module_factory(VM& vm) {
-        return NativeModule(vm, "os")
-            .raw_function("system", os_sys)
+        NativeModule mod(vm, "os");
+        mod.raw_function("system", os_sys)
             .function<os_time>("time")
             .function<os_file_exists>("file_exists")
             .raw_function("remove", os_remove)
@@ -215,8 +215,9 @@ namespace pyle {
             .raw_function("sleep", os_sleep)
             .raw_function("sleep_async", os_sleep_async)
             .raw_function("script_path", os_script_path)
-            .raw_function("script_dir", os_script_dir)
-            .build();
+            .raw_function("script_dir", os_script_dir);
+        proc::bind_to_os(vm, mod);
+        return mod.build();
     }
     
     Value color_module_factory(VM& vm) {

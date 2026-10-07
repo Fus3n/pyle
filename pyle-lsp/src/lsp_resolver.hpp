@@ -211,6 +211,7 @@ private:
         for (const auto& sp : std_paths) {
             out.push_back(sp + slash + name + ".pyl.d");
             out.push_back(sp + slash + "core" + slash + name + ".pyl.d");
+            out.push_back(sp + slash + name + ".pyl");
         }
         fs::path walk = dir.empty() || dir == "." ? fs::current_path() : fs::path(dir);
         for (int depth = 0; depth < 4; ++depth) {

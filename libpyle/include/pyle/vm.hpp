@@ -23,6 +23,8 @@ namespace pyle {
     public:
         std::string_view source_code;
         std::string_view script_name = "main.pyl";
+        std::string executable_path;
+        bool is_worker = false;
         
 
         Value* stack = nullptr;
