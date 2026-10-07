@@ -10,32 +10,43 @@ namespace http_binding {
             std::string path;
             std::string body;
             std::string remote_addr;
-            std::map<std::string, std::string> headers;
-            std::map<std::string, std::string> query;
-            std::map<std::string, std::string> cookies;
+            ankerl::unordered_dense::map<std::string, std::string> headers;
+            ankerl::unordered_dense::map<std::string, std::string> query;
+            ankerl::unordered_dense::map<std::string, std::string> cookies;
             std::vector<std::string> captures;
         };
 
-        void parse_cookie_header(const std::string& header, std::map<std::string, std::string>& out) {
-            auto trim = [](std::string s) {
-                while (!s.empty() && s.front() == ' ') s.erase(s.begin());
-                while (!s.empty() && s.back() == ' ') s.pop_back();
-                return s;
-            };
-            size_t pos = 0;
-            while (pos < header.size()) {
-                size_t end = header.find(';', pos);
-                if (end == std::string::npos) end = header.size();
-                std::string pair = header.substr(pos, end - pos);
+        bool is_cookie_header(const std::string& k) {
+            if (k.size() != 6) return false;
+            return (k[0] == 'c' || k[0] == 'C') && (k[1] == 'o' || k[1] == 'O') &&
+                   (k[2] == 'o' || k[2] == 'O') && (k[3] == 'k' || k[3] == 'K') &&
+                   (k[4] == 'i' || k[4] == 'I') && (k[5] == 'e' || k[5] == 'E');
+        }
+
+        void parse_cookie_header(const std::string& header,
+                                 ankerl::unordered_dense::map<std::string, std::string>& out) {
+            std::string_view rest(header);
+            while (!rest.empty()) {
+                size_t end = rest.find(';');
+                std::string_view pair = rest.substr(0, end);
                 size_t eq = pair.find('=');
-                if (eq != std::string::npos) {
-                    std::string k = trim(pair.substr(0, eq));
-                    std::string v = trim(pair.substr(eq + 1));
-                    if (v.size() >= 2 && v.front() == '"' && v.back() == '"')
-                        v = v.substr(1, v.size() - 2);
-                    if (!k.empty()) out[k] = v;
+                if (eq != std::string_view::npos) {
+                    std::string_view k = pair.substr(0, eq);
+                    std::string_view v = pair.substr(eq + 1);
+                    size_t ks = k.find_first_not_of(' ');
+                    size_t ke = k.find_last_not_of(' ');
+                    size_t vs = v.find_first_not_of(' ');
+                    size_t ve = v.find_last_not_of(' ');
+                    if (ks != std::string_view::npos && vs != std::string_view::npos) {
+                        k = k.substr(ks, ke - ks + 1);
+                        v = v.substr(vs, ve - vs + 1);
+                        if (v.size() >= 2 && v.front() == '"' && v.back() == '"')
+                            v = v.substr(1, v.size() - 2);
+                        if (!k.empty()) out[std::string(k)] = std::string(v);
+                    }
                 }
-                pos = end + 1;
+                if (end == std::string_view::npos) break;
+                rest.remove_prefix(end + 1);
             }
         }
 
@@ -126,9 +137,7 @@ namespace http_binding {
                 for (const auto& [k, v] : req.params) rd->query[k] = v;
                 for (const auto& [k, v] : req.headers) {
                     rd->headers[k] = v;
-                    std::string lk = k;
-                    for (auto& c : lk) c = static_cast<char>(tolower(static_cast<unsigned char>(c)));
-                    if (lk == "cookie") parse_cookie_header(v, rd->cookies);
+                    if (is_cookie_header(k)) parse_cookie_header(v, rd->cookies);
                 }
                 for (size_t i = 1; i < req.matches.size(); ++i) {
                     if (req.matches[i].matched) rd->captures.push_back(req.matches[i].str());
@@ -146,7 +155,9 @@ namespace http_binding {
                     case pyle::Value::Tag::MapRef: {
                         const auto& entries = std::get<pyle::MapObject>(m.get_heap_object(out.as_ref).data).entries;
                         for (const auto& [k, v] : entries) {
-                            std::string key = m.value_to_string(k);
+                            std::string key = (k.tag == pyle::Value::Tag::StringRef)
+                                ? std::get<std::string>(m.get_heap_object(k.as_ref).data)
+                                : m.value_to_string(k);
                             if (key == "status") {
                                 if (v.tag != pyle::Value::Tag::Int) {
                                     m.runtime_error(pyle::RuntimeError::Type, "handler response 'status' expects an int.");
@@ -166,7 +177,9 @@ namespace http_binding {
                                 }
                                 const auto& hmap = std::get<pyle::MapObject>(m.get_heap_object(v.as_ref).data).entries;
                                 for (const auto& [hk, hv] : hmap) {
-                                    std::string hkey = m.value_to_string(hk);
+                                    std::string hkey = (hk.tag == pyle::Value::Tag::StringRef)
+                                        ? std::get<std::string>(m.get_heap_object(hk.as_ref).data)
+                                        : m.value_to_string(hk);
                                     if (hv.tag == pyle::Value::Tag::StringRef) {
                                         res.headers.insert({hkey, std::get<std::string>(m.get_heap_object(hv.as_ref).data)});
                                     } else if (hv.tag == pyle::Value::Tag::ArrayRef) {
@@ -235,12 +248,9 @@ namespace http_binding {
                     auto& t = tasks[i];
                     if (t.first.tag == pyle::Value::Tag::CoroutineRef) {
                         pyle::Coroutine* c = std::get_if<pyle::Coroutine>(&m.get_heap_object(t.first.as_ref).data);
-                        if (!c) {
-                            tasks.erase(tasks.begin() + i);
-                            continue;
-                        }
-                        if (c->state == pyle::Coroutine::State::Dead) {
-                            tasks.erase(tasks.begin() + i);
+                        if (!c || c->state == pyle::Coroutine::State::Dead) {
+                            if (i + 1 < tasks.size()) t = std::move(tasks.back());
+                            tasks.pop_back();
                             continue;
                         }
                         if (c->state == pyle::Coroutine::State::Suspended) {
@@ -276,7 +286,7 @@ namespace http_binding {
                             if (!out.body.empty() && out.headers.find("Content-Type") == out.headers.end()) {
                                 res.set_content(out.body, "text/plain");
                             } else {
-                                res.body = out.body;
+                                res.body = std::move(out.body);
                             }
                         };
                         register_handler(r.verb, r.pattern, handler);
@@ -300,7 +310,7 @@ namespace http_binding {
                                 if (!data.body.empty() && data.headers.find("Content-Type") == data.headers.end()) {
                                     res.set_content(data.body, "text/plain");
                                 } else {
-                                    res.body = data.body;
+                                    res.body = std::move(data.body);
                                 }
                             } catch (...) {
                                 res.status = 500;
@@ -508,31 +518,38 @@ namespace http_binding {
             });
             binder.custom_getter("path", [](pyle::VM& m, pyle::HeapIdx self, pyle::ArgView) -> pyle::Value {
                 auto* d = static_cast<HttpRequestData*>(std::get<pyle::NativeObject>(m.get_heap_object(self).data).ptr);
-                return pyle::to_value(m, d->path);
+                return pyle::to_transient_string(m, d->path);
             });
             binder.custom_getter("body", [](pyle::VM& m, pyle::HeapIdx self, pyle::ArgView) -> pyle::Value {
                 auto* d = static_cast<HttpRequestData*>(std::get<pyle::NativeObject>(m.get_heap_object(self).data).ptr);
-                return pyle::to_value(m, d->body);
+                return pyle::to_transient_string(m, d->body);
             });
             binder.custom_getter("remote_addr", [](pyle::VM& m, pyle::HeapIdx self, pyle::ArgView) -> pyle::Value {
                 auto* d = static_cast<HttpRequestData*>(std::get<pyle::NativeObject>(m.get_heap_object(self).data).ptr);
-                return pyle::to_value(m, d->remote_addr);
+                return pyle::to_transient_string(m, d->remote_addr);
             });
             binder.custom_getter("headers", [](pyle::VM& m, pyle::HeapIdx self, pyle::ArgView) -> pyle::Value {
                 auto* d = static_cast<HttpRequestData*>(std::get<pyle::NativeObject>(m.get_heap_object(self).data).ptr);
-                return pyle::to_value(m, d->headers);
+                GcDisable gc(m);
+                return pyle::to_transient_string_map(m, d->headers);
             });
             binder.custom_getter("query", [](pyle::VM& m, pyle::HeapIdx self, pyle::ArgView) -> pyle::Value {
                 auto* d = static_cast<HttpRequestData*>(std::get<pyle::NativeObject>(m.get_heap_object(self).data).ptr);
-                return pyle::to_value(m, d->query);
+                GcDisable gc(m);
+                return pyle::to_transient_string_map(m, d->query);
             });
             binder.custom_getter("captures", [](pyle::VM& m, pyle::HeapIdx self, pyle::ArgView) -> pyle::Value {
                 auto* d = static_cast<HttpRequestData*>(std::get<pyle::NativeObject>(m.get_heap_object(self).data).ptr);
-                return pyle::to_value(m, d->captures);
+                GcDisable gc(m);
+                ArrayType out;
+                out.reserve(d->captures.size());
+                for (const auto& c : d->captures) out.push_back(pyle::to_transient_string(m, c));
+                return Value(Value::Tag::ArrayRef, m.alloc(Object(std::move(out))));
             });
             binder.custom_getter("cookies", [](pyle::VM& m, pyle::HeapIdx self, pyle::ArgView) -> pyle::Value {
                 auto* d = static_cast<HttpRequestData*>(std::get<pyle::NativeObject>(m.get_heap_object(self).data).ptr);
-                return pyle::to_value(m, d->cookies);
+                GcDisable gc(m);
+                return pyle::to_transient_string_map(m, d->cookies);
             });
             binder.custom_method("cookie", [](pyle::VM& m, pyle::HeapIdx self, pyle::ArgView args) -> pyle::Value {
                 if (args.size() != 1 || args[0].tag != pyle::Value::Tag::StringRef) {
@@ -543,7 +560,7 @@ namespace http_binding {
                 const std::string& name = std::get<std::string>(m.get_heap_object(args[0].as_ref).data);
                 auto it = d->cookies.find(name);
                 if (it == d->cookies.end()) return pyle::Value();
-                return pyle::to_value(m, it->second);
+                return pyle::to_transient_string(m, it->second);
             });
             mod.class_binder(binder);
         }

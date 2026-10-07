@@ -77,11 +77,12 @@ namespace http_binding {
 
         void parse_options(pyle::VM& vm, const pyle::Value& val, RequestOptions& opts) {
             if (val.tag == pyle::Value::Tag::None) return;
-            pyle::from_value<std::map<std::string, std::string>>(vm, val);
 
             const auto& entries = std::get<pyle::MapObject>(vm.get_heap_object(val.as_ref).data).entries;
             for (const auto& [k, v] : entries) {
-                std::string key = vm.value_to_string(k);
+                std::string key = (k.tag == pyle::Value::Tag::StringRef)
+                    ? std::get<std::string>(vm.get_heap_object(k.as_ref).data)
+                    : vm.value_to_string(k);
                 if (key == "headers") {
                     opts.headers = pyle::from_value<std::map<std::string, std::string>>(vm, v);
                 } else if (key == "body") {
@@ -262,7 +263,9 @@ namespace http_binding {
             httplib::Headers merged = wrapper->default_headers;
             for (const auto& [k, v] : to_httplib_headers(opts.headers)) merged.insert({k, v});
             opts.headers.clear();
-            for (const auto& [k, v] : merged) opts.headers[k] = v;
+            for (const auto& [k, v] : merged) {
+                if (opts.headers.find(k) == opts.headers.end()) opts.headers[k] = v;
+            }
 
             double timeout = opts.timeout > 0 ? opts.timeout : 30.0;
             wrapper->client->set_connection_timeout(std::chrono::duration<double>(timeout));
@@ -491,7 +494,7 @@ namespace http_binding {
             });
             binder.custom_getter("body", [](pyle::VM& m, pyle::HeapIdx self, pyle::ArgView) -> pyle::Value {
                 auto* d = static_cast<HttpResponseData*>(std::get<pyle::NativeObject>(m.get_heap_object(self).data).ptr);
-                return pyle::to_value(m, d->body);
+                return pyle::to_transient_string(m, d->body);
             });
             binder.custom_getter("headers", [](pyle::VM& m, pyle::HeapIdx self, pyle::ArgView) -> pyle::Value {
                 auto* d = static_cast<HttpResponseData*>(std::get<pyle::NativeObject>(m.get_heap_object(self).data).ptr);
@@ -501,13 +504,13 @@ namespace http_binding {
                     Value key(Value::Tag::StringRef, m.intern_string(k));
                     auto it = out.find(key);
                     if (it == out.end()) {
-                        out[key] = pyle::to_value(m, v);
+                        out[key] = pyle::to_transient_string(m, v);
                     } else if (it->second.tag == Value::Tag::ArrayRef) {
-                        std::get<ArrayType>(m.get_heap_object(it->second.as_ref).data).push_back(pyle::to_value(m, v));
+                        std::get<ArrayType>(m.get_heap_object(it->second.as_ref).data).push_back(pyle::to_transient_string(m, v));
                     } else {
                         ArrayType arr;
                         arr.push_back(it->second);
-                        arr.push_back(pyle::to_value(m, v));
+                        arr.push_back(pyle::to_transient_string(m, v));
                         it->second = Value(Value::Tag::ArrayRef, m.alloc(Object(std::move(arr))));
                     }
                 }

@@ -104,8 +104,9 @@ namespace pyle {
         }
     }
 
-    template <typename T>
+        template <typename T>
     Value to_value(VM& vm, T val) {
+
         if constexpr (std::is_same_v<T, Value>) {
             return val;
         } else if constexpr (std::is_same_v<T, void>) {
@@ -214,6 +215,23 @@ namespace pyle {
         
         HeapIdx idx = vm.alloc(Object(ud));
         return Value(Value::Tag::NativeObjectRef, idx);
+    }
+
+    inline Value to_transient_string(VM& vm, const std::string& s) {
+        HeapIdx idx = vm.alloc(Object(s));
+        return Value(Value::Tag::StringRef, idx);
+    }
+
+    template <typename Map>
+    Value to_transient_string_map(VM& vm, const Map& val) {
+        MapType out;
+        out.reserve(val.size());
+        for (const auto& [k, v] : val) {
+            Value key(Value::Tag::StringRef, vm.intern_string(k));
+            out[key] = to_transient_string(vm, v);
+        }
+        HeapIdx idx = vm.alloc(Object(std::move(out)));
+        return Value(Value::Tag::MapRef, idx);
     }
 
     template <auto MemFn, typename T = decltype(MemFn)>
