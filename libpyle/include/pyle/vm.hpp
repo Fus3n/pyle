@@ -182,12 +182,16 @@ namespace pyle {
         pyle::Value get_global(const std::string& name);
 
         pyle::Value call_func_raw(pyle::Value closure, const std::vector<pyle::Value>& args);
+        pyle::Value call_func1(pyle::Value closure, pyle::Value arg);
 
         template <typename... Args>
         Value call_func(Value closure, Args&&... args);
 
     private:
         Value last_result;
+        void run_loop();
+        void ensure_call_trampoline();
+        HeapIdx call_trampoline_idx = HeapIdx(-1);
 
         std::recursive_mutex vm_mutex; 
         bool gc_enabled = true;

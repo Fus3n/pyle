@@ -154,7 +154,7 @@ namespace pyle::ArrayMethods {
         const size_t count = vec.size();
         out.reserve(count);
         for (size_t i = 0; i < count && i < vec.size(); ++i) {
-            Value mapped = vm.call_func_raw(fn, {vec[i]});
+            Value mapped = vm.call_func1(fn, vec[i]);
             if (vm.is_panicked()) {
                 return Value();
             }
@@ -178,7 +178,7 @@ namespace pyle::ArrayMethods {
         auto& vec = std::get<ArrayType>(vm.get_heap_object(obj_idx).data);
         const size_t count = vec.size();
         for (size_t i = 0; i < count && i < vec.size(); ++i) {
-            Value keep = vm.call_func_raw(fn, {vec[i]});
+            Value keep = vm.call_func1(fn, vec[i]);
             if (vm.is_panicked()) {
                 return Value();
             }
@@ -199,7 +199,7 @@ namespace pyle::ArrayMethods {
         auto& vec = std::get<ArrayType>(vm.get_heap_object(obj_idx).data);
         const size_t count = vec.size();
         for (size_t i = 0; i < count && i < vec.size(); ++i) {
-            Value matched = vm.call_func_raw(fn, {vec[i]});
+            Value matched = vm.call_func1(fn, vec[i]);
             if (vm.is_panicked()) {
                 return Value();
             }

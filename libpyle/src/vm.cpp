@@ -645,6 +645,67 @@ namespace pyle {
         return result;
     }
 
+    void VM::ensure_call_trampoline() {
+        if (call_trampoline_idx != HeapIdx(-1)) return;
+        Chunk tram;
+        tram.instr.push_back(encode(OpCode::HALT, 0));
+        tram.lines.push_back(0);
+        Function tram_fn;
+        tram_fn.name = "__call_trampoline";
+        tram_fn.arity = 0;
+        tram_fn.chunk = std::move(tram);
+        HeapIdx fn_idx = alloc_permanent(Object(std::move(tram_fn)));
+        Closure tram_cl;
+        tram_cl.function = fn_idx;
+        call_trampoline_idx = alloc_permanent(Object(std::move(tram_cl)));
+    }
+
+    pyle::Value VM::call_func1(pyle::Value closure, pyle::Value arg) {
+        if (closure.tag != Value::Tag::ClosureRef) {
+            return call_func_raw(closure, {arg});
+        }
+        Closure& cl = std::get<Closure>(heap[closure.as_ref].data);
+        Function& fn = std::get<Function>(heap[cl.function].data);
+        if (fn.arity != 1) {
+            runtime_error(RuntimeError::ArgumentError, fmt::format("Expected {} args, got 1.", fn.arity));
+            return pyle::Value();
+        }
+        if (frame_count + 1 >= frame_capacity) {
+            runtime_error(RuntimeError::Runtime, "Stack overflow (too many call frames).");
+            return pyle::Value();
+        }
+        ensure_call_trampoline();
+        panicked = false;
+        size_t saved_sp_offset = sp - stack;
+        size_t saved_frame_count = frame_count;
+        push(pyle::Value());
+        push(closure);
+        push(arg);
+        CallFrame tram_frame;
+        tram_frame.closure = call_trampoline_idx;
+        tram_frame.ip = 0;
+        tram_frame.stack_base = stack_size() - 2;
+        frames[frame_count++] = tram_frame;
+        CallFrame new_frame;
+        new_frame.closure = closure.as_ref;
+        new_frame.ip = 0;
+        new_frame.stack_base = stack_size() - 1;
+        if (fn.module_env != 0) {
+            new_frame.module_swap = true;
+            new_frame.saved_globals_idx = globals_idx;
+            new_frame.module_env_idx = fn.module_env;
+            global_slots = &std::get<ArrayType>(heap[fn.module_env].data);
+            globals_idx = fn.module_env;
+        }
+        frames[frame_count++] = new_frame;
+        run_loop();
+        pyle::Value result = last_result;
+        last_result = pyle::Value();
+        sp = stack + saved_sp_offset;
+        frame_count = saved_frame_count;
+        return result;
+    }
+
     void VM::runtime_error(const RuntimeError &type, const std::string &msg) {
         panicked = true;
         if (frame_count == 0) {
@@ -942,6 +1003,10 @@ namespace pyle {
 
         gc_enabled = true;
 
+        run_loop();
+    }
+
+    void VM::run_loop() {
         CallFrame* frame = &frames[frame_count - 1];
         
         Function& fn = get_func_from_frame(*frame);
