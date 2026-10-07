@@ -949,6 +949,9 @@ namespace pyle {
 
     template <typename... Args>
     Value VM::call_func(Value closure, Args&&... args) {
+        if constexpr (sizeof...(Args) == 1) {
+            return this->call_func1(closure, to_value(*this, std::forward<Args>(args))...);
+        }
         std::vector<Value> converted_args;
         converted_args.reserve(sizeof...(Args));
         
