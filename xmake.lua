@@ -4,6 +4,12 @@ set_languages("c++17")
 
 add_rules("mode.debug", "mode.release")
 
+option("profile_ops")
+    set_default(false)
+    set_showmenu(true)
+    set_description("Enable per-opcode profiling counters (PYLE_PROFILE=1 at runtime)")
+option_end()
+
 if is_mode("release") then
     set_optimize("fastest")
     set_symbols("hidden")
@@ -38,6 +44,9 @@ target("libpyle")
     add_files("libpyle/src/**.cpp")
     add_includedirs("libpyle/include", {public = true})
     add_packages("fmt", "unordered_dense", {public = true})
+    if has_config("profile_ops") then
+        add_defines("PYLE_PROFILE_OPS", {public = true})
+    end
     if is_mode("release") then
         set_policy("build.optimization.lto", true)
     end

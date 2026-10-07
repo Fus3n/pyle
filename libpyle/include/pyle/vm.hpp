@@ -1,5 +1,6 @@
 #pragma once
 #include <ankerl/unordered_dense.h>
+#include <cstdlib>
 #include <vector>
 #include <deque>
 #include <mutex> 
@@ -100,12 +101,17 @@ namespace pyle {
             global_slots = &root_globals;
             globals_idx = HeapIdx(-1);
 
+            const char* prof = std::getenv("PYLE_PROFILE");
+            profile_ops = prof && prof[0] != '\0' && prof[0] != '0';
+
             set_gc_enabled(config.gc_enabled);
         }
 
         ~VM() {
             delete[] stack;
             delete [] frames;
+
+            if (profile_ops) dump_op_profile();
 
             for (auto& obj : heap) {
                 if (auto* ud = std::get_if<NativeObject>(&obj.data)) {
@@ -220,6 +226,9 @@ namespace pyle {
 
         bool panicked = false;
         int execute_depth = 0;
+        uint64_t op_counts[256] = {};
+        bool profile_ops = false;
+        void dump_op_profile();
 
         inline void push(Value value) { 
             if (sp == stack_end) {

@@ -706,6 +706,36 @@ namespace pyle {
         return result;
     }
 
+    void VM::dump_op_profile() {
+        static const char* names[] = {
+            "LOAD_CONST", "LOAD_LOCAL", "SET_LOCAL", "LOAD_GLOBAL_SLOT",
+            "SET_GLOBAL_SLOT", "DEFINE_GLOBAL_SLOT", "SET_LOCAL_POP", "INC_LOCAL",
+            "DEC_LOCAL", "SET_GLOBAL_SLOT_POP", "GET_ITER", "FOR_ITER",
+            "NEW_RANGE", "CLOSURE", "LOAD_UPVALUE", "SET_UPVALUE",
+            "SET_UPVALUE_POP", "GET_FIELD", "SET_FIELD", "ADD",
+            "SUB", "MUL", "DIV", "MOD", "NEG",
+            "EQ", "NEQ", "LT", "LTE", "GT",
+            "GTE", "NOT", "JUMP", "JUMP_IF_FALSE", "JUMP_IF_TRUE",
+            "POP_JUMP_IF_FALSE", "POP_JUMP_IF_TRUE", "LOOP", "CALL", "CALL_METHOD",
+            "RETURN", "POP", "NEW_ARRAY", "NEW_MAP", "CALL_KW",
+            "GET_INDEX", "SET_INDEX", "YIELD", "HALT",
+        };
+        static_assert(static_cast<int>(OpCode::HALT) == 48, "opcode table out of sync");
+        uint64_t total = 0;
+        for (int i = 0; i <= 48; ++i) total += op_counts[i];
+        std::vector<int> order;
+        for (int i = 0; i <= 48; ++i) {
+            if (op_counts[i] > 0) order.push_back(i);
+        }
+        std::sort(order.begin(), order.end(),
+            [&](int a, int b) { return op_counts[a] > op_counts[b]; });
+        fmt::print(stderr, "--- pyle op profile ({} total) ---\n", total);
+        for (int i : order) {
+            fmt::print(stderr, "  {:20} {:12} {:5.1f}%\n",
+                names[i], op_counts[i], 100.0 * op_counts[i] / (total ? total : 1));
+        }
+    }
+
     void VM::runtime_error(const RuntimeError &type, const std::string &msg) {
         panicked = true;
         if (frame_count == 0) {
@@ -886,6 +916,13 @@ namespace pyle {
     #define PYLE_USE_COMPUTED_GOTO
 #endif
 
+#ifdef PYLE_PROFILE_OPS
+    #define PYLE_COUNT_OP(instr) \
+        do { if (profile_ops) op_counts[static_cast<uint8_t>(get_op(instr))]++; } while (false)
+#else
+    #define PYLE_COUNT_OP(instr) do {} while (false)
+#endif
+
 #ifdef PYLE_USE_COMPUTED_GOTO
     #define OP(name) op_##name:
     #define ARG get_operand(*(ip - 1))
@@ -906,6 +943,7 @@ namespace pyle {
         do { \
             PYLE_DISPATCH_GUARD(); \
             uint32_t instruction = *ip++; \
+            PYLE_COUNT_OP(instruction); \
             goto *dispatch_table[static_cast<uint8_t>(get_op(instruction))]; \
         } while (false)
 #else
@@ -1100,6 +1138,7 @@ namespace pyle {
 
             OpCode op = get_op(instruction);
             uint32_t arg = get_operand(instruction);
+            PYLE_COUNT_OP(instruction);
 
             switch (op) {
 #endif
