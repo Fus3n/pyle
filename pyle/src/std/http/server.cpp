@@ -612,6 +612,33 @@ namespace http_binding {
                 return pyle::Value();
             });
 
+            binder.custom_method("set_keep_alive", [](pyle::VM& m, pyle::HeapIdx self, pyle::ArgView args) -> pyle::Value {
+                if (args.size() < 1 || args.size() > 2 || args[0].tag != pyle::Value::Tag::Int) {
+                    m.runtime_error(pyle::RuntimeError::ArgumentError,
+                        "set_keep_alive expects (max_requests: int, timeout_secs = 5).");
+                    return pyle::Value();
+                }
+                int64_t max_count = args[0].as_int;
+                if (max_count < 1) {
+                    m.runtime_error(pyle::RuntimeError::ArgumentError, "set_keep_alive max_requests must be at least 1.");
+                    return pyle::Value();
+                }
+                int64_t timeout = 5;
+                if (args.size() == 2) {
+                    if (args[1].tag != pyle::Value::Tag::Int || args[1].as_int < 0) {
+                        m.runtime_error(pyle::RuntimeError::ArgumentError,
+                            "set_keep_alive timeout_secs expects a non-negative int.");
+                        return pyle::Value();
+                    }
+                    timeout = args[1].as_int;
+                }
+                auto& native = std::get<pyle::NativeObject>(m.get_heap_object(self).data);
+                auto* server = static_cast<HttpServerWrapper*>(native.ptr);
+                server->svr.set_keep_alive_max_count(static_cast<size_t>(max_count));
+                server->svr.set_keep_alive_timeout(static_cast<time_t>(timeout));
+                return pyle::Value();
+            });
+
             binder.custom_method("run", [](pyle::VM& m, pyle::HeapIdx self, pyle::ArgView) -> pyle::Value {
                 auto& native = std::get<pyle::NativeObject>(m.get_heap_object(self).data);
                 auto* server = static_cast<HttpServerWrapper*>(native.ptr);

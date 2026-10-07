@@ -21,13 +21,9 @@ struct Player(name, health, pos, _private_prop) {
         self.pos = Pos(x: 0, y: 0) 
     }
 
-    fn setHealth(new_health) {
-        self.health = new_health
-    }
+    fn setHealth(new_health) => self.health = new_health
 
-    fn damageBy(n) {
-        self.health -= n
-    }
+    fn damageBy(n) => self.health -= n
     
     fn distanceFrom(other): Pos {
         return Pos(
@@ -37,12 +33,10 @@ struct Player(name, health, pos, _private_prop) {
     }
 
     fn _private_function(msg) {
-        print(msg)
+      print(msg)
     }
 
-    fn status(): string {
-        return format("Name: {}\nHealth: {}", self.name, self.health)
-    }
+    fn status(): string => format("Name: {}\nHealth: {}", self.name, self.health)
 
     # static methods are attached to the type
     static fn update_players(players_arr, player) {

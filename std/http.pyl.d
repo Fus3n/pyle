@@ -32,6 +32,7 @@ struct Server(host: string, port: int) {
     fn head(pattern: string, handler) { }
     fn options(pattern: string, handler) { }
     fn mount(prefix: string, directory: string) { }
+    fn set_keep_alive(max_requests: int, timeout_secs: int) { }
     fn run() { }
     fn serve_async(): Future { }
     fn stop() { }

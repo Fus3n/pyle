@@ -68,8 +68,8 @@ struct Player(name, health, pos) {
         self.pos = Pos(x: 0, y: 0)
     }
 
-    fn setHealth(new_health) { self.health = new_health }
-    fn damageBy(n) { self.health -= n }
+    fn setHealth(new_health) => self.health = new_health
+    fn damageBy(n) => self.health -= n 
 
     fn distanceFrom(other) {
         return Pos(
@@ -78,13 +78,15 @@ struct Player(name, health, pos) {
         )
     }
 
-    fn status() {
-        return format("Name: {}\nHealth: {}", self.name, self.health)
-    }
+    fn status() => format("Name: {}\nHealth: {}", self.name, self.health)
 }
+
+
 
 fn main() {
     let p = Player("John")
+    # fixed shape structs so can't do this
+    # p.new = 5
     print(p.status())
     p.damageBy(20)
     printf("{} has {} hp left.", p.name, p.health)
