@@ -55,6 +55,8 @@ namespace pyle {
         SET_INDEX,
         YIELD,
         HALT,
+        APPEND,
+        JUMP_IF_NOT_ARRAY,
         Invalid = 0xFF
     };
 

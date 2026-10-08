@@ -66,6 +66,11 @@ namespace pyle {
         current_chunk->instr[offset] = encode(op, static_cast<uint32_t>(jump));
     }
 
+    void Compiler::patch_jump_to(size_t offset, size_t target) {
+        OpCode op = get_op(current_chunk->instr[offset]);
+        current_chunk->instr[offset] = encode(op, static_cast<uint32_t>(target - offset - 1));
+    }
+
     void Compiler::emit_loop(size_t loop_start, size_t line) {
         size_t jump = current_chunk->instr.size() - loop_start + 1;
         emit_instruction(OpCode::LOOP, static_cast<uint32_t>(jump), line);
@@ -589,6 +594,11 @@ namespace pyle {
             }
         }
 
+        if (try_emit_inline_higher_order(expr)) return;
+        emit_normal_method_call(expr);
+    }
+
+    void Compiler::emit_normal_method_call(MethodCallExpr *expr) {
         expr->callee->accept(this);
 
         HeapIdx name_idx = vm.intern_string(expr->method_name.lexeme);
@@ -600,6 +610,147 @@ namespace pyle {
         }
 
         emit_instruction(OpCode::CALL_METHOD, expr->arguments.size(), expr->paren.selection.line);
+    }
+
+    bool Compiler::try_emit_inline_higher_order(MethodCallExpr *expr) {
+        std::string_view name = expr->method_name.lexeme;
+        bool is_map = name == "map";
+        bool is_filter = name == "filter";
+        if (!is_map && !is_filter) return false;
+        if (expr->arguments.size() != 1) return false;
+        FuncExpr* fn = dynamic_cast<FuncExpr*>(expr->arguments[0].get());
+        if (!fn || fn->params.size() != 1) return false;
+        size_t line = expr->paren.selection.line;
+
+        Function synth;
+        synth.name = is_map ? "__map_inline" : "__filter_inline";
+        synth.arity = 2;
+        synth.source_file = reporter.get_script_name();
+
+        Chunk* enclosing_chunk = current_chunk;
+        decltype(const_lookup) enclosing_lookup(std::move(const_lookup));
+
+        CompileState* enclosing_state = current_state;
+        CompileState state;
+        state.enclosing = current_state;
+        current_state = &state;
+        current_chunk = &synth.chunk;
+        current_state->scope_depth = 0;
+
+        Token arr_tok(TokenType::IDENTIFIER, "@arr", expr->method_name.selection);
+        Token fn_tok(TokenType::IDENTIFIER, "@fn", expr->method_name.selection);
+        current_state->locals.push_back(Local{arr_tok, 0});
+        current_state->locals.push_back(Local{fn_tok, 0});
+
+        auto push_synth_hidden = [&](const char* hname) -> int {
+            Token t(TokenType::IDENTIFIER, hname, expr->method_name.selection);
+            current_state->locals.push_back(Local{t, current_state->scope_depth});
+            return static_cast<int>(current_state->locals.size()) - 1;
+        };
+
+        uint32_t none_idx = make_constant(Value());
+        emit_instruction(OpCode::NEW_ARRAY, 0, line);
+        int out_idx = push_synth_hidden("@map_out");
+        emit_instruction(OpCode::LOAD_CONST, none_idx, line);
+        int tmp_idx = push_synth_hidden("@map_tmp");
+        int tmp2_idx = -1;
+        if (is_filter) {
+            emit_instruction(OpCode::LOAD_CONST, none_idx, line);
+            tmp2_idx = push_synth_hidden("@map_tmp2");
+        }
+        emit_instruction(OpCode::LOAD_LOCAL, 0, line);
+        size_t guard_jump = emit_jump(OpCode::JUMP_IF_NOT_ARRAY, line);
+
+        emit_instruction(OpCode::GET_ITER, 0, line);
+        push_synth_hidden("@map_iter");
+
+        size_t loop_start = current_chunk->instr.size();
+        size_t exit_jump = emit_jump(OpCode::FOR_ITER, line);
+        begin_scope();
+        current_state->locals.push_back(Local{fn->params[0], current_state->scope_depth});
+        int elem_idx = static_cast<int>(current_state->locals.size()) - 1;
+
+        loop_breaks.emplace_back();
+        loop_locals_start.push_back(current_state->locals.size());
+        loop_continue_targets.push_back(loop_start);
+
+        CompileState* saved_inline = inline_state;
+        inline_state = current_state;
+        inline_stack.push_back(InlineFrame{tmp_idx, tmp2_idx, elem_idx, {}});
+        for (const auto& s : fn->body->statements) {
+            if (!s) continue;
+            s->accept(this);
+            if (dynamic_cast<ReturnStmt*>(s.get()) != nullptr) break;
+        }
+        std::vector<size_t> ret_jumps = std::move(inline_stack.back().jumps);
+        inline_stack.pop_back();
+        inline_state = saved_inline;
+
+        emit_instruction(OpCode::LOAD_CONST, none_idx, line);
+        emit_instruction(OpCode::SET_LOCAL_POP, static_cast<uint32_t>(tmp_idx), line);
+        if (is_filter) {
+            emit_instruction(OpCode::LOAD_LOCAL, static_cast<uint32_t>(elem_idx), line);
+            emit_instruction(OpCode::SET_LOCAL_POP, static_cast<uint32_t>(tmp2_idx), line);
+        }
+
+        size_t epilogue_pos = current_chunk->instr.size();
+        end_scope();
+
+        size_t continue_pos = current_chunk->instr.size();
+        for (size_t j : ret_jumps) patch_jump_to(j, epilogue_pos);
+        (void)continue_pos;
+        if (is_map) {
+            emit_instruction(OpCode::LOAD_LOCAL, static_cast<uint32_t>(tmp_idx), line);
+            emit_instruction(OpCode::APPEND, static_cast<uint32_t>(out_idx), line);
+        } else {
+            emit_instruction(OpCode::LOAD_LOCAL, static_cast<uint32_t>(tmp_idx), line);
+            size_t skip_jump = emit_jump(OpCode::POP_JUMP_IF_FALSE, line);
+            emit_instruction(OpCode::LOAD_LOCAL, static_cast<uint32_t>(tmp2_idx), line);
+            emit_instruction(OpCode::APPEND, static_cast<uint32_t>(out_idx), line);
+            patch_jump(skip_jump);
+        }
+        emit_loop(loop_start, line);
+        patch_jump(exit_jump);
+
+        int pops = is_filter ? 3 : 2;
+        for (int i = 0; i < pops; ++i) emit_instruction(OpCode::POP, 0, line);
+        emit_instruction(OpCode::RETURN, 0, line);
+
+        patch_jump_to(guard_jump, current_chunk->instr.size());
+        emit_instruction(OpCode::SET_LOCAL_POP, static_cast<uint32_t>(out_idx), line);
+        emit_instruction(OpCode::POP, 0, line);
+        emit_instruction(OpCode::LOAD_LOCAL, static_cast<uint32_t>(out_idx), line);
+        HeapIdx slow_name_idx = vm.intern_string(name);
+        uint32_t slow_const_idx = make_constant(Value(Value::Tag::StringRef, slow_name_idx));
+        emit_instruction(OpCode::LOAD_CONST, slow_const_idx, line);
+        emit_instruction(OpCode::LOAD_LOCAL, 1, line);
+        emit_instruction(OpCode::CALL_METHOD, 1, line);
+        emit_instruction(OpCode::RETURN, 0, line);
+
+        loop_breaks.pop_back();
+        loop_locals_start.pop_back();
+        loop_continue_targets.pop_back();
+
+        for (const auto& uv : current_state->upvalues) {
+            synth.upvalues.push_back(Function::UpvalueInfo{uv.index, uv.is_local});
+        }
+        synth.chunk.instr.push_back(encode(OpCode::Invalid, 0));
+        synth.chunk.lines.push_back(0);
+        synth.chunk.field_ic.resize(synth.chunk.instr.size());
+
+        const_lookup = std::move(enclosing_lookup);
+        current_chunk = enclosing_chunk;
+        current_state = enclosing_state;
+
+        HeapIdx synth_fn_idx = vm.alloc(Object(std::move(synth)));
+        Value synth_val(Value::Tag::FuncRef, synth_fn_idx);
+        uint32_t synth_const_idx = make_constant(synth_val);
+        emit_instruction(OpCode::LOAD_CONST, synth_const_idx, line);
+        emit_instruction(OpCode::CLOSURE, 0, line);
+        expr->callee->accept(this);
+        expr->arguments[0]->accept(this);
+        emit_instruction(OpCode::CALL, 2, line);
+        return true;
     }
 
     void Compiler::visit_if(IfStmt* stmt) {
@@ -800,6 +951,22 @@ namespace pyle {
     }
 
     void Compiler::visit_return(ReturnStmt* stmt) {
+        if (inline_state != nullptr && inline_state == current_state && !inline_stack.empty()) {
+            if (stmt->value) {
+                stmt->value->accept(this);
+            } else {
+                uint32_t nil_idx = make_constant(Value());
+                emit_instruction(OpCode::LOAD_CONST, nil_idx, 0);
+            }
+            InlineFrame& fr = inline_stack.back();
+            emit_instruction(OpCode::SET_LOCAL_POP, static_cast<uint32_t>(fr.tmp_idx), 0);
+            if (fr.tmp2_idx >= 0) {
+                emit_instruction(OpCode::LOAD_LOCAL, static_cast<uint32_t>(fr.elem_idx), 0);
+                emit_instruction(OpCode::SET_LOCAL_POP, static_cast<uint32_t>(fr.tmp2_idx), 0);
+            }
+            fr.jumps.push_back(emit_jump(OpCode::JUMP, 0));
+            return;
+        }
         if (current_state->is_init) {
             bool is_returning_self = false;
             if (stmt->value) {

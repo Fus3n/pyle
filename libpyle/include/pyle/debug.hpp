@@ -73,6 +73,8 @@ namespace pyle {
                 case OpCode::NEW_MAP:          fmt::print("{:16} {:4} (pairs)\n", "NEW_MAP", operand); break;
                 case OpCode::CALL_KW:          fmt::print("{:16} {:4} (pairs)\n", "CALL_KW", operand); break;
                 case OpCode::YIELD:         fmt::print("YIELD\n"); break;
+                case OpCode::APPEND: fmt::print("{:16} {:4} (local)\n", "APPEND", operand); break;
+                case OpCode::JUMP_IF_NOT_ARRAY: fmt::print("{:16} {:4}\n", "JUMP_IF_NOT_ARRAY", operand); break;
                 case OpCode::Invalid:       fmt::print("INVALID_OPCODE\n"); break;
                 default: fmt::print("UNKNOWN OPCODE\n"); break;
             }

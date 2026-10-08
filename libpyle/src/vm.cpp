@@ -718,13 +718,14 @@ namespace pyle {
             "GTE", "NOT", "JUMP", "JUMP_IF_FALSE", "JUMP_IF_TRUE",
             "POP_JUMP_IF_FALSE", "POP_JUMP_IF_TRUE", "LOOP", "CALL", "CALL_METHOD",
             "RETURN", "POP", "NEW_ARRAY", "NEW_MAP", "CALL_KW",
-            "GET_INDEX", "SET_INDEX", "YIELD", "HALT",
+            "GET_INDEX", "SET_INDEX", "YIELD", "HALT", "APPEND", "JUMP_IF_NOT_ARRAY",
         };
         static_assert(static_cast<int>(OpCode::HALT) == 48, "opcode table out of sync");
+        static_assert(static_cast<int>(OpCode::JUMP_IF_NOT_ARRAY) == 50, "opcode table out of sync");
         uint64_t total = 0;
-        for (int i = 0; i <= 48; ++i) total += op_counts[i];
+        for (int i = 0; i <= 50; ++i) total += op_counts[i];
         std::vector<int> order;
-        for (int i = 0; i <= 48; ++i) {
+        for (int i = 0; i <= 50; ++i) {
             if (op_counts[i] > 0) order.push_back(i);
         }
         std::sort(order.begin(), order.end(),
@@ -1119,7 +1120,9 @@ namespace pyle {
                 &&op_GET_INDEX,
                 &&op_SET_INDEX,
                 &&op_YIELD,
-                &&op_HALT
+                &&op_HALT,
+                &&op_APPEND,
+                &&op_JUMP_IF_NOT_ARRAY
             };
             for (size_t i = 0; i < sizeof(labels) / sizeof(labels[0]); ++i) {
                 dispatch_table_storage[i] = labels[i];
@@ -2348,6 +2351,26 @@ namespace pyle {
                     }
                     return;
                 }
+
+                OP(APPEND) {
+                    Value v = pop();
+                    Value& arr_val = stack[frame->stack_base + ARG];
+                    if (arr_val.tag != Value::Tag::ArrayRef) {
+                        sync_ip();
+                        runtime_error(RuntimeError::Type, "APPEND target is not an array.");
+                        return;
+                    }
+                    std::get<ArrayType>(heap[arr_val.as_ref].data).push_back(v);
+                }
+                DISPATCH();
+
+                OP(JUMP_IF_NOT_ARRAY) {
+                    Value top = peek();
+                    if (top.tag != Value::Tag::ArrayRef) {
+                        ip += ARG;
+                    }
+                }
+                DISPATCH();
 
                 OP(Invalid) {
                     sync_ip();

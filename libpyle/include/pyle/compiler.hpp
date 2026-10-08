@@ -86,7 +86,19 @@ namespace pyle {
         std::vector<size_t> loop_locals_start;
         std::vector<size_t> loop_continue_targets;
 
+        CompileState* inline_state = nullptr;
+        struct InlineFrame {
+            int tmp_idx = -1;
+            int tmp2_idx = -1;
+            int elem_idx = -1;
+            std::vector<size_t> jumps;
+        };
+        std::vector<InlineFrame> inline_stack;
+
         HeapIdx compile_function(const std::vector<Token>& params, BlockStmt* body, std::string_view name);
+        bool try_emit_inline_higher_order(MethodCallExpr* expr);
+        void emit_normal_method_call(MethodCallExpr* expr);
+        void patch_jump_to(size_t offset, size_t target);
 
     private:
         std::string process_str_escapes(const Token& token); 
