@@ -661,13 +661,29 @@ namespace pyle {
     }
 
     pyle::Value VM::call_func1(pyle::Value closure, pyle::Value arg) {
+        return call_func_n(closure, &arg, 1);
+    }
+
+    pyle::Value VM::call_func2(pyle::Value closure, pyle::Value a0, pyle::Value a1) {
+        pyle::Value args[2] = {a0, a1};
+        return call_func_n(closure, args, 2);
+    }
+
+    pyle::Value VM::call_func3(pyle::Value closure, pyle::Value a0, pyle::Value a1, pyle::Value a2) {
+        pyle::Value args[3] = {a0, a1, a2};
+        return call_func_n(closure, args, 3);
+    }
+
+    pyle::Value VM::call_func_n(pyle::Value closure, const pyle::Value* args, size_t count) {
         if (closure.tag != Value::Tag::ClosureRef) {
-            return call_func_raw(closure, {arg});
+            if (count == 0) return call_func_raw(closure, {});
+            std::vector<pyle::Value> vec(args, args + count);
+            return call_func_raw(closure, vec);
         }
         Closure& cl = std::get<Closure>(heap[closure.as_ref].data);
         Function& fn = std::get<Function>(heap[cl.function].data);
-        if (fn.arity != 1) {
-            runtime_error(RuntimeError::ArgumentError, fmt::format("Expected {} args, got 1.", fn.arity));
+        if (fn.arity != static_cast<int>(count)) {
+            runtime_error(RuntimeError::ArgumentError, fmt::format("Expected {} args, got {}.", fn.arity, count));
             return pyle::Value();
         }
         if (frame_count + 1 >= frame_capacity) {
@@ -680,16 +696,16 @@ namespace pyle {
         size_t saved_frame_count = frame_count;
         push(pyle::Value());
         push(closure);
-        push(arg);
+        for (size_t i = 0; i < count; ++i) push(args[i]);
         CallFrame tram_frame;
         tram_frame.closure = call_trampoline_idx;
         tram_frame.ip = 0;
-        tram_frame.stack_base = stack_size() - 2;
+        tram_frame.stack_base = stack_size() - count - 1;
         frames[frame_count++] = tram_frame;
         CallFrame new_frame;
         new_frame.closure = closure.as_ref;
         new_frame.ip = 0;
-        new_frame.stack_base = stack_size() - 1;
+        new_frame.stack_base = stack_size() - count;
         if (fn.module_env != 0) {
             new_frame.module_swap = true;
             new_frame.saved_globals_idx = globals_idx;

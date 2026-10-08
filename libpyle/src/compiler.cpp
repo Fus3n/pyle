@@ -670,13 +670,9 @@ namespace pyle {
         current_state->locals.push_back(Local{fn->params[0], current_state->scope_depth});
         int elem_idx = static_cast<int>(current_state->locals.size()) - 1;
 
-        loop_breaks.emplace_back();
-        loop_locals_start.push_back(current_state->locals.size());
-        loop_continue_targets.push_back(loop_start);
-
         CompileState* saved_inline = inline_state;
         inline_state = current_state;
-        inline_stack.push_back(InlineFrame{tmp_idx, tmp2_idx, elem_idx, {}});
+        inline_stack.push_back(InlineFrame{tmp_idx, tmp2_idx, elem_idx, loop_breaks.size(), {}});
         for (const auto& s : fn->body->statements) {
             if (!s) continue;
             s->accept(this);
@@ -696,9 +692,7 @@ namespace pyle {
         size_t epilogue_pos = current_chunk->instr.size();
         end_scope();
 
-        size_t continue_pos = current_chunk->instr.size();
         for (size_t j : ret_jumps) patch_jump_to(j, epilogue_pos);
-        (void)continue_pos;
         if (is_map) {
             emit_instruction(OpCode::LOAD_LOCAL, static_cast<uint32_t>(tmp_idx), line);
             emit_instruction(OpCode::APPEND, static_cast<uint32_t>(out_idx), line);
@@ -726,10 +720,6 @@ namespace pyle {
         emit_instruction(OpCode::LOAD_LOCAL, 1, line);
         emit_instruction(OpCode::CALL_METHOD, 1, line);
         emit_instruction(OpCode::RETURN, 0, line);
-
-        loop_breaks.pop_back();
-        loop_locals_start.pop_back();
-        loop_continue_targets.pop_back();
 
         for (const auto& uv : current_state->upvalues) {
             synth.upvalues.push_back(Function::UpvalueInfo{uv.index, uv.is_local});
@@ -834,6 +824,12 @@ namespace pyle {
     }
 
     void Compiler::visit_break(BreakStmt* stmt) {
+        if (inline_state != nullptr && inline_state == current_state && !inline_stack.empty() &&
+            loop_breaks.size() == inline_stack.back().loop_depth) {
+            reporter.report(stmt->token.selection, ErrorType::Compile,
+                        "Cannot use 'break' inside map/filter callback.");
+            return;
+        }
         if (loop_breaks.empty()) {
             reporter.report(stmt->token.selection, ErrorType::Compile, 
                         "Cannot use 'break' outside of a loop.");
@@ -854,6 +850,12 @@ namespace pyle {
         if (loop_breaks.empty()) {
             reporter.report(stmt->token.selection, ErrorType::Compile, 
                         "Cannot use 'continue' outside of a loop.");
+            return;
+        }
+        if (inline_state != nullptr && inline_state == current_state && !inline_stack.empty() &&
+            loop_breaks.size() == inline_stack.back().loop_depth) {
+            reporter.report(stmt->token.selection, ErrorType::Compile,
+                        "Cannot use 'continue' inside map/filter callback. Return a value instead.");
             return;
         }
 

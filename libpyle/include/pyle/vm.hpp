@@ -189,6 +189,9 @@ namespace pyle {
 
         pyle::Value call_func_raw(pyle::Value closure, const std::vector<pyle::Value>& args);
         pyle::Value call_func1(pyle::Value closure, pyle::Value arg);
+        pyle::Value call_func2(pyle::Value closure, pyle::Value a0, pyle::Value a1);
+        pyle::Value call_func3(pyle::Value closure, pyle::Value a0, pyle::Value a1, pyle::Value a2);
+        pyle::Value call_func_n(pyle::Value closure, const pyle::Value* args, size_t count);
 
         template <typename... Args>
         Value call_func(Value closure, Args&&... args);

@@ -949,14 +949,12 @@ namespace pyle {
 
     template <typename... Args>
     Value VM::call_func(Value closure, Args&&... args) {
-        if constexpr (sizeof...(Args) == 1) {
-            return this->call_func1(closure, to_value(*this, std::forward<Args>(args))...);
+        constexpr size_t N = sizeof...(Args);
+        if constexpr (N == 0) {
+            return this->call_func_n(closure, nullptr, 0);
+        } else {
+            Value arr[N] = {to_value(*this, std::forward<Args>(args))...};
+            return this->call_func_n(closure, arr, N);
         }
-        std::vector<Value> converted_args;
-        converted_args.reserve(sizeof...(Args));
-        
-        (converted_args.push_back(to_value(*this, std::forward<Args>(args))), ...);
-        
-        return this->call_func_raw(closure, converted_args);
     }
 }

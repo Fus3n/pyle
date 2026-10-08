@@ -91,6 +91,7 @@ namespace pyle {
             int tmp_idx = -1;
             int tmp2_idx = -1;
             int elem_idx = -1;
+            size_t loop_depth = 0;
             std::vector<size_t> jumps;
         };
         std::vector<InlineFrame> inline_stack;
