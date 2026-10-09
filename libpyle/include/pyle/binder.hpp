@@ -948,13 +948,13 @@ namespace pyle {
 
 
     template <typename... Args>
-    Value VM::call_func(Value closure, Args&&... args) {
+    Value VM::call_func(Value callee, Args&&... args) {
         constexpr size_t N = sizeof...(Args);
         if constexpr (N == 0) {
-            return this->call_func_n(closure, nullptr, 0);
+            return this->call_func_n(callee, nullptr, 0);
         } else {
             Value arr[N] = {to_value(*this, std::forward<Args>(args))...};
-            return this->call_func_n(closure, arr, N);
+            return this->call_func_n(callee, arr, N);
         }
     }
 }

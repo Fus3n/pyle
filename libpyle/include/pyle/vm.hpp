@@ -26,21 +26,23 @@ namespace pyle {
         std::string_view script_name = "main.pyl";
         std::string executable_path;
         bool is_worker = false;
-        
 
         Value* stack = nullptr;
         Value* sp = nullptr;
         Value* stack_end = nullptr;
         size_t stack_capacity = 0;
+        /// Grows the value stack when full.
         void grow_stack();
 
         CallFrame* frames = nullptr;
         size_t frame_count = 0;
         size_t frame_capacity = 0;
 
-        std::vector<HeapIdx> open_upvalues; 
+        std::vector<HeapIdx> open_upvalues;
 
+        /// Captures a stack local as an upvalue for a closure.
         HeapIdx capture_upvalue(size_t stack_index);
+        /// Closes all open upvalues at or above the given stack limit.
         void close_upvalues(Value* limit);
 
         // Root (top-level script) global storage. `global_slots` is a pointer to
@@ -161,6 +163,7 @@ namespace pyle {
         HeapIdx main_coroutine_idx = 0;
         bool coro_switched = false;
 
+        /// Saves the current coroutine's execution state.
         inline void save_coroutine_state(Coroutine& coro) {
             coro.stack = this->stack;
             coro.sp = this->sp;
@@ -171,6 +174,7 @@ namespace pyle {
             coro.saved_globals_idx = this->globals_idx;
         }
 
+        /// Restores a coroutine's previously saved execution state.
         inline void load_coroutine_state(Coroutine& coro) {
             this->stack = coro.stack;
             this->sp = coro.sp;
@@ -188,6 +192,7 @@ namespace pyle {
         void init_root_coroutine();
         std::vector<std::string> import_paths = {"./"};
 
+        /// Adds a directory to the module search path for import().
         void add_import_path(std::string path) {
             if (!path.empty() && path.back() != '/' && path.back() != '\\') {
                 path += "/";
@@ -196,27 +201,36 @@ namespace pyle {
         }
 
 
+        /// Roots a value on the GC stack until the matching gc_root_pop.
         void gc_root_push(HeapIdx idx, Value::Tag tag) {
             gc_roots.push_back(Value(tag, idx));
         }
 
+        /// Pops the most recently pushed GC root.
         void gc_root_pop() {
             gc_roots.pop_back();
         }
 
+        /// Marks a value and everything it references as reachable.
         void mark_value(const Value& val);
+        /// Returns the VM mutex. Only needed for thread-safe native callbacks.
         std::recursive_mutex& get_mutex() { return vm_mutex; }
 
+        /// Looks up a global variable by name. Returns none if not found.
         pyle::Value get_global(const std::string& name);
 
-        pyle::Value call_func_raw(pyle::Value closure, const std::vector<pyle::Value>& args);
-        pyle::Value call_func1(pyle::Value closure, pyle::Value arg);
-        pyle::Value call_func2(pyle::Value closure, pyle::Value a0, pyle::Value a1);
-        pyle::Value call_func3(pyle::Value closure, pyle::Value a0, pyle::Value a1, pyle::Value a2);
-        pyle::Value call_func_n(pyle::Value closure, const pyle::Value* args, size_t count);
+        /// Calls a callable with a vector of arguments (any count).
+        /// Allocates a synthetic chunk per call, prefer call_func for hot paths.
+        pyle::Value call_func_raw(pyle::Value callee, const std::vector<pyle::Value>& args);
+        /// Calls a callable with one argument. Zero-allocation fast path.
+        pyle::Value call_func1(pyle::Value callee, pyle::Value arg);
+        /// Calls a callable with any number of arguments. Zero-allocation fast path.
+        pyle::Value call_func_n(pyle::Value callee, const pyle::Value* args, size_t count);
 
+        /// Calls a callable with any number of arguments. Automatically converts
+        /// each argument and dispatches to the matching fast path.
         template <typename... Args>
-        Value call_func(Value closure, Args&&... args);
+        Value call_func(Value callee, Args&&... args);
 
     private:
         Value last_result;
@@ -289,6 +303,7 @@ namespace pyle {
         PYLE_FORCEINLINE bool instantiate_struct(HeapIdx struct_type_idx, int arg_count, CallFrame* current_frame);
     };
 
+    /// RAII guard that roots a value on the GC stack for its lifetime.
     struct GCRoot {
         VM& vm;
         GCRoot(VM& vm, HeapIdx idx, Value::Tag tag) : vm(vm) {
