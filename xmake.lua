@@ -111,6 +111,14 @@ target("example_async_binding")
     add_deps("libpyle")
 
 
+target("pyle_tests")
+    set_kind("binary")
+    set_group("tests")
+    add_files("tests/*.cpp")
+    add_deps("libpyle")
+    set_rundir("$(projectdir)")
+    add_tests("suite")
+
 target("pyle-lsp")
     set_kind("binary")
     add_files("pyle-lsp/src/main.cpp")
