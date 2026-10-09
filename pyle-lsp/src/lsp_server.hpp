@@ -454,6 +454,20 @@ private:
             added.insert(s.name);
             items.push_back(completion_item(s));
         }
+        for (auto* d : resolver.all_docs()) {
+            if (!d->is_definition_file || d == doc) continue;
+            if (d->file_path.find("/core/") == std::string::npos &&
+                d->file_path.find("\\core\\") == std::string::npos) continue;
+            for (const auto& s : d->symbols) {
+                if (!utils::has_prefix(s.name, prefix)) continue;
+                if (added.count(s.name)) continue;
+                if (s.kind != SymbolKind::Function && s.kind != SymbolKind::Struct &&
+                    s.kind != SymbolKind::Variable && s.kind != SymbolKind::Module) continue;
+                if (!s.parent_struct.empty() || !s.scope_func.empty()) continue;
+                added.insert(s.name);
+                items.push_back(completion_item(s));
+            }
+        }
         for (const auto& b : BUILTIN_TYPES) {
             if (added.count(b)) continue;
             if (!utils::has_prefix(b, prefix)) continue;

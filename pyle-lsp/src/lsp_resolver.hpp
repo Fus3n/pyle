@@ -347,6 +347,14 @@ public:
                 return s->type_name.empty() ? s->name : s->type_name;
             }
         }
+        for (auto* d : modules.all_docs()) {
+            if (!d->is_definition_file) continue;
+            for (const auto& s : d->symbols) {
+                if (s.name != name || s.kind != SymbolKind::Function) continue;
+                if (!s.parent_struct.empty() || !s.scope_func.empty()) continue;
+                return s.type_name.empty() ? ANY_TYPE : s.type_name;
+            }
+        }
         for (const auto& [var, module] : doc.imports) {
             if (auto* m = modules.resolve(module, doc.file_path)) {
                 auto it = m->struct_symbols.find(name);

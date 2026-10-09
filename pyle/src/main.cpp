@@ -62,7 +62,8 @@ int main(int argc, char* argv[]) {
 
     try {
         std::string source = read_file(script_path);
-        pyle.execute(source, program.get<bool>("--dissassamble"), script_path);
+        bool ok = pyle.execute(source, program.get<bool>("--dissassamble"), script_path);
+        if (!ok || pyle.vm.is_panicked()) return 1;
     } catch (const std::exception& e) {
         std::cerr << "Error: " << e.what() << "\n";
         return 1;

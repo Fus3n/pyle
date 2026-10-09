@@ -50,7 +50,7 @@ namespace pyle {
     };
 
     enum class RuntimeError {
-        Type, Name, Index, ZeroDivision, StackUnderflow, OutOfBounds, ArgumentError, Runtime
+        Type, Name, Index, ZeroDivision, StackUnderflow, OutOfBounds, ArgumentError, Assertion, Runtime
     };
 
     inline std::string_view err_to_string(const RuntimeError& err) {
@@ -60,6 +60,7 @@ namespace pyle {
             case RuntimeError::Index: return "IndexError";
             case RuntimeError::StackUnderflow: return "StackUnderFlowError";
             case RuntimeError::ArgumentError: return "ArgumentError";
+            case RuntimeError::Assertion: return "AssertionError";
             case RuntimeError::OutOfBounds: return "OutOfBoundsError";
             default: return "RuntimeError";
         }

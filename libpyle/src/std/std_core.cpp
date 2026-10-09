@@ -501,6 +501,38 @@ namespace pyle {
         return pyle::Value();
     }
 
+    Value native_pcall(VM& vm, ArgView args) {
+        if (args.size() == 0) {
+            vm.runtime_error(RuntimeError::ArgumentError, "pcall expects a function and optional arguments.");
+            return Value();
+        }
+        const Value* rest = args.size() > 1 ? args.data_ptr + 1 : nullptr;
+        return vm.pcall_invoke(args[0], rest, args.size() - 1);
+    }
+
+    Value native_assert(VM& vm, ArgView args) {
+        if (args.size() == 0 || args.size() > 2) {
+            vm.runtime_error(RuntimeError::ArgumentError, "assert expects a condition and an optional message.");
+            return Value();
+        }
+        if (!vm.is_truthy(args[0])) {
+            std::string message = "Assertion failed.";
+            if (args.size() == 2) message = vm.value_to_string(args[1]);
+            vm.runtime_error(RuntimeError::Assertion, message);
+            return Value();
+        }
+        return args[0];
+    }
+
+    Value native_print_trace(VM& vm, ArgView args) {
+        if (args.size() != 1) {
+            vm.runtime_error(RuntimeError::ArgumentError, "print_trace expects exactly 1 argument.");
+            return Value();
+        }
+        vm.print_trace(args[0]);
+        return Value();
+    }
+
     void register_core_natives(VM& vm, bool load_core_modules) {
         pyle::bind_function<native_print>(vm, "print");
         pyle::bind_function<native_printf>(vm, "printf");
@@ -509,6 +541,9 @@ namespace pyle {
         pyle::bind_function<native_import>(vm, "import");
         pyle::bind_function<native_add_import_path>(vm, "add_import_path");
         pyle::bind_function<native_typeof>(vm, "typeof");
+        pyle::bind_function<native_pcall>(vm, "pcall");
+        pyle::bind_function<native_assert>(vm, "assert");
+        pyle::bind_function<native_print_trace>(vm, "print_trace");
         pyle::bind_function<native_coro_constructor>(vm, "Coro");
         pyle::bind_function<native_bytes>(vm, "Bytes");
         pyle::bind_function<native_background_tick>(vm, "__tick");

@@ -684,6 +684,7 @@ namespace pyle {
         }
         ensure_call_trampoline();
         panicked = false;
+        clear_pending();
         size_t saved_sp_offset = sp - stack;
         size_t saved_frame_count = frame_count;
         push(pyle::Value());
@@ -712,6 +713,149 @@ namespace pyle {
         sp = stack + saved_sp_offset;
         frame_count = saved_frame_count;
         return result;
+    }
+
+    static Value pcall_key(VM& vm, const char* name) {
+        return Value(Value::Tag::StringRef, vm.intern_string(name));
+    }
+
+    static bool is_heap_tag(Value::Tag tag) {
+        switch (tag) {
+            case Value::Tag::Int:
+            case Value::Tag::Float:
+            case Value::Tag::Bool:
+            case Value::Tag::None:
+                return false;
+            default:
+                return true;
+        }
+    }
+
+    pyle::Value VM::make_pcall_result(bool ok, Value payload) {
+        MapType out;
+        out[pcall_key(*this, "ok")] = Value(ok);
+        out[pcall_key(*this, ok ? "value" : "error")] = payload;
+        HeapIdx idx = alloc(Object(std::move(out)));
+        return Value(Value::Tag::MapRef, idx);
+    }
+
+    pyle::Value VM::build_error_value(Coroutine& coro) {
+        std::string type = std::move(coro.pending_type);
+        std::string msg = std::move(coro.pending_msg);
+        std::vector<TraceFrame> trace = std::move(coro.pending_trace);
+        coro.pending_type.clear();
+        coro.pending_msg.clear();
+        coro.pending_trace.clear();
+        MapType err;
+        err[pcall_key(*this, "type")] = Value(Value::Tag::StringRef, intern_string(type));
+        err[pcall_key(*this, "message")] = Value(Value::Tag::StringRef, intern_string(msg));
+        HeapIdx err_idx = alloc(Object(std::move(err)));
+        GCRoot err_guard(*this, err_idx, Value::Tag::MapRef);
+        HeapIdx arr_idx = alloc(Object(ArrayType{}));
+        std::get<MapObject>(heap[err_idx].data).entries[pcall_key(*this, "trace")] = Value(Value::Tag::ArrayRef, arr_idx);
+        for (const TraceFrame& f : trace) {
+            HeapIdx f_idx = alloc(Object(MapType{}));
+            std::get<ArrayType>(heap[arr_idx].data).push_back(Value(Value::Tag::MapRef, f_idx));
+            auto& entries = std::get<MapObject>(heap[f_idx].data).entries;
+            entries[pcall_key(*this, "function")] = Value(Value::Tag::StringRef, intern_string(f.func));
+            entries[pcall_key(*this, "file")] = Value(Value::Tag::StringRef, intern_string(f.file));
+            entries[pcall_key(*this, "line")] = Value(static_cast<int64_t>(f.line));
+        }
+        return Value(Value::Tag::MapRef, err_idx);
+    }
+
+    pyle::Value VM::pcall_invoke(pyle::Value callee, const pyle::Value* args, size_t count) {
+        Coroutine* coro = active_coro();
+        if (!coro) {
+            runtime_error(RuntimeError::Runtime, "pcall invoked with no active coroutine.");
+            return pyle::Value();
+        }
+        if (panicked) {
+            pyle::Value err = build_error_value(*coro);
+            panicked = false;
+            return make_pcall_result(false, err);
+        }
+        PCallCheckpoint cp;
+        cp.frame_count = frame_count;
+        cp.sp_offset = static_cast<size_t>(sp - stack);
+        cp.saved_globals_idx = globals_idx;
+        coro->pcall_stack.push_back(cp);
+        pyle::Value result = call_func_n(callee, args, count);
+        coro = active_coro();
+        if (coro && !coro->pcall_stack.empty()) coro->pcall_stack.pop_back();
+        if (panicked) {
+            panicked = false;
+            close_upvalues(stack + cp.sp_offset);
+            sp = stack + cp.sp_offset;
+            frame_count = cp.frame_count;
+            globals_idx = cp.saved_globals_idx;
+            global_slots = (globals_idx == HeapIdx(-1))
+                ? &root_globals
+                : &std::get<ArrayType>(heap[globals_idx].data);
+            pyle::Value err = coro ? build_error_value(*coro) : pyle::Value();
+            return make_pcall_result(false, err);
+        }
+        if (is_heap_tag(result.tag)) {
+            GCRoot payload_guard(*this, result.as_ref, result.tag);
+            return make_pcall_result(true, result);
+        }
+        return make_pcall_result(true, result);
+    }
+
+    void VM::print_trace(pyle::Value err) {
+        std::string type = "Error";
+        std::string msg;
+        std::vector<TraceFrame> trace;
+        Value target = err;
+        if (target.tag == Value::Tag::MapRef && heap_valid(target.as_ref)) {
+            const auto& entries = std::get<MapObject>(heap[target.as_ref].data).entries;
+            auto it = entries.find(pcall_key(*this, "ok"));
+            if (it != entries.end() && it->second.tag == Value::Tag::Bool && it->second.as_bool) {
+                fmt::print(stderr, "print_trace: pcall succeeded, nothing to print.\n\n");
+                return;
+            }
+            it = entries.find(pcall_key(*this, "error"));
+            if (it != entries.end() && it->second.tag == Value::Tag::MapRef) target = it->second;
+        }
+        if (target.tag == Value::Tag::MapRef && heap_valid(target.as_ref)) {
+            const auto& entries = std::get<MapObject>(heap[target.as_ref].data).entries;
+            auto it = entries.find(pcall_key(*this, "type"));
+            if (it != entries.end()) type = value_to_string(it->second);
+            it = entries.find(pcall_key(*this, "message"));
+            if (it != entries.end()) msg = value_to_string(it->second);
+            it = entries.find(pcall_key(*this, "trace"));
+            if (it != entries.end() && it->second.tag == Value::Tag::ArrayRef && heap_valid(it->second.as_ref)) {
+                const auto& arr = std::get<ArrayType>(heap[it->second.as_ref].data);
+                for (const Value& v : arr) {
+                    if (v.tag != Value::Tag::MapRef || !heap_valid(v.as_ref)) continue;
+                    const auto& fe = std::get<MapObject>(heap[v.as_ref].data).entries;
+                    TraceFrame f;
+                    auto fi = fe.find(pcall_key(*this, "function"));
+                    if (fi != fe.end() && fi->second.tag == Value::Tag::StringRef) {
+                        f.func = std::get<std::string>(heap[fi->second.as_ref].data);
+                    }
+                    fi = fe.find(pcall_key(*this, "file"));
+                    if (fi != fe.end() && fi->second.tag == Value::Tag::StringRef) {
+                        f.file = std::get<std::string>(heap[fi->second.as_ref].data);
+                    }
+                    fi = fe.find(pcall_key(*this, "line"));
+                    if (fi != fe.end() && fi->second.tag == Value::Tag::Int && fi->second.as_int >= 0) {
+                        f.line = static_cast<size_t>(fi->second.as_int);
+                    }
+                    trace.push_back(std::move(f));
+                }
+            }
+        }
+        std::string hint;
+        for (RuntimeError kind : {RuntimeError::Type, RuntimeError::Name, RuntimeError::Index,
+                RuntimeError::ZeroDivision, RuntimeError::StackUnderflow, RuntimeError::OutOfBounds,
+                RuntimeError::ArgumentError, RuntimeError::Assertion, RuntimeError::Runtime}) {
+            if (type == err_to_string(kind)) {
+                hint = get_runtime_hint(kind, msg);
+                break;
+            }
+        }
+        print_error_report(type, msg, trace, hint);
     }
 
     void VM::dump_op_profile() {
@@ -745,67 +889,73 @@ namespace pyle {
         }
     }
 
-    void VM::runtime_error(const RuntimeError &type, const std::string &msg) {
-        panicked = true;
-        if (frame_count == 0) {
-            fmt::print(stderr, "\033[1;31m{}:\033[0m {}\n\n", err_to_string(type), msg);
-            return;
+    Coroutine* VM::active_coro() {
+        if (active_coroutine_idx == 0) return nullptr;
+        if (!heap_valid(active_coroutine_idx)) return nullptr;
+        Object& obj = heap[active_coroutine_idx];
+        if (!std::holds_alternative<Coroutine>(obj.data)) return nullptr;
+        return &std::get<Coroutine>(obj.data);
+    }
+
+    TraceFrame VM::describe_frame(CallFrame& frame) {
+        Function& func = get_func_from_frame(frame);
+        size_t line = 0;
+        if (frame.ip > 0 && frame.ip <= func.chunk.lines.size()) {
+            line = func.chunk.lines[frame.ip - 1];
         }
+        TraceFrame tf;
+        tf.func = func.name;
+        tf.file = func.source_file.empty() ? std::string(script_name) : func.source_file;
+        tf.line = line + 1;
+        return tf;
+    }
 
-        auto get_line_of_code = [](std::string_view src, size_t target_line) -> std::string_view {
-            size_t current_line = 0;
-            size_t start = 0;
-            for (size_t i = 0; i < src.size(); ++i) {
-                if (src[i] == '\n') {
-                    if (current_line == target_line) {
-                        return src.substr(start, i - start);
-                    }
-                    start = i + 1;
-                    current_line++;
-                }
-            }
-            if (current_line == target_line && start < src.size()) {
-                return src.substr(start);
-            }
-            return "";
-        };
-
-        size_t err_line = 0;
-        std::string_view err_source;
-        std::string_view err_func_name;
-
+    void VM::snapshot_trace(Coroutine& coro) {
+        coro.pending_trace.clear();
+        coro.pending_trace.reserve(frame_count);
         for (size_t i = 0; i < frame_count; ++i) {
-            CallFrame& frame = frames[i];
-            Function& func = get_func_from_frame(frame);
+            if (frames[i].closure == call_trampoline_idx) continue;
+            coro.pending_trace.push_back(describe_frame(frames[i]));
+        }
+    }
 
-            size_t line = 0;
-            if (frame.ip > 0 && frame.ip <= func.chunk.lines.size()) {
-                line = func.chunk.lines[frame.ip - 1];
-            }
+    void VM::clear_pending() {
+        Coroutine* coro = active_coro();
+        if (!coro) return;
+        coro->pending_type.clear();
+        coro->pending_msg.clear();
+        coro->pending_trace.clear();
+    }
 
-            std::string_view display_name = script_name;
-            std::string_view display_source = source_code;
-            if (!func.source_file.empty()) {
-                display_name = func.source_file;
-                auto it = source_cache.find(func.source_file);
-                if (it != source_cache.end()) {
-                    display_source = it->second;
+    static std::string_view code_line(std::string_view src, size_t target_line) {
+        size_t current_line = 0;
+        size_t start = 0;
+        for (size_t i = 0; i < src.size(); ++i) {
+            if (src[i] == '\n') {
+                if (current_line == target_line) {
+                    return src.substr(start, i - start);
                 }
-            }
-
-            fmt::print(stderr, "   --> {}:{}: (in function '{}')\n", display_name, line + 1, func.name);
-
-            if (i == frame_count - 1) {
-                err_line = line;
-                err_source = display_source;
-                err_func_name = func.name;
+                start = i + 1;
+                current_line++;
             }
         }
+        if (current_line == target_line && start < src.size()) {
+            return src.substr(start);
+        }
+        return "";
+    }
 
-        if (!err_source.empty()) {
-            std::string_view line_text = get_line_of_code(err_source, err_line);
+    void VM::print_error_report(std::string_view type_str, std::string_view msg, const std::vector<TraceFrame>& trace, const std::string& hint) {
+        for (const TraceFrame& f : trace) {
+            fmt::print(stderr, "   --> {}:{}: (in function '{}')\n", f.file, f.line, f.func);
+        }
+        if (!trace.empty()) {
+            std::string_view err_source = source_code;
+            auto it = source_cache.find(trace.back().file);
+            if (it != source_cache.end()) err_source = it->second;
+            std::string_view line_text = code_line(err_source, trace.back().line - 1);
             if (!line_text.empty()) {
-                fmt::print(stderr, " {:4d} | {}\n", err_line + 1, line_text);
+                fmt::print(stderr, " {:4d} | {}\n", trace.back().line, line_text);
 
                 size_t first_non_space = 0;
                 while (first_non_space < line_text.size() && (line_text[first_non_space] == ' ' || line_text[first_non_space] == '\t')) {
@@ -821,13 +971,37 @@ namespace pyle {
             }
         }
 
-        fmt::print(stderr, "\033[1;31m{}:\033[0m \033[1m{}\033[0m\n", err_to_string(type), msg);
+        fmt::print(stderr, "\033[1;31m{}:\033[0m \033[1m{}\033[0m\n", type_str, msg);
         
-        std::string hint = get_runtime_hint(type, msg);
         if (!hint.empty()) {
             fmt::print(stderr, "    \033[1;36mHint:\033[0m {}\n", hint);
         }
         fmt::print(stderr, "\n");
+    }
+
+    void VM::runtime_error(const RuntimeError &type, const std::string &msg) {
+        Coroutine* coro = active_coro();
+        if (!panicked) {
+            if (coro) {
+                snapshot_trace(*coro);
+                coro->pending_type = std::string(err_to_string(type));
+                coro->pending_msg = msg;
+            }
+            panicked = true;
+        }
+        if (frame_count == 0) {
+            fmt::print(stderr, "\033[1;31m{}:\033[0m {}\n\n", err_to_string(type), msg);
+            return;
+        }
+
+        if (coro && !coro->pcall_stack.empty()) return;
+        std::vector<TraceFrame> live;
+        live.reserve(frame_count);
+        for (size_t i = 0; i < frame_count; ++i) {
+            if (frames[i].closure == call_trampoline_idx) continue;
+            live.push_back(describe_frame(frames[i]));
+        }
+        print_error_report(err_to_string(type), msg, live, get_runtime_hint(type, msg));
     }
 
     HeapIdx VM::capture_upvalue(size_t stack_index) {
@@ -1023,6 +1197,7 @@ namespace pyle {
         execute_depth++;
 
         panicked = false;
+        clear_pending();
 
         set_gc_enabled(false);
 

@@ -232,11 +232,25 @@ namespace pyle {
         template <typename... Args>
         Value call_func(Value callee, Args&&... args);
 
+        /// Calls a Pyle function under a catch checkpoint. Returns {ok, value}
+        /// on success or {ok, error} with a {type, message, trace} map on panic.
+        pyle::Value pcall_invoke(pyle::Value callee, const pyle::Value* args, size_t count);
+        /// Prints a pcall-shaped error map using the runtime error format.
+        void print_trace(pyle::Value err);
+
     private:
         Value last_result;
         void run_loop();
         void ensure_call_trampoline();
         HeapIdx call_trampoline_idx = HeapIdx(-1);
+        Coroutine* active_coro();
+        TraceFrame describe_frame(CallFrame& frame);
+        void snapshot_trace(Coroutine& coro);
+        void clear_pending();
+        void print_error_report(std::string_view type_str, std::string_view msg,
+            const std::vector<TraceFrame>& trace, const std::string& hint);
+        pyle::Value build_error_value(Coroutine& coro);
+        pyle::Value make_pcall_result(bool ok, Value payload);
 
         std::recursive_mutex vm_mutex; 
         bool gc_enabled = true;

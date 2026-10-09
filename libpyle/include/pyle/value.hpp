@@ -276,6 +276,18 @@ namespace pyle {
         NativeMethodFn fn = nullptr;
     };
     
+    struct PCallCheckpoint {
+        size_t frame_count = 0;
+        size_t sp_offset = 0;
+        HeapIdx saved_globals_idx = HeapIdx(-1);
+    };
+
+    struct TraceFrame {
+        std::string func;
+        std::string file;
+        size_t line = 0;
+    };
+
     struct Coroutine {
         Value* stack = nullptr;
         Value* sp = nullptr;
@@ -298,6 +310,11 @@ namespace pyle {
 
         bool is_main = false;
         bool started = false; 
+
+        std::vector<PCallCheckpoint> pcall_stack;
+        std::string pending_type;
+        std::string pending_msg;
+        std::vector<TraceFrame> pending_trace;
 
         Coroutine() = default;
 
@@ -345,6 +362,10 @@ namespace pyle {
             frame_capacity = other.frame_capacity;
             frame_count = other.frame_count;
             started = other.started;
+            pcall_stack = std::move(other.pcall_stack);
+            pending_type = std::move(other.pending_type);
+            pending_msg = std::move(other.pending_msg);
+            pending_trace = std::move(other.pending_trace);
 
             stack = other.stack;
             sp = other.sp;

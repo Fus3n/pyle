@@ -132,6 +132,7 @@ namespace pyle {
     }
 
     std::string Parser::parse_type_name() {
+        if (match({TokenType::NONE})) return "none";
         std::string out = std::string(consume(TokenType::IDENTIFIER, "Expected type name.").lexeme);
         while (match({TokenType::LEFT_BRACKET})) {
             out += "[";

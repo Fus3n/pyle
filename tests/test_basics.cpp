@@ -127,6 +127,20 @@ TEST(control_flow) {
     CHECK_STR(t, "sk", "25");
 }
 
+TEST(none_annotations) {
+    Ctx t;
+    CHECK_RUN(t, R"(
+        fn noop(): none { }
+        let r = noop()
+        let x: none = none
+        struct N(v: none) {}
+        let n = N(none)
+        let ok = r == none and x == none
+    )");
+    CHECK_CALM(t);
+    CHECK_STR(t, "ok", "true");
+}
+
 TEST(functions) {
     Ctx t;
     CHECK_RUN(t, R"(
