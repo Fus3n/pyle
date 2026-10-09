@@ -500,13 +500,26 @@ namespace pyle {
             if (arg != -1) {
                 emit_instruction(OpCode::SET_LOCAL_POP, arg, assign->name.selection.line);
             } else if ((arg = resolve_upvalue(current_state, assign->name)) != -1) {
-                emit_instruction(OpCode::SET_UPVALUE_POP, arg, assign->name.selection.line); 
+                emit_instruction(OpCode::SET_UPVALUE_POP, arg, assign->name.selection.line);
             } else {
                 int slot = resolve_global_slot(assign->name);
                 if (slot >= 0) {
                     emit_instruction(OpCode::SET_GLOBAL_SLOT_POP, slot, assign->name.selection.line);
                 }
             }
+        } else if (auto* mc = dynamic_cast<MethodCallExpr*>(stmt->expression.get())) {
+            if (mc->method_name.lexeme == "append" && mc->arguments.size() == 1) {
+                if (auto* var = dynamic_cast<VariableExpr*>(mc->callee.get())) {
+                    int idx = resolve_local(var->name);
+                    if (idx != -1) {
+                        mc->arguments[0]->accept(this);
+                        emit_instruction(OpCode::APPEND, static_cast<uint32_t>(idx), mc->paren.selection.line);
+                        return;
+                    }
+                }
+            }
+            stmt->expression->accept(this);
+            emit_instruction(OpCode::POP, 0, 1);
         } else {
             stmt->expression->accept(this);
             emit_instruction(OpCode::POP, 0, 1);
