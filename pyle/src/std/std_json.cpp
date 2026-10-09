@@ -70,10 +70,8 @@ pyle::Value native_json_parse(pyle::VM& vm, pyle::ArgView args) {
         return pyle::Value();
     }
 
-    bool was_enabled = vm.is_gc_enabled();
-    vm.set_gc_enabled(false);
+    pyle::BulkAlloc bulk(vm);
     pyle::Value result = simdjson_to_pyle(vm, doc);
-    vm.set_gc_enabled(was_enabled);
 
     return result;
 }

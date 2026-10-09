@@ -51,43 +51,65 @@ namespace pyle {
         HeapIdx globals_idx = HeapIdx(-1);
         ankerl::unordered_dense::map<HeapIdx, int> global_slot_map;
 
+        /// Allocates a new heap object and returns its index.
         HeapIdx alloc(Object obj);
+        /// Allocates a permanent heap object that is never collected by GC.
         HeapIdx alloc_permanent(Object obj);
+        /// Returns the canonical interned index for a string, creating it if needed.
         HeapIdx intern_string(std::string_view str);
 
-        void gc_collect_now() { gc_collect(); } 
+        /// Forces an immediate garbage collection cycle.
+        void gc_collect_now() { gc_collect(); }
+        /// Enables or disables automatic garbage collection.
         void set_gc_enabled(bool enabled) { gc_enabled = enabled; }
         bool is_gc_enabled() const { return gc_enabled; }
+        /// When enabled, alloc() skips the VM mutex. Only safe in single-threaded
+        /// native code that does not re-enter the VM (see BulkAlloc).
+        void set_bulk_alloc(bool enabled) { bulk_alloc = enabled; }
+        /// Returns true if a runtime error has occurred.
         bool is_panicked() const { return panicked; }
+        /// Sets the panic flag, halting execution on the next dispatch.
         void set_panicked(bool v = true) { panicked = v; }
 
+        /// Returns a mutable reference to the heap object at the given index.
         Object& get_heap_object(const HeapIdx idx) { return heap[idx]; }
+        /// Returns true if the index is within the current heap bounds.
         bool heap_valid(const HeapIdx idx) const { return idx < heap.size(); }
 
+        /// Returns a typed reference to the heap object at the given index.
         template<typename T>
         T& get_heap_object(const HeapIdx idx) {
             return std::get<T>(heap[idx].data);
         }
 
+        /// Executes a compiled chunk on the VM.
         void execute(Chunk in_chunk);
+        /// Converts a value to its string representation.
         std::string value_to_string(const Value& val);
+        /// Registers a native function as a global callable by name.
         void define_native(const std::string& name, NativeFn function);
+        /// Raises a runtime error with the given type and message.
         void runtime_error(const RuntimeError& err, const std::string& msg);
 
         const auto& get_interned_strings() const { return interned_strings; }
 
+        /// Declares a new global variable and returns its slot index.
         int declare_global(HeapIdx name_idx);
 
+        /// Returns true if the value is truthy (non-zero, non-empty, non-none).
         bool is_truthy(const Value& v);
 
+        /// Returns the canonical map key for a value (interns strings).
         Value canonicalize_map_key(const Value& key);
 
+        /// Returns true if the value can be used as a Pyle map key.
         inline bool is_hashable(const Value& v) const {
             return v.tag != Value::Tag::ArrayRef &&
                 v.tag != Value::Tag::MapRef &&
                 v.tag != Value::Tag::StructRef;
         }
 
+        /// Creates a new VM with the given configuration.
         explicit VM(const VMConfig& config = VMConfig()) {
             stack_capacity = config.stack_capacity;
             stack = new Value[stack_capacity];
@@ -229,6 +251,7 @@ namespace pyle {
 
         bool panicked = false;
         int execute_depth = 0;
+        bool bulk_alloc = false;
         uint64_t op_counts[256] = {};
         bool profile_ops = false;
         void dump_op_profile();
@@ -274,6 +297,14 @@ namespace pyle {
         ~GCRoot() {
             vm.gc_root_pop();
         }
+    };
+
+    /// RAII guard for bulk native-side allocation. Disables GC and skips the
+    /// VM mutex for the duration. Only safe when no Pyle code re-enters the VM.
+    struct BulkAlloc {
+        VM& vm;
+        explicit BulkAlloc(VM& v) : vm(v) { vm.set_gc_enabled(false); vm.set_bulk_alloc(true); }
+        ~BulkAlloc() { vm.set_bulk_alloc(false); vm.set_gc_enabled(true); }
     };
 }
 

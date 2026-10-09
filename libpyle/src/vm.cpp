@@ -193,7 +193,9 @@ namespace pyle {
     }
 
     HeapIdx VM::alloc(Object obj) {
-        std::lock_guard<std::recursive_mutex> lock(vm_mutex);
+        if (!bulk_alloc) {
+            std::lock_guard<std::recursive_mutex> lock(vm_mutex);
+        }
         if (gc_enabled && free_list.empty() && heap.size() >= gc_threshold) {
             gc_collect();
 
