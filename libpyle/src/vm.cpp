@@ -615,15 +615,15 @@ namespace pyle {
         return pyle::Value(); 
     }
 
-    pyle::Value VM::call_func_raw(pyle::Value closure, const std::vector<pyle::Value>& args) {
-        if (closure.tag != Value::Tag::ClosureRef && closure.tag != Value::Tag::FuncRef) {
+    pyle::Value VM::call_func_raw(pyle::Value callee, const std::vector<pyle::Value>& args) {
+        if (callee.tag != Value::Tag::ClosureRef && callee.tag != Value::Tag::FuncRef) {
             runtime_error(RuntimeError::Type, "Provided Value is not a callable Pyle function.");
             return pyle::Value();
         }
 
         Chunk call_chunk;
         
-        call_chunk.const_pool.push_back(closure);
+        call_chunk.const_pool.push_back(callee);
         call_chunk.instr.push_back(encode(OpCode::LOAD_CONST, 0));
         call_chunk.lines.push_back(0);
         
@@ -662,8 +662,8 @@ namespace pyle {
         call_trampoline_idx = alloc_permanent(Object(std::move(tram_cl)));
     }
 
-    pyle::Value VM::call_func1(pyle::Value closure, pyle::Value arg) {
-        return call_func_n(closure, &arg, 1);
+    pyle::Value VM::call_func1(pyle::Value callee, pyle::Value arg) {
+        return call_func_n(callee, &arg, 1);
     }
 
     pyle::Value VM::call_func_n(pyle::Value callee, const pyle::Value* args, size_t count) {
