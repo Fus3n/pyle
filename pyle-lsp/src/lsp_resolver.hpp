@@ -576,14 +576,19 @@ private:
         std::vector<DocumentModel*> out;
         for (auto* d : modules.all_docs()) {
             if (d->is_definition_file) continue;
-            std::string fn = d->file_path;
-            std::string stem = fs::path(fn).stem().string();
-            std::string dirname = fs::path(fn).parent_path().filename().string();
-            if (stem == module_name || dirname == module_name) out.push_back(d);
+            if (fs::path(d->file_path).stem().string() == module_name) out.push_back(d);
         }
         if (out.empty()) {
             const std::string& anchor = context_doc ? context_doc->file_path : "";
             if (auto* doc = modules.resolve(module_name, anchor)) out.push_back(doc);
+        }
+        if (out.empty()) {
+            for (auto* d : modules.all_docs()) {
+                if (d->is_definition_file) continue;
+                if (fs::path(d->file_path).parent_path().filename().string() == module_name) {
+                    out.push_back(d);
+                }
+            }
         }
         return out;
     }
