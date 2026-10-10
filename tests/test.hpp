@@ -1,8 +1,12 @@
 #pragma once
 #include <functional>
+#include <fstream>
 #include <iostream>
+#include <iterator>
 #include <string>
 #include <vector>
+#include <io.h>
+#include <fcntl.h>
 #include "pyle/pyle.hpp"
 #include "pyle/std/std_core.hpp"
 #include "pyle/binder.hpp"
@@ -41,6 +45,46 @@ inline bool g_current_failed = false;
             std::cout << "    FAIL " << __FILE__ << ":" << __LINE__ << ": " << #cond << "\n"; \
         } \
     } while (0)
+
+struct StderrCap {
+    int saved = -1;
+    const char* path = "test_stderr_capture.tmp";
+
+    void start() {
+        fflush(stderr);
+        saved = _dup(2);
+        int tmp = _open(path, _O_WRONLY | _O_CREAT | _O_TRUNC, 0600);
+        if (tmp < 0) return;
+        _dup2(tmp, 2);
+        _close(tmp);
+    }
+
+    std::string stop() {
+        fflush(stderr);
+        if (saved >= 0) {
+            _dup2(saved, 2);
+            _close(saved);
+            saved = -1;
+        }
+        std::string s;
+        {
+            std::ifstream in(path, std::ios::binary);
+            s.assign((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+        }
+        std::remove(path);
+        return s;
+    }
+};
+
+inline int count_in(const std::string& haystack, const std::string& needle) {
+    int n = 0;
+    size_t pos = 0;
+    while ((pos = haystack.find(needle, pos)) != std::string::npos) {
+        ++n;
+        pos += needle.size();
+    }
+    return n;
+}
 
 struct Ctx {
     pyle::Pyle p;

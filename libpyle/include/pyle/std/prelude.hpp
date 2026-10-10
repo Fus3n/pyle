@@ -5,12 +5,13 @@ namespace pyle {
 
     inline constexpr std::string_view PRELUDE_SOURCE = R"pyle(
         fn waitfor(task) {
+            let rooted = __is_root()
             while not task.is_done {
                 __tick()
                 let job = __next_ready_task()
                 if job != none {
                     job.resume()
-                } else {
+                } else if not rooted {
                     yield
                 }
             }
@@ -49,6 +50,7 @@ namespace pyle {
             all: fn(tasks) {
                 let coros = []
                 let results = []
+                let rooted = __is_root()
 
                 coros.reserve(tasks.size())
                 results.resize(tasks.size(), none)
@@ -87,7 +89,9 @@ namespace pyle {
                     if job != none {
                         job.resume()
                     }
-                    yield
+                    if not rooted {
+                        yield
+                    }
                 }
                 return results
             }

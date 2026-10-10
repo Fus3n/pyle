@@ -1113,6 +1113,7 @@ namespace pyle {
                 if (!std::holds_alternative<Coroutine>(o.data)) break;
                 Coroutine& c = std::get<Coroutine>(o.data);
                 if (!c.pcall_stack.empty()) return;
+                if (ci != start && c.state != Coroutine::State::Dead) return;
                 ci = c.caller_idx;
                 if (ci == start) break;
             }

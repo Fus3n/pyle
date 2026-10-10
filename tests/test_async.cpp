@@ -153,3 +153,36 @@ TEST(raise_garbage) {
     CHECK_CALM(t);
     CHECK_STR(t, "ty", "TypeError");
 }
+
+TEST(async_all_top_level_returns) {
+    Ctx t;
+    CHECK_RUN(t, R"(
+        fn good() { return 1 }
+        fn bad() { return [1][9] }
+        let res = async.all([good, bad, good])
+        let o0 = res[0]["ok"]
+        let o1 = res[1]["ok"]
+        let ty1 = res[1]["error"]["type"]
+        let o2 = res[2]["ok"]
+    )");
+    CHECK_CALM(t);
+    CHECK_STR(t, "o0", "true");
+    CHECK_STR(t, "o1", "false");
+    CHECK_STR(t, "ty1", "IndexError");
+    CHECK_STR(t, "o2", "true");
+}
+
+TEST(async_run_top_level_reports_once) {
+    Ctx t;
+    StderrCap cap;
+    cap.start();
+    bool ok = t.run(R"(
+        fn bad() { return [1][9] }
+        async.run(bad)
+    )");
+    std::string out = cap.stop();
+    CHECK(ok);
+    CHECK(t.panicked());
+    CHECK(count_in(out, "IndexError:") == 1);
+    CHECK(count_in(out, "Cannot yield from the root coro") == 0);
+}

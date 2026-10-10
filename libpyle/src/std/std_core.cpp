@@ -461,6 +461,10 @@ namespace pyle {
         return pyle::Value(pyle::Value::Tag::BytesRef, idx);
     }
 
+    static pyle::Value native_is_root(pyle::VM& vm, pyle::ArgView) {
+        return pyle::Value(vm.active_coroutine_idx == 0 || vm.active_coroutine_idx == vm.main_coroutine_idx);
+    }
+
     static pyle::Value native_background_tick(pyle::VM& vm, pyle::ArgView) {
         static std::atomic<bool> recursing{false};
         if (recursing.exchange(true)) return pyle::Value();
@@ -558,6 +562,7 @@ namespace pyle {
         pyle::bind_function<native_bytes>(vm, "Bytes");
         pyle::bind_function<native_background_tick>(vm, "__tick");
         pyle::bind_function<native_ready_pop>(vm, "__next_ready_task");
+        pyle::bind_function<native_is_root>(vm, "__is_root");
 
         auto add_type_const = [&](const std::string& name) {
             pyle::HeapIdx name_idx = vm.intern_string(name);
