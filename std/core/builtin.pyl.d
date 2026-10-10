@@ -20,3 +20,5 @@ fn typeof(v): string { }
 fn Coro(f: function): coro { }
 fn Bytes(arr: array[int]): bytes { }
 fn waitfor(task): any { }
+
+let PYLE_VERSION: string

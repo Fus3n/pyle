@@ -586,6 +586,13 @@ namespace pyle {
         add_type_const("native_function");
         add_type_const("native_object");
 
+        {
+            pyle::HeapIdx name_idx = vm.intern_string("PYLE_VERSION");
+            pyle::HeapIdx val_idx = vm.intern_string(PYLE_VERSION);
+            int slot = vm.declare_global(name_idx);
+            (*vm.global_slots)[slot] = pyle::Value(pyle::Value::Tag::StringRef, val_idx);
+        }
+
         pyle::register_core_future(vm); 
         pyle::register_file_module(vm);
 

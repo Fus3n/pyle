@@ -1,4 +1,5 @@
 #include "test.hpp"
+#include "pyle/config.hpp"
 
 TEST(gc_pressure_survival) {
     Ctx t;
@@ -243,4 +244,24 @@ TEST(enum_desugar) {
     CHECK_CALM(t);
     CHECK_STR(t, "n", "0");
     CHECK_STR(t, "w", "3");
+}
+
+TEST(language_version_constant) {
+    Ctx t;
+    CHECK_RUN(t, R"(
+        let v = PYLE_VERSION
+        let ty = typeof(PYLE_VERSION)
+        let parts = v.split(".")
+        let count = parts.size()
+        let major = parts[0]
+        let minor = parts[1]
+        let patch = parts[2]
+    )");
+    CHECK_CALM(t);
+    CHECK_STR(t, "ty", "string");
+    CHECK_STR(t, "v", PYLE_VERSION);
+    CHECK_STR(t, "count", "3");
+    CHECK(t.get("major") != "");
+    CHECK(t.get("minor") != "");
+    CHECK(t.get("patch") != "");
 }
