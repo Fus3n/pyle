@@ -315,6 +315,9 @@ namespace pyle {
         std::string pending_type;
         std::string pending_msg;
         std::vector<TraceFrame> pending_trace;
+        PCallCheckpoint resume_guard;
+        bool resume_armed = false;
+        Value task_error;
 
         Coroutine() = default;
 
@@ -366,6 +369,9 @@ namespace pyle {
             pending_type = std::move(other.pending_type);
             pending_msg = std::move(other.pending_msg);
             pending_trace = std::move(other.pending_trace);
+            resume_guard = other.resume_guard;
+            resume_armed = other.resume_armed;
+            task_error = other.task_error;
 
             stack = other.stack;
             sp = other.sp;

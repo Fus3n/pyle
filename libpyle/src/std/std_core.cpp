@@ -533,6 +533,15 @@ namespace pyle {
         return Value();
     }
 
+    Value native_raise(VM& vm, ArgView args) {
+        if (args.size() != 1) {
+            vm.runtime_error(RuntimeError::ArgumentError, "raise expects exactly 1 argument.");
+            return Value();
+        }
+        vm.raise_error(args[0]);
+        return Value();
+    }
+
     void register_core_natives(VM& vm, bool load_core_modules) {
         pyle::bind_function<native_print>(vm, "print");
         pyle::bind_function<native_printf>(vm, "printf");
@@ -544,6 +553,7 @@ namespace pyle {
         pyle::bind_function<native_pcall>(vm, "pcall");
         pyle::bind_function<native_assert>(vm, "assert");
         pyle::bind_function<native_print_trace>(vm, "print_trace");
+        pyle::bind_function<native_raise>(vm, "raise");
         pyle::bind_function<native_coro_constructor>(vm, "Coro");
         pyle::bind_function<native_bytes>(vm, "Bytes");
         pyle::bind_function<native_background_tick>(vm, "__tick");

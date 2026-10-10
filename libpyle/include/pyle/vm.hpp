@@ -237,6 +237,8 @@ namespace pyle {
         pyle::Value pcall_invoke(pyle::Value callee, const pyle::Value* args, size_t count);
         /// Prints a pcall-shaped error map using the runtime error format.
         void print_trace(pyle::Value err);
+        /// Re-raises an error map (or message string) with its trace preserved.
+        void raise_error(pyle::Value err);
 
     private:
         Value last_result;
@@ -251,6 +253,10 @@ namespace pyle {
             const std::vector<TraceFrame>& trace, const std::string& hint);
         pyle::Value build_error_value(Coroutine& coro);
         pyle::Value make_pcall_result(bool ok, Value payload);
+        bool deliver_task_failure();
+        bool parse_error_map(Value v, std::string& type, std::string& msg,
+            std::vector<TraceFrame>& trace);
+        std::string hint_for(const std::string& type, const std::string& msg);
 
         std::recursive_mutex vm_mutex; 
         bool gc_enabled = true;

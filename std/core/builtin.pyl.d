@@ -7,6 +7,7 @@ struct PCallResult(ok: bool, value: any, error: PCallError) { }
 fn pcall(f: function): PCallResult { }
 fn assert(cond: any, msg: any): any { }
 fn print_trace(err: any): none { }
+fn raise(err: any): none { }
 
 fn print() { }
 fn printf(fmt: string) { }

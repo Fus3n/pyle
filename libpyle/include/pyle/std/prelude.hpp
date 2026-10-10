@@ -15,8 +15,7 @@ namespace pyle {
                 }
             }
             if task.has_failed {
-                print("Error: " + task.error)
-                return none
+                raise({type: "FutureRejected", message: task.error, trace: []})
             }
             return task.data
         }
@@ -35,10 +34,14 @@ namespace pyle {
                 } else {
                     c = t
                 }
-                
+
                 let res = none
                 while c.state() != "dead" {
                     res = c.resume()
+                }
+                let e = c.error()
+                if e != none {
+                    raise(e)
                 }
                 return res
             },
@@ -46,10 +49,10 @@ namespace pyle {
             all: fn(tasks) {
                 let coros = []
                 let results = []
-                
+
                 coros.reserve(tasks.size())
                 results.resize(tasks.size(), none)
-                
+
                 for t in tasks {
                     if typeof(t) == "function" {
                         coros.append(Coro(t))
@@ -67,7 +70,12 @@ namespace pyle {
                         if c.state() != "dead" {
                             let res = c.resume()
                             if c.state() == "dead" {
-                                results[j] = res
+                                let e = c.error()
+                                if e == none {
+                                    results[j] = {ok: true, value: res}
+                                } else {
+                                    results[j] = {ok: false, error: e}
+                                }
                             } else {
                                 active_count += 1
                             }

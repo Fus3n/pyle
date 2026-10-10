@@ -24,6 +24,12 @@ namespace pyle::CoroMethods {
 
         Coroutine& current = std::get<Coroutine>(vm.get_heap_object(vm.active_coroutine_idx).data);
         
+        target.resume_guard.frame_count = target.frame_count;
+        target.resume_guard.sp_offset = static_cast<size_t>(target.sp - target.stack);
+        target.resume_guard.saved_globals_idx = target.saved_globals_idx;
+        target.resume_armed = true;
+        target.task_error = Value();
+
         // Save current state
         vm.save_coroutine_state(current);
         current.state = Coroutine::State::Suspended;
@@ -63,11 +69,24 @@ namespace pyle::CoroMethods {
         return Value(Value::Tag::StringRef, str_idx);
     }
 
+    Value task_error(VM& vm, HeapIdx obj_idx, ArgView args) {
+        if (args.size() != 0) {
+            vm.runtime_error(RuntimeError::ArgumentError, "error() takes 0 arguments.");
+            return Value();
+        }
+
+        Coroutine& target = std::get<Coroutine>(vm.get_heap_object(obj_idx).data);
+        if (target.task_error.tag == Value::Tag::None) return Value();
+        return target.task_error;
+    }
+
     Value dispatch(VM& vm, HeapIdx obj_idx, const std::string& name, ArgView args) {
         if (name == "resume") {
             return resume(vm, obj_idx, args);
         } else if (name == "state") {
             return state(vm, obj_idx, args);
+        } else if (name == "error") {
+            return task_error(vm, obj_idx, args);
         }
 
         vm.runtime_error(RuntimeError::Name, fmt::format("coro has no method '{}'", name));
