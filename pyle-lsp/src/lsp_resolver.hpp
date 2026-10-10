@@ -59,7 +59,7 @@ public:
             if (ec) break;
             if (!entry.is_regular_file(ec)) continue;
             std::string fn = entry.path().filename().string();
-            if (utils::has_suffix(fn, ".pyl.d") || utils::has_suffix(fn, ".pyl")) {
+            if (utils::has_suffix(fn, ".d.pyl") || utils::has_suffix(fn, ".pyl")) {
                 load_file(entry.path().string(), true);
             }
         }
@@ -121,7 +121,7 @@ public:
         auto doc = std::make_unique<DocumentModel>();
         doc->file_path = canon;
         doc->source = content;
-        doc->is_definition_file = is_definition_file || utils::has_suffix(canon, ".pyl.d");
+        doc->is_definition_file = is_definition_file || utils::has_suffix(canon, ".d.pyl");
         Analyzer::parse(*doc);
         auto* raw = doc.get();
         docs[canon] = std::move(doc);
@@ -183,16 +183,16 @@ private:
         std::string slash = "/";
         if (!dir.empty() && dir != ".") {
             out.push_back(dir + slash + name + ".pyl");
-            out.push_back(dir + slash + name + ".pyl.d");
+            out.push_back(dir + slash + name + ".d.pyl");
             out.push_back(dir + slash + name + slash + plain + ".pyl");
-            out.push_back(dir + "/types/" + plain + ".pyl.d");
+            out.push_back(dir + "/types/" + plain + ".d.pyl");
         }
         out.push_back(name + ".pyl");
-        out.push_back(name + ".pyl.d");
+        out.push_back(name + ".d.pyl");
         out.push_back(name + slash + plain + ".pyl");
         if (!workspace_root.empty()) {
             out.push_back(workspace_root + slash + name + ".pyl");
-            out.push_back(workspace_root + slash + name + ".pyl.d");
+            out.push_back(workspace_root + slash + name + ".d.pyl");
             out.push_back(workspace_root + slash + name + slash + plain + ".pyl");
         }
         for (const auto& p : doc_import_paths(from_file)) {
@@ -204,19 +204,19 @@ private:
             if (!workspace_root.empty()) bases.push_back(workspace_root + slash + norm);
             for (const auto& base : bases) {
                 out.push_back(base + slash + name + ".pyl");
-                out.push_back(base + slash + name + ".pyl.d");
+                out.push_back(base + slash + name + ".d.pyl");
                 out.push_back(base + slash + name + slash + plain + ".pyl");
             }
         }
         for (const auto& sp : std_paths) {
-            out.push_back(sp + slash + name + ".pyl.d");
-            out.push_back(sp + slash + "core" + slash + name + ".pyl.d");
+            out.push_back(sp + slash + name + ".d.pyl");
+            out.push_back(sp + slash + "core" + slash + name + ".d.pyl");
             out.push_back(sp + slash + name + ".pyl");
         }
         fs::path walk = dir.empty() || dir == "." ? fs::current_path() : fs::path(dir);
         for (int depth = 0; depth < 4; ++depth) {
             if (walk.empty()) break;
-            out.push_back(walk.string() + "/types/" + plain + ".pyl.d");
+            out.push_back(walk.string() + "/types/" + plain + ".d.pyl");
             out.push_back(walk.string() + slash + name + ".pyl");
             walk = walk.parent_path();
         }

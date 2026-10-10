@@ -333,10 +333,10 @@ private:
             for (const auto& entry : fs::directory_iterator(dir, ec)) {
                 if (ec) break;
                 std::string name = entry.path().filename().string();
-                if (utils::has_suffix(name, ".pyl") && !utils::has_suffix(name, ".pyl.d")) {
-                    stems.insert(name.substr(0, name.size() - 4));
-                } else if (utils::has_suffix(name, ".pyl.d")) {
+                if (utils::has_suffix(name, ".d.pyl")) {
                     stems.insert(name.substr(0, name.size() - 6));
+                } else if (utils::has_suffix(name, ".pyl")) {
+                    stems.insert(name.substr(0, name.size() - 4));
                 }
             }
         }

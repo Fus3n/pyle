@@ -24,7 +24,7 @@
         "extensions": [
           ".pyl",
           ".pyle",
-          ".pyl.d"
+          ".d.pyl"
         ],
         "configuration": "./language-configuration.json",
         "icon": {

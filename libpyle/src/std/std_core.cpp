@@ -184,6 +184,15 @@ namespace pyle {
         }
 
         std::string mod_name = std::get<std::string>(vm.get_heap_object(mod_name_idx).data);
+
+        constexpr std::string_view def_suffix = ".d.pyl";
+        if (mod_name.size() >= def_suffix.size() &&
+            mod_name.compare(mod_name.size() - def_suffix.size(), def_suffix.size(), def_suffix.data()) == 0) {
+            vm.runtime_error(RuntimeError::Name,
+                fmt::format("'{}' is a type definition file and cannot be imported as a module.", mod_name));
+            return Value();
+        }
+
         std::string filepath = mod_name;
         if (filepath.size() < 4 || filepath.substr(filepath.size() - 4) != ".pyl") {
             filepath += ".pyl";

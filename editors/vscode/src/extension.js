@@ -112,7 +112,7 @@ function activate(context) {
             synchronize: {
                 fileEvents: [
                     vscode.workspace.createFileSystemWatcher('**/*.pyl'),
-                    vscode.workspace.createFileSystemWatcher('**/*.pyl.d'),
+                    vscode.workspace.createFileSystemWatcher('**/*.d.pyl'),
                     vscode.workspace.createFileSystemWatcher('**/*.pyle')
                 ]
             },

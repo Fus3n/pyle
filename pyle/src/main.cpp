@@ -49,6 +49,12 @@ int main(int argc, char* argv[]) {
     }
 
     std::string script_path = program.get<std::string>("script");
+    const std::string def_suffix = ".d.pyl";
+    if (script_path.size() >= def_suffix.size() &&
+        script_path.compare(script_path.size() - def_suffix.size(), def_suffix.size(), def_suffix) == 0) {
+        fmt::print(stderr, "Error: '{}' is a type definition file, not a script.\n", script_path);
+        return 1;
+    }
     pyle::Pyle pyle;
     pyle.vm.executable_path = argv[0];
     pyle::proc::worker_init_from_env(pyle.vm);
