@@ -977,16 +977,18 @@ namespace pyle {
             "SUB", "MUL", "DIV", "MOD", "NEG",
             "EQ", "NEQ", "LT", "LTE", "GT",
             "GTE", "NOT", "JUMP", "JUMP_IF_FALSE", "JUMP_IF_TRUE",
-            "POP_JUMP_IF_FALSE", "POP_JUMP_IF_TRUE", "LOOP", "CALL", "CALL_METHOD",
+            "POP_JUMP_IF_FALSE", "POP_JUMP_IF_TRUE", "LOOP",             "CALL", "CALL_METHOD",
             "RETURN", "POP", "NEW_ARRAY", "NEW_MAP", "CALL_KW",
             "GET_INDEX", "SET_INDEX", "YIELD", "HALT", "APPEND", "JUMP_IF_NOT_ARRAY",
+            "CLOSE_UPVALUES",
         };
         static_assert(static_cast<int>(OpCode::HALT) == 48, "opcode table out of sync");
         static_assert(static_cast<int>(OpCode::JUMP_IF_NOT_ARRAY) == 50, "opcode table out of sync");
+        static_assert(static_cast<int>(OpCode::CLOSE_UPVALUES) == 51, "opcode table out of sync");
         uint64_t total = 0;
-        for (int i = 0; i <= 50; ++i) total += op_counts[i];
+        for (int i = 0; i <= 51; ++i) total += op_counts[i];
         std::vector<int> order;
-        for (int i = 0; i <= 50; ++i) {
+        for (int i = 0; i <= 51; ++i) {
             if (op_counts[i] > 0) order.push_back(i);
         }
         std::sort(order.begin(), order.end(),
@@ -1464,7 +1466,8 @@ namespace pyle {
                 &&op_YIELD,
                 &&op_HALT,
                 &&op_APPEND,
-                &&op_JUMP_IF_NOT_ARRAY
+                &&op_JUMP_IF_NOT_ARRAY,
+                &&op_CLOSE_UPVALUES
             };
             for (size_t i = 0; i < sizeof(labels) / sizeof(labels[0]); ++i) {
                 dispatch_table_storage[i] = labels[i];
@@ -2711,6 +2714,11 @@ namespace pyle {
                     if (top.tag != Value::Tag::ArrayRef) {
                         ip += ARG;
                     }
+                }
+                DISPATCH();
+
+                OP(CLOSE_UPVALUES) {
+                    close_upvalues(&stack[frame->stack_base + ARG]);
                 }
                 DISPATCH();
 

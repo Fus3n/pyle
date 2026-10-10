@@ -57,6 +57,7 @@ namespace pyle {
                    t == Tag::IteratorRef ||
                    t == Tag::RangeRef ||
                    t == Tag::ClosureRef ||
+                   t == Tag::UpvalueRef ||
                    t == Tag::MapRef ||
                    t == Tag::NativeObjectRef ||
                    t == Tag::CoroutineRef ||

@@ -69,6 +69,63 @@ TEST(closures_upvalues) {
     CHECK_STR(t, "s", "8");
 }
 
+TEST(loop_capture_freezes) {
+    Ctx t;
+    CHECK_RUN(t, R"(
+        let fns = []
+        for x in [1, 2, 3] { fns.append(fn() { return x }) }
+        let a = fns[0]()
+        let b = fns[1]()
+        let c = fns[2]()
+        let wns = []
+        let i = 0
+        while i < 2 {
+            let y = i * 10
+            wns.append(fn() { return y })
+            i += 1
+        }
+        let w0 = wns[0]()
+        let w1 = wns[1]()
+    )");
+    CHECK_CALM(t);
+    CHECK_STR(t, "a", "1");
+    CHECK_STR(t, "b", "2");
+    CHECK_STR(t, "c", "3");
+    CHECK_STR(t, "w0", "0");
+    CHECK_STR(t, "w1", "10");
+}
+
+TEST(block_capture_freezes) {
+    Ctx t;
+    CHECK_RUN(t, R"(
+        let fns = []
+        {
+            let y = 41
+            fns.append(fn() { return y })
+        }
+        let v = fns[0]()
+    )");
+    CHECK_CALM(t);
+    CHECK_STR(t, "v", "41");
+}
+
+TEST(outer_var_stays_live) {
+    Ctx t;
+    CHECK_RUN(t, R"(
+        let x = 1
+        let get = fn() { return x }
+        x = 10
+        let live = get()
+        {
+            let y = 2
+        }
+        let still = get()
+    )");
+    CHECK_CALM(t);
+    CHECK_STR(t, "live", "10");
+    CHECK_STR(t, "still", "10");
+}
+
 TEST(closure_mutation_ref) {
     Ctx t;
     CHECK_RUN(t, R"(

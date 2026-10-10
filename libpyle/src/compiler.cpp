@@ -103,9 +103,16 @@ namespace pyle {
 
     void Compiler::end_scope() {
         current_state->scope_depth--;
+        size_t popped = 0;
         while (!current_state->locals.empty() && current_state->locals.back().depth > current_state->scope_depth) {
-            emit_instruction(OpCode::POP, 0, 0);
             current_state->locals.pop_back();
+            popped++;
+        }
+        if (popped > 0) {
+            emit_instruction(OpCode::CLOSE_UPVALUES, static_cast<uint32_t>(current_state->locals.size()), 0);
+            for (size_t i = 0; i < popped; ++i) {
+                emit_instruction(OpCode::POP, 0, 0);
+            }
         }
     }
 

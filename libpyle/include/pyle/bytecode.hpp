@@ -57,6 +57,7 @@ namespace pyle {
         HALT,
         APPEND,
         JUMP_IF_NOT_ARRAY,
+        CLOSE_UPVALUES,
         Invalid = 0xFF
     };
 

@@ -75,6 +75,7 @@ namespace pyle {
                 case OpCode::YIELD:         fmt::print("YIELD\n"); break;
                 case OpCode::APPEND: fmt::print("{:16} {:4} (local)\n", "APPEND", operand); break;
                 case OpCode::JUMP_IF_NOT_ARRAY: fmt::print("{:16} {:4}\n", "JUMP_IF_NOT_ARRAY", operand); break;
+                case OpCode::CLOSE_UPVALUES: fmt::print("{:16} {:4} (local)\n", "CLOSE_UPVALUES", operand); break;
                 case OpCode::Invalid:       fmt::print("INVALID_OPCODE\n"); break;
                 default: fmt::print("UNKNOWN OPCODE\n"); break;
             }
