@@ -18,13 +18,16 @@
     },
     {
       "comment": "Function declarations with parameter highlighting: fn my_func(a, b) or fn my_func(x: Type)",
-      "begin": "\\b(fn)\\s+([a-zA-Z_][a-zA-Z0-9_]*)\\s*\\(",
+      "begin": "\\b(fn)\\s+([a-zA-Z_][a-zA-Z0-9_]*)(\\s*\\()",
       "beginCaptures": {
         "1": {
           "name": "storage.type.function.pyle"
         },
         "2": {
           "name": "entity.name.function.pyle"
+        },
+        "3": {
+          "name": "punctuation.definition.parameters.begin.pyle"
         }
       },
       "end": "\\)",
@@ -89,11 +92,11 @@
     },
     {
       "name": "support.function.builtin.pyle",
-      "match": "\\b(print|printf|format|import|add_import_path|typeof|Coro|Bytes|Future|File)\\b"
+      "match": "\\b(print|printf|format|import|add_import_path|typeof|Coro|Bytes|Future|File|pcall|assert|print_trace|raise|waitfor)\\b"
     },
     {
       "name": "support.type.primitive.pyle",
-      "match": "\\b(int|float|bool|string|array|map|bytes|function|struct|range|iterator|coro|native_function|native_object)\\b"
+      "match": "\\b(int|float|bool|string|array|map|bytes|function|struct|range|iterator|coro|native_function|native_object|any)\\b"
     },
     {
       "comment": "Method/Property access: self.health (highlights 'health')",

@@ -533,6 +533,12 @@ private:
             return member == "[]" ? owner_type.substr(6, owner_type.size() - 7) : ANY_TYPE;
         }
 
+        if (is_call) {
+            for (auto* d : modules.all_docs()) {
+                if (d->struct_symbols.find(owner_type) != d->struct_symbols.end()) return owner_type;
+            }
+        }
+
         auto members = members_of(owner_type, true, false, &context_doc);
         std::string result = ANY_TYPE;
         for (const auto& s : members) {

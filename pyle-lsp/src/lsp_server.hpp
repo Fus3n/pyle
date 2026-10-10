@@ -505,6 +505,50 @@ private:
     }
 
 
+    const SymbolInfo* find_hover_symbol(const std::string& word, DocumentModel& doc, size_t line) const {
+        std::string enclosing = enclosing_function_name(doc, line);
+        const SymbolInfo* fallback = nullptr;
+        for (const auto& s : doc.symbols) {
+            if (s.name != word) continue;
+            if (s.kind == SymbolKind::Field || s.kind == SymbolKind::Method ||
+                s.kind == SymbolKind::StaticFunction) {
+                if (!s.parent_struct.empty()) continue;
+            }
+            if (s.is_local) {
+                if (s.scope_func != enclosing) continue;
+                if (s.range.start.line > line) continue;
+                if (s.scope_end_line >= 0 && line > (size_t)s.scope_end_line) continue;
+                return &s;
+            }
+            if (!fallback) fallback = &s;
+        }
+        if (fallback) return fallback;
+        for (auto* d : resolver.all_docs()) {
+            if (!d->is_definition_file || d == &doc) continue;
+            for (const auto& s : d->symbols) {
+                if (s.name != word) continue;
+                if (s.kind != SymbolKind::Function && s.kind != SymbolKind::Struct &&
+                    s.kind != SymbolKind::Variable && s.kind != SymbolKind::Module) continue;
+                if (!s.parent_struct.empty() || !s.scope_func.empty()) continue;
+                return &s;
+            }
+        }
+        return nullptr;
+    }
+
+    std::string display_type(const SymbolInfo& s, DocumentModel& doc) {
+        std::string t = s.type_name;
+        if (t.empty()) return "any";
+        const DocumentModel& target = s.owner_doc ? *s.owner_doc : doc;
+        std::string r = types.resolve_chain(t, const_cast<DocumentModel&>(target), s.range.start.line);
+        if (r != ANY_TYPE && r != "none" && !r.empty()) return r;
+        if (t.find('(') == std::string::npos && t.find('.') == std::string::npos &&
+            t.find('[') == std::string::npos && t.find('{') == std::string::npos) {
+            return t;
+        }
+        return "any";
+    }
+
     json on_hover(const json& params) {
         std::string uri = uri_of(params);
         DocumentModel* doc = get_document(uri);
@@ -535,35 +579,27 @@ private:
         }
 
         if (!sym) {
-            std::string t = types.resolve_base(word, *doc);
-            if (t != ANY_TYPE && t != "") {
-                return json{{"contents", json{
-                    {"kind", "markdown"}, {"value", "```pyle\n" + t + "\n```\n\n*" + t + "*"}
-                }}};
-            }
-            return nullptr;
+            sym = find_hover_symbol(word, *doc, pos.line);
+            if (!sym) return nullptr;
         }
 
-        std::string md = "```pyle\n" + sym->detail + "\n```";
-        if (!sym->type_name.empty() && sym->type_name != sym->name) {
-            std::string shown = sym->type_name;
-            if (shown.find("self") != std::string::npos || shown.find('.') != std::string::npos ||
-                shown.find('(') != std::string::npos) {
-                const DocumentModel& target = sym->owner_doc ? *sym->owner_doc : *doc;
-                std::string resolved =
-                    types.resolve_chain(shown, const_cast<DocumentModel&>(target), sym->range.start.line);
-                if (resolved != ANY_TYPE && resolved != "none" && !resolved.empty()) shown = resolved;
-            }
-            md += "\n\nType: `" + shown + "`";
+        std::string md;
+        if (sym->kind == SymbolKind::Function || sym->kind == SymbolKind::Method ||
+            sym->kind == SymbolKind::StaticFunction || sym->kind == SymbolKind::Struct ||
+            sym->kind == SymbolKind::Module) {
+            md = "```pyle\n" + sym->detail + "\n```";
+        } else {
+            md = "```pyle\n" + sym->name + ": " + display_type(*sym, *doc) + "\n```";
         }
         if (sym->kind == SymbolKind::Field && !sym->parent_struct.empty()) {
             md += "\n\nField of `" + sym->parent_struct + "`";
         }
         if (sym->is_static) md += "\n\nStatic";
-        md += "\n\n" + sym->file_path;
+        md += "\n\n`" + sym->file_path;
         if (sym->selection_range.start.line != 0 || sym->selection_range.start.character != 0) {
             md += ":" + std::to_string(sym->selection_range.start.line + 1);
         }
+        md += "`";
         return json{{"contents", json{{"kind", "markdown"}, {"value", md}}}};
     }
 

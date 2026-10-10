@@ -29,6 +29,9 @@ inline std::string expr_to_chain_string(const pyle::Expr* expr) {
     if (auto* call = dynamic_cast<const pyle::CallExpr*>(expr)) {
         return expr_to_chain_string(call->callee.get()) + "()";
     }
+    if (auto* kw = dynamic_cast<const pyle::CallKwExpr*>(expr)) {
+        return expr_to_chain_string(kw->callee.get()) + "()";
+    }
     if (dynamic_cast<const pyle::ArrayExpr*>(expr)) return "[]";
     if (dynamic_cast<const pyle::MapExpr*>(expr)) return "{}";
     return "";
@@ -225,7 +228,7 @@ private:
         SymbolInfo v;
         v.name = name;
         v.kind = SymbolKind::Variable;
-        v.detail = "let " + name;
+        v.detail = "let " + name + (!vd->type_annotation.empty() ? ": " + vd->type_annotation : "");
         v.type_name = type;
         v.has_type_hint = !vd->type_annotation.empty();
         v.file_path = doc.file_path;
@@ -238,17 +241,18 @@ private:
         doc.symbols.push_back(v);
     }
 
-    static std::string format_func_detail(const pyle::FuncDeclStmt* fd, const std::string& name) {
+    static std::string format_func_detail(const pyle::FuncDeclStmt* fd, const std::string& name, bool is_method) {
         std::string detail = "fn " + name + "(";
-        for (size_t pi = 0; pi < fd->params.size(); ++pi) {
-            if (pi > 0) detail += ", ";
+        size_t start = (is_method && !fd->params.empty() && fd->params[0].lexeme == "self") ? 1 : 0;
+        for (size_t pi = start; pi < fd->params.size(); ++pi) {
+            if (pi > start) detail += ", ";
             detail += std::string(fd->params[pi].lexeme);
             if (pi < fd->param_types.size() && !fd->param_types[pi].empty()) {
                 detail += ": " + fd->param_types[pi];
             }
         }
         detail += ")";
-        if (!fd->return_type.empty()) detail += " -> " + fd->return_type;
+        if (!fd->return_type.empty()) detail += ": " + fd->return_type;
         return detail;
     }
 
@@ -263,7 +267,7 @@ private:
         SymbolInfo f;
         f.name = name;
         f.kind = is_method ? (is_static ? SymbolKind::StaticFunction : SymbolKind::Method) : SymbolKind::Function;
-        f.detail = format_func_detail(fd, name);
+        f.detail = format_func_detail(fd, name, is_method);
         f.file_path = doc.file_path;
         int fn_end = (fd->body && fd->body->close_line >= 0) ? fd->body->close_line : fd->name.selection.line + 500;
         size_t end_col = (fn_end == static_cast<int>(fd->name.selection.line))
@@ -300,8 +304,9 @@ private:
             SymbolInfo p;
             p.name = std::string(fd->params[pi].lexeme);
             p.kind = SymbolKind::Parameter;
-            p.detail = "parameter " + p.name;
-            p.type_name = (pi < fd->param_types.size()) ? fd->param_types[pi] : "";
+            std::string ptype = (pi < fd->param_types.size()) ? fd->param_types[pi] : "";
+            p.detail = p.name + ": " + (ptype.empty() ? "any" : ptype);
+            p.type_name = ptype;
             p.has_type_hint = !p.type_name.empty();
             p.file_path = doc.file_path;
             p.range = {{fd->params[pi].selection.line, fd->params[pi].selection.column},
@@ -355,7 +360,7 @@ private:
             f.kind = SymbolKind::Field;
             f.type_name = (fi < sd->field_types.size()) ? sd->field_types[fi] : "";
             f.has_type_hint = !f.type_name.empty();
-            f.detail = "self." + f.name + (f.type_name.empty() ? "" : ": " + f.type_name);
+            f.detail = f.name + ": " + (f.type_name.empty() ? "any" : f.type_name);
             f.file_path = doc.file_path;
             f.range = {{sd->fields[fi].selection.line, sd->fields[fi].selection.column},
                        {sd->fields[fi].selection.line, sd->fields[fi].selection.column + f.name.size()}};
@@ -387,7 +392,7 @@ private:
                         if (sym.kind == SymbolKind::Field && sym.parent_struct == c.current_struct && sym.name == fname) {
                             if (!sym.has_type_hint && !ftype.empty() && (sym.type_name.empty() || in_ctor)) {
                                 sym.type_name = ftype;
-                                sym.detail = "self." + fname + ": " + ftype;
+                                sym.detail = fname + ": " + ftype;
                             }
                             found = true;
                             break;
@@ -397,7 +402,7 @@ private:
                         SymbolInfo f;
                         f.name = fname;
                         f.kind = SymbolKind::Field;
-                        f.detail = "self." + fname + ": " + ftype;
+                        f.detail = fname + ": " + ftype;
                         f.type_name = ftype;
                         f.file_path = doc.file_path;
                         f.parent_struct = c.current_struct;

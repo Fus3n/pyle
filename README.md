@@ -1,4 +1,6 @@
-# Pyle
+<p align="center">
+  <img src="assets/pyle-logo.png" alt="Pyle logo" width="140">
+</p>
 
 Pyle is a fast, lightweight, embeddable dynamic scripting language for C++ 17+.
 

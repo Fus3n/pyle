@@ -1,7 +1,9 @@
 {
   "name": "pyle",
+  "displayName": "Pyle",
   "version": "1.2.0",
   "publisher": "Fus3n",
+  "icon": "images/icon.png",
   "description": "Pyle language support: syntax highlighting, LSP-powered go-to-definition, hover signatures, completions",
   "engines": {
     "vscode": "^1.85.0"
@@ -24,7 +26,11 @@
           ".pyle",
           ".pyl.d"
         ],
-        "configuration": "./language-configuration.json"
+        "configuration": "./language-configuration.json",
+        "icon": {
+          "light": "./icons/pyle-file.svg",
+          "dark": "./icons/pyle-file.svg"
+        }
       }
     ],
     "grammars": [

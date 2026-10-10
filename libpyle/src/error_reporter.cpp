@@ -73,7 +73,7 @@ namespace pyle {
         std::string_view type_str = to_string(err.type);
         
         fmt::print(stderr, "\033[1;31m{}:\033[0m \033[1m{}\033[0m\n", type_str, err.message);
-        fmt::print(stderr, "   --> {}:{}:{}\n", script_name, err.loc.line + 1, err.loc.column);
+        fmt::print(stderr, "   --> {}:{}:{}\n", script_name, err.loc.line + 1, err.loc.column + 1);
         
         std::string_view line_text = get_line_of_code(source, err.loc.line);
         if (!line_text.empty()) {
@@ -81,8 +81,8 @@ namespace pyle {
             fmt::print(stderr, " {:4d} | {}\n", line_num, line_text);
             
             std::string carets = "        | ";
-            for (size_t col = 1; col < err.loc.column && (col - 1) < line_text.size(); ++col) {
-                char c = line_text[col - 1];
+            for (size_t col = 0; col < err.loc.column && col < line_text.size(); ++col) {
+                char c = line_text[col];
                 if (c == '\t') {
                     carets += '\t';
                 } else {

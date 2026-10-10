@@ -148,7 +148,7 @@ namespace pyle {
 
         if (c == '\n') {
             line++;
-            column = 1;
+            column = 0;
         } else
             column++;
         return c;
