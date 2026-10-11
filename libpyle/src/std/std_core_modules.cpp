@@ -297,20 +297,9 @@ namespace pyle {
         return Value(Value::Tag::StringRef, vm.intern_string(buf));
     }
 
-    Value os_args(VM& vm, ArgView args) {
-        if (args.size() != 0) {
-            vm.runtime_error(RuntimeError::ArgumentError, "os.args takes 0 arguments.");
-            return Value();
-        }
-        ArrayType arr;
-        for (const std::string& s : vm.argv) {
-            arr.push_back(Value(Value::Tag::StringRef, vm.intern_string(s)));
-        }
-        return Value(Value::Tag::ArrayRef, vm.alloc(Object(std::move(arr))));
-    }
-
     Value os_module_factory(VM& vm) {
         NativeModule mod(vm, "os");
+        mod.constant("args", vm.argv);
         mod.raw_function("system", os_sys)
             .function<os_time>("time")
             .function<os_epoch>("epoch")
@@ -321,7 +310,6 @@ namespace pyle {
             .raw_function("rename", os_rename)
             .raw_function("getenv", os_getenv)
             .raw_function("date", os_date)
-            .raw_function("args", os_args)
             .raw_function("strptime", os_strptime)
             .raw_function("parse_date", os_parse_date)
             .raw_function("strftime", os_strftime)
