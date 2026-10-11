@@ -8,6 +8,20 @@
 
 Pyle is a dynamic scripting language meant to sit inside a C++ program and drive gameplay logic, tooling, and small scripts without pulling in a heavier runtime. It embeds a stack-based VM that you can execute scripts on, and you can pass data in and out of it and bind your own native functions and types to it.
 
+```js
+struct Stack(items) {
+    fn _init() { }
+
+    fn push(v) { self.items.append(v) }
+    fn pop() { return self.items.pop() }
+}
+
+let s = Stack(items: [])
+s.push(1)
+s.push(2)
+printf("{} then {}\n", s.pop(), s.pop()) # 2 then 1
+```
+
 ## Features
 
 * Simple and familiar syntax
@@ -40,6 +54,12 @@ If you would rather drive the build from CMake, or you want clangd to understand
 
 The main targets are `pyle` for the interpreter, `pyle-lsp` for the language server, and `pyle_tests` for the test suite, which you can run with `xmake run pyle_tests`. There are also four embedding examples, `example_basic_embedding`, `example_function_binding`, `example_class_binding`, and `example_async_binding`, each covering one way of wiring the VM into a host program. The C++ sample below is the first of them, so you can read it here and then build it to see the same thing run.
 
+
+## Embedding
+
+Everything except the library itself is a frontend. The `pyle` interpreter, `pyle-lsp`, and the embedding examples all link against one static library target, `libpyle`, which is the whole language: lexer, parser, compiler, VM, garbage collector, and the core native functions. The heavier dependencies (simdjson, cpp-httplib, mbedtls, argparse, raylib) belong to the `pyle` binary and its modules, not to the library, so embedding does not pull any of them in.
+
+To link it, compile everything under `libpyle/src` as C++17, add `libpyle/include` to your include path, and provide the headers for fmt and unordered_dense. Both of those are header-only, and building in-tree with xmake fetches them for you automatically. `xmake build libpyle` produces the static library; if your own project uses xmake you can point it at this repo and depend on the `libpyle` target directly, and if it uses CMake the generated `CMakeLists.txt` from the Building section already contains it.
 
 ## C++ Example
 
