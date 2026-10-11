@@ -22,15 +22,22 @@ namespace  pyle::StringMethods {
 
         auto& str = vm.get_heap_object<std::string>(obj_idx);
 
+        size_t a = str.find_first_not_of(" \t\n\r");
+        if (a == std::string::npos) return pyle::Value();
+        std::string t = str.substr(a, str.find_last_not_of(" \t\n\r") - a + 1);
         try {
-            if (str.find('.') != std::string::npos) {
-                return pyle::Value(std::stod(str));
-            } else {
-                return pyle::Value(static_cast<int64_t>(std::stoll(str)));
-            }
+            size_t pos = 0;
+            int64_t i = std::stoll(t, &pos);
+            if (pos == t.size()) return pyle::Value(i);
         } catch (...) {
-            return pyle::Value(); 
         }
+        try {
+            size_t pos = 0;
+            double d = std::stod(t, &pos);
+            if (pos == t.size()) return pyle::Value(d);
+        } catch (...) {
+        }
+        return pyle::Value();
     }
 
     Value slice(VM& vm, HeapIdx obj_idx, ArgView args) {

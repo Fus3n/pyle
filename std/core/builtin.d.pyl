@@ -17,6 +17,10 @@ fn input(prompt: string?): string { }
 fn import(name: string): map { }
 fn add_import_path(path: string): none { }
 fn typeof(v): string { }
+fn tostring(v: any): string { }
+fn tonum(v: any): int | float | none { }
+fn toint(v: any): int | none { }
+fn tofloat(v: any): float | none { }
 fn Coro(f: function): coro { }
 fn Bytes(arr: array[int]): bytes { }
 fn waitfor(task): any { }

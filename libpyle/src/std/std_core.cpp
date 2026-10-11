@@ -444,6 +444,137 @@ namespace pyle {
         return Value(Value::Tag::StringRef, vm.intern_string(args[0].tag_to_string()));
     }
 
+    static std::string trim_space(const std::string& s) {
+        size_t a = s.find_first_not_of(" \t\n\r");
+        if (a == std::string::npos) return "";
+        return s.substr(a, s.find_last_not_of(" \t\n\r") - a + 1);
+    }
+
+    static bool parse_number_text(const std::string& str, Value& out) {
+        std::string t = trim_space(str);
+        if (t.empty()) return false;
+        try {
+            size_t pos = 0;
+            int64_t i = std::stoll(t, &pos);
+            if (pos == t.size()) {
+                out = Value(i);
+                return true;
+            }
+        } catch (...) {
+        }
+        try {
+            size_t pos = 0;
+            double d = std::stod(t, &pos);
+            if (pos == t.size()) {
+                out = Value(d);
+                return true;
+            }
+        } catch (...) {
+        }
+        return false;
+    }
+
+    static bool number_text(VM& vm, const Value& v, std::string& out) {
+        if (v.tag == Value::Tag::StringRef && vm.heap_valid(v.as_ref)) {
+            out = std::get<std::string>(vm.get_heap_object(v.as_ref).data);
+            return true;
+        }
+        if (v.tag == Value::Tag::BytesRef && vm.heap_valid(v.as_ref)) {
+            const auto& bytes = std::get<BytesType>(vm.get_heap_object(v.as_ref).data);
+            out.assign(bytes.begin(), bytes.end());
+            return true;
+        }
+        return false;
+    }
+
+    Value native_tostring(VM& vm, ArgView args) {
+        if (args.size() != 1) {
+            vm.runtime_error(RuntimeError::ArgumentError, "tostring expects exactly 1 argument.");
+            return Value();
+        }
+        const Value& v = args[0];
+        switch (v.tag) {
+            case Value::Tag::StringRef:
+                return v;
+            case Value::Tag::Int:
+                return to_transient_string(vm, std::to_string(v.as_int));
+            case Value::Tag::Bool:
+                return to_transient_string(vm, v.as_bool ? "true" : "false");
+            case Value::Tag::None:
+                return to_transient_string(vm, "none");
+            default:
+                break;
+        }
+        return to_transient_string(vm, vm.value_to_string(v));
+    }
+
+    Value native_tonum(VM& vm, ArgView args) {
+        if (args.size() != 1) {
+            vm.runtime_error(RuntimeError::ArgumentError, "tonum expects exactly 1 argument.");
+            return Value();
+        }
+        const Value& v = args[0];
+        if (v.tag == Value::Tag::Int || v.tag == Value::Tag::Float) return v;
+        std::string text;
+        if (!number_text(vm, v, text)) return Value();
+        Value out;
+        if (!parse_number_text(text, out)) return Value();
+        return out;
+    }
+
+    Value native_toint(VM& vm, ArgView args) {
+        if (args.size() != 1) {
+            vm.runtime_error(RuntimeError::ArgumentError, "toint expects exactly 1 argument.");
+            return Value();
+        }
+        const Value& v = args[0];
+        if (v.tag == Value::Tag::Int) return v;
+        if (v.tag == Value::Tag::Float) {
+            double d = v.as_float;
+            if (!(d > -9.223372036854776e18) || !(d < 9.223372036854776e18)) return Value();
+            return Value(static_cast<int64_t>(d));
+        }
+        std::string text;
+        if (!number_text(vm, v, text)) return Value();
+        text = trim_space(text);
+        if (text.empty()) return Value();
+        try {
+            size_t pos = 0;
+            int64_t i = std::stoll(text, &pos);
+            if (pos != text.size()) return Value();
+            return Value(i);
+        } catch (...) {
+            return Value();
+        }
+    }
+
+    Value native_tofloat(VM& vm, ArgView args) {
+        if (args.size() != 1) {
+            vm.runtime_error(RuntimeError::ArgumentError, "tofloat expects exactly 1 argument.");
+            return Value();
+        }
+        const Value& v = args[0];
+        if (v.tag == Value::Tag::Float) return v;
+        if (v.tag == Value::Tag::Int) return Value(static_cast<double>(v.as_int));
+        std::string text;
+        if (!number_text(vm, v, text)) return Value();
+        text = trim_space(text);
+        if (text.empty()) return Value();
+        try {
+            size_t pos = 0;
+            int64_t i = std::stoll(text, &pos);
+            if (pos == text.size()) return Value(static_cast<double>(i));
+        } catch (...) {
+        }
+        try {
+            size_t pos = 0;
+            double d = std::stod(text, &pos);
+            if (pos == text.size()) return Value(d);
+        } catch (...) {
+        }
+        return Value();
+    }
+
     pyle::Value native_bytes(pyle::VM& vm, pyle::ArgView args) {
         if (args.size() != 1 || args[0].tag != pyle::Value::Tag::ArrayRef) {
             vm.runtime_error(pyle::RuntimeError::ArgumentError, "Bytes() expects 1 Array argument.");
@@ -564,6 +695,10 @@ namespace pyle {
         pyle::bind_function<native_import>(vm, "import");
         pyle::bind_function<native_add_import_path>(vm, "add_import_path");
         pyle::bind_function<native_typeof>(vm, "typeof");
+        pyle::bind_function<native_tostring>(vm, "tostring");
+        pyle::bind_function<native_tonum>(vm, "tonum");
+        pyle::bind_function<native_toint>(vm, "toint");
+        pyle::bind_function<native_tofloat>(vm, "tofloat");
         pyle::bind_function<native_pcall>(vm, "pcall");
         pyle::bind_function<native_assert>(vm, "assert");
         pyle::bind_function<native_print_trace>(vm, "print_trace");
