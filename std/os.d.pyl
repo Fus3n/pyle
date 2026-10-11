@@ -1,5 +1,6 @@
 fn time(): float { }
 fn epoch(): int { }
+fn args(): array[string] { }
 fn date(): string { }
 fn strptime(date: string, format: string): int { }
 fn parse_date(s: string): Date { }

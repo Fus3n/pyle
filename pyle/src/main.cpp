@@ -29,7 +29,7 @@ int main(int argc, char* argv[]) {
         .default_value(false)
         .implicit_value(true);
     program.add_argument("script")
-        .help("Path to .pyle script")
+        .help("Path to .pyle script (everything after it goes to os.args verbatim)")
         .required()
         .default_value(std::string(""));
     program.add_argument("-d", "--dissassamble")
@@ -37,8 +37,34 @@ int main(int argc, char* argv[]) {
         .default_value(false)
         .implicit_value(true);
 
+    std::vector<std::string> pyle_argv = {argv[0]};
+    std::vector<std::string> script_argv;
+    bool found_script = false;
+    bool dashdash = false;
+    for (int i = 1; i < argc; ++i) {
+        std::string tok = argv[i];
+        if (!found_script && !dashdash) {
+            if (tok == "--") {
+                dashdash = true;
+                continue;
+            }
+            if (tok.size() > 1 && tok[0] == '-') {
+                pyle_argv.push_back(tok);
+                continue;
+            }
+        }
+        if (!found_script) {
+            found_script = true;
+            pyle_argv.push_back(tok);
+        } else {
+            script_argv.push_back(tok);
+        }
+    }
+
+    std::vector<char*> pargv;
+    for (auto& s : pyle_argv) pargv.push_back(const_cast<char*>(s.c_str()));
     try {
-        program.parse_args(argc, argv);
+        program.parse_args(static_cast<int>(pargv.size()), pargv.data());
     } catch (const std::exception& err) {
         std::cerr << err.what() << "\n";
         std::cerr << program;
@@ -58,6 +84,7 @@ int main(int argc, char* argv[]) {
     }
     pyle::Pyle pyle;
     pyle.vm.executable_path = argv[0];
+    pyle.vm.argv = script_argv;
     pyle::proc::worker_init_from_env(pyle.vm);
     pyle::register_core_natives(pyle.vm); 
     pyle::register_module(pyle.vm, "json", register_json_module);
