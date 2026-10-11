@@ -12,3 +12,4 @@ fn base64url_encode(data): string { }
 fn base64url_decode(s: string): bytes { }
 fn random(byte_count: int): bytes { }
 fn to_hex(data): string { }
+fn pbkdf2(pass, salt, iterations: int, key_len: int): bytes { }

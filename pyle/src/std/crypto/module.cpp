@@ -4,6 +4,7 @@
 #include <mbedtls/entropy.h>
 #include <mbedtls/md.h>
 #include <mbedtls/md5.h>
+#include <mbedtls/pkcs5.h>
 #include <mbedtls/sha1.h>
 #include <mbedtls/sha256.h>
 #include <cstdint>
@@ -333,6 +334,37 @@ namespace pyle {
                 return Value();
             }
             return to_transient_string(m, to_hex(data.data(), data.size()));
+        });
+
+        mod.raw_function("pbkdf2", [](VM& m, ArgView args) -> Value {
+            if (args.size() != 4) {
+                m.runtime_error(RuntimeError::ArgumentError, "pbkdf2 expects (pass, salt, iterations, key_len).");
+                return Value();
+            }
+            std::vector<uint8_t> pass, salt;
+            if (!take_bytes(m, args[0], pass) || !take_bytes(m, args[1], salt)) {
+                m.runtime_error(RuntimeError::ArgumentError, "pbkdf2 pass and salt must be a string or bytes.");
+                return Value();
+            }
+            if (args[2].tag != Value::Tag::Int || args[3].tag != Value::Tag::Int) {
+                m.runtime_error(RuntimeError::ArgumentError, "pbkdf2 iterations and key_len must be ints.");
+                return Value();
+            }
+            int64_t iters = args[2].as_int;
+            int64_t key_len = args[3].as_int;
+            if (iters < 1 || iters > 10000000 || key_len < 1 || key_len > 1024) {
+                m.runtime_error(RuntimeError::ArgumentError, "pbkdf2 iterations or key_len out of range.");
+                return Value();
+            }
+            Bytes out(static_cast<size_t>(key_len));
+            if (mbedtls_pkcs5_pbkdf2_hmac_ext(MBEDTLS_MD_SHA256,
+                                              pass.data(), pass.size(), salt.data(), salt.size(),
+                                              static_cast<unsigned int>(iters),
+                                              static_cast<uint32_t>(key_len), out.data()) != 0) {
+                m.runtime_error(RuntimeError::Runtime, "pbkdf2 failed.");
+                return Value();
+            }
+            return bytes_result(m, std::move(out));
         });
 
         return mod.build();
