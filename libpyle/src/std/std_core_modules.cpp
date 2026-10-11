@@ -20,6 +20,12 @@ namespace pyle {
         double seconds = std::chrono::duration_cast<std::chrono::duration<double>>(duration).count();
         return Value(seconds);
     }
+
+    Value os_epoch() {
+        auto now = std::chrono::system_clock::now();
+        int64_t seconds = std::chrono::duration_cast<std::chrono::seconds>(now.time_since_epoch()).count();
+        return Value(seconds);
+    }
   
     Value os_sys(VM& vm, ArgView args) {
         if (args.size() != 1 || args[0].tag != Value::Tag::StringRef) {
@@ -169,6 +175,97 @@ namespace pyle {
         return Value(Value::Tag::StringRef, vm.intern_string(ss.str()));
     }
 
+    pyle::Value os_strptime(pyle::VM& vm, pyle::ArgView args) {
+        if (args.size() != 2 || args[0].tag != Value::Tag::StringRef || args[1].tag != Value::Tag::StringRef) {
+            vm.runtime_error(RuntimeError::ArgumentError, "os.strptime expects (date: string, format: string).");
+            return Value();
+        }
+        const std::string& text = std::get<std::string>(vm.get_heap_object(args[0].as_ref).data);
+        const std::string& fmt = std::get<std::string>(vm.get_heap_object(args[1].as_ref).data);
+        std::tm parts{};
+        std::istringstream ss(text);
+        ss >> std::get_time(&parts, fmt.c_str());
+        if (ss.fail()) {
+            vm.runtime_error(RuntimeError::ArgumentError, "os.strptime could not parse the date.");
+            return Value();
+        }
+        std::time_t epoch = std::mktime(&parts);
+        if (epoch == static_cast<std::time_t>(-1)) {
+            vm.runtime_error(RuntimeError::Runtime, "os.strptime could not convert the date.");
+            return Value();
+        }
+        return Value(static_cast<int64_t>(epoch));
+    }
+
+    namespace {
+        // Auto-detect order for os.parse_date: unambiguous ISO first, then
+        // month-first numerics, then month names. A wrong format rejects on
+        // the first mismatched character, so trial costs almost nothing.
+        constexpr const char* DATE_FORMATS[] = {
+            "%Y-%m-%d %H:%M:%S",
+            "%Y-%m-%d",
+            "%m/%d/%Y",
+            "%m-%d-%Y",
+            "%b %d, %Y",
+            "%B %d, %Y",
+        };
+
+        bool try_parse_date(const std::string& text, const char* fmt, std::tm& out) {
+            out = std::tm{};
+            out.tm_isdst = -1;
+            std::istringstream ss(text);
+            ss >> std::get_time(&out, fmt);
+            return !ss.fail();
+        }
+
+        HeapIdx date_type_idx(VM& vm) {
+            static HeapIdx idx = 0;
+            static std::unique_ptr<GCRoot> root;
+            if (idx == 0) {
+                StructType meta;
+                meta.name_idx = vm.intern_string("Date");
+                for (const char* field : {"year", "month", "day", "hour", "min", "sec", "epoch"}) {
+                    meta.field_names.push_back(vm.intern_string(field));
+                }
+                idx = vm.alloc(Object(std::move(meta)));
+                root = std::make_unique<GCRoot>(vm, idx, Value::Tag::StructTypeRef);
+            }
+            return idx;
+        }
+
+        Value date_struct(VM& vm, const std::tm& p, std::time_t epoch) {
+            Struct instance;
+            instance.type_idx = date_type_idx(vm);
+            instance.fields = {
+                Value(static_cast<int64_t>(p.tm_year) + 1900),
+                Value(static_cast<int64_t>(p.tm_mon) + 1),
+                Value(static_cast<int64_t>(p.tm_mday)),
+                Value(static_cast<int64_t>(p.tm_hour)),
+                Value(static_cast<int64_t>(p.tm_min)),
+                Value(static_cast<int64_t>(p.tm_sec)),
+                Value(static_cast<int64_t>(epoch)),
+            };
+            return Value(Value::Tag::StructRef, vm.alloc(Object(std::move(instance))));
+        }
+    }
+
+    pyle::Value os_parse_date(pyle::VM& vm, pyle::ArgView args) {
+        if (args.size() != 1 || args[0].tag != Value::Tag::StringRef) {
+            vm.runtime_error(RuntimeError::ArgumentError, "os.parse_date expects (date: string).");
+            return Value();
+        }
+        const std::string& text = std::get<std::string>(vm.get_heap_object(args[0].as_ref).data);
+        for (const char* fmt : DATE_FORMATS) {
+            std::tm parts;
+            if (!try_parse_date(text, fmt, parts)) continue;
+            std::time_t epoch = std::mktime(&parts);
+            if (epoch == static_cast<std::time_t>(-1)) continue;
+            return date_struct(vm, parts, epoch);
+        }
+        vm.runtime_error(RuntimeError::ArgumentError, "os.parse_date could not parse the date.");
+        return Value();
+    }
+
     pyle::Value os_strftime(pyle::VM& vm, pyle::ArgView args) {
         if (args.size() < 1 || args.size() > 2 || args[0].tag != Value::Tag::StringRef) {
             vm.runtime_error(RuntimeError::ArgumentError, "os.strftime expects (format: string, timestamp = now).");
@@ -204,6 +301,7 @@ namespace pyle {
         NativeModule mod(vm, "os");
         mod.raw_function("system", os_sys)
             .function<os_time>("time")
+            .function<os_epoch>("epoch")
             .function<os_file_exists>("file_exists")
             .raw_function("remove", os_remove)
             .raw_function("mkdir", os_mkdir)
@@ -211,6 +309,8 @@ namespace pyle {
             .raw_function("rename", os_rename)
             .raw_function("getenv", os_getenv)
             .raw_function("date", os_date)
+            .raw_function("strptime", os_strptime)
+            .raw_function("parse_date", os_parse_date)
             .raw_function("strftime", os_strftime)
             .raw_function("sleep", os_sleep)
             .raw_function("sleep_async", os_sleep_async)
