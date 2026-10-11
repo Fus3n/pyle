@@ -335,6 +335,11 @@ namespace pyle {
             }
         }
 
+        HeapIdx map_idx = vm.alloc(Object(std::move(module_map)));
+        vm.get_heap_object<MapObject>(map_idx).is_module = true;
+        Value val(Value::Tag::MapRef, map_idx);
+        vm.loaded_modules[mod_name_idx] = val;
+
         // Restore caller's active global storage on success.
         vm.globals_idx = vm.saved_globals_stack.back();
         vm.global_slots = (vm.globals_idx == HeapIdx(-1))
@@ -343,11 +348,7 @@ namespace pyle {
         vm.saved_globals_stack.pop_back();
         vm.global_slot_map = std::move(vm.saved_slot_maps_stack.back());
         vm.saved_slot_maps_stack.pop_back();
-        
-        HeapIdx map_idx = vm.alloc(Object(std::move(module_map)));
-        vm.get_heap_object<MapObject>(map_idx).is_module = true;
-        Value val(Value::Tag::MapRef, map_idx);
-        vm.loaded_modules[mod_name_idx] = val;
+
         return val;
     }
 
