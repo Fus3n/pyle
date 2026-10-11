@@ -16,6 +16,7 @@
 
 pyle::Value register_json_module(pyle::VM& vm);
 pyle::Value register_http_module(pyle::VM& vm);
+pyle::Value register_crypto_module(pyle::VM& vm);
 
 
 int main(int argc, char* argv[]) {
@@ -61,6 +62,7 @@ int main(int argc, char* argv[]) {
     pyle::register_core_natives(pyle.vm); 
     pyle::register_module(pyle.vm, "json", register_json_module);
     pyle::register_module(pyle.vm, "http", register_http_module);
+    pyle::register_module(pyle.vm, "crypto", register_crypto_module);
 
     fs::path exe_dir = get_executable_directory();
     pyle.vm.add_import_path((exe_dir / "std").string());

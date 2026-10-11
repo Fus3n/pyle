@@ -1,0 +1,14 @@
+fn sha256(data): bytes { }
+fn sha256_hex(data): string { }
+fn sha1(data): bytes { }
+fn sha1_hex(data): string { }
+fn md5(data): bytes { }
+fn md5_hex(data): string { }
+fn hmac_sha256(key, data): bytes { }
+fn hmac_sha256_hex(key, data): string { }
+fn base64_encode(data): string { }
+fn base64_decode(s: string): bytes { }
+fn base64url_encode(data): string { }
+fn base64url_decode(s: string): bytes { }
+fn random(byte_count: int): bytes { }
+fn to_hex(data): string { }

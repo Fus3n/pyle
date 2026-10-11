@@ -56,6 +56,7 @@ target("pyle")
     add_files("pyle/src/main.cpp")
     add_files("pyle/src/std/std_json.cpp")
     add_files("pyle/src/std/http/**.cpp")
+    add_files("pyle/src/std/crypto/module.cpp")
     add_packages("argparse", "simdjson", "cpp-httplib", "mbedtls")
     add_defines("CPPHTTPLIB_MBEDTLS_SUPPORT")
     if is_plat("mingw", "msys", "windows") then
