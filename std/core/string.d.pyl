@@ -1,19 +1,19 @@
 struct string {
-    fn size() { }
-    fn to_num() { }
-    fn slice(start: int, end: int) { }
-    fn is_digit() { }
-    fn is_alpha() { }
-    fn is_alnum() { }
-    fn is_space() { }
-    fn join(arr: array) { }
-    fn lower() { }
-    fn upper() { }
-    fn split(delimiter: string) { }
-    fn to_bytes() { }
-    fn trim() { }
-    fn contains(sub: string) { }
-    fn starts_with(prefix: string) { }
-    fn ends_with(suffix: string) { }
-    fn replace(old: string, new: string) { }
+    fn size(): int { }
+    fn to_num(): int | float | none { }
+    fn slice(start: int, end: int): string { }
+    fn is_digit(): bool { }
+    fn is_alpha(): bool { }
+    fn is_alnum(): bool { }
+    fn is_space(): bool { }
+    fn join(arr: array): string { }
+    fn lower(): string { }
+    fn upper(): string { }
+    fn split(delimiter: string): array { }
+    fn to_bytes(): bytes { }
+    fn trim(): string { }
+    fn contains(sub: string): bool { }
+    fn starts_with(prefix: string): bool { }
+    fn ends_with(suffix: string): bool { }
+    fn replace(old: string, new: string): string { }
 }

@@ -1,2 +1,2 @@
-fn parse(text: string) { }
-fn stringify(value) { }
+fn parse(text: string): map | array | string | int | float | bool | none { }
+fn stringify(value): string { }

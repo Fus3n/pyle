@@ -1,12 +1,12 @@
 struct Response(status: int, body: string, headers: map, ok: bool) { }
 
 struct Request(method: string, path: string, query: map, headers: map, cookies: map, body: string, captures: array, remote_addr: string) {
-    fn cookie(name: string): string { }
+    fn cookie(name: string): string? { }
 }
 
 struct Client(base_url: string) {
-    fn set_header(name: string, value: string) { }
-    fn set_timeout(seconds: float) { }
+    fn set_header(name: string, value: string): none { }
+    fn set_timeout(seconds: int | float): none { }
     fn get(path: string, options: map): Response { }
     fn post(path: string, options: map): Response { }
     fn put(path: string, options: map): Response { }
@@ -24,18 +24,18 @@ struct Client(base_url: string) {
 }
 
 struct Server(host: string, port: int) {
-    fn get(pattern: string, handler) { }
-    fn post(pattern: string, handler) { }
-    fn put(pattern: string, handler) { }
-    fn patch(pattern: string, handler) { }
-    fn delete(pattern: string, handler) { }
-    fn head(pattern: string, handler) { }
-    fn options(pattern: string, handler) { }
-    fn mount(prefix: string, directory: string) { }
-    fn set_keep_alive(max_requests: int, timeout_secs: int) { }
-    fn run() { }
+    fn get(pattern: string, handler): none { }
+    fn post(pattern: string, handler): none { }
+    fn put(pattern: string, handler): none { }
+    fn patch(pattern: string, handler): none { }
+    fn delete(pattern: string, handler): none { }
+    fn head(pattern: string, handler): none { }
+    fn options(pattern: string, handler): none { }
+    fn mount(prefix: string, directory: string): none { }
+    fn set_keep_alive(max_requests: int, timeout_secs: int?): none { }
+    fn run(): none { }
     fn serve_async(): Future { }
-    fn stop() { }
+    fn stop(): none { }
     fn port(): int { }
 }
 
@@ -54,6 +54,6 @@ fn delete_async(url: string, options: map): Future { }
 fn head_async(url: string, options: map): Future { }
 fn url_encode(text: string): string { }
 fn url_decode(text: string): string { }
-fn mime(extension: string, content_type: string) { }
-fn html(body: string, status: int): map { }
-fn set_cookie(name: string, value: string, options: map): string { }
+fn mime(extension: string, content_type: string): none { }
+fn html(body: string, status: int?): map { }
+fn set_cookie(name: string, value: string, options: map?): string { }

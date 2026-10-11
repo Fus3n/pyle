@@ -132,19 +132,28 @@ namespace pyle {
     }
 
     std::string Parser::parse_type_name() {
-        if (match({TokenType::NONE})) return "none";
-        std::string out = std::string(consume(TokenType::IDENTIFIER, "Expected type name.").lexeme);
-        while (match({TokenType::LEFT_BRACKET})) {
-            out += "[";
-            if (!check(TokenType::RIGHT_BRACKET)) {
-                do {
-                    out += parse_type_name();
-                    if (!match({TokenType::COMMA})) break;
-                    out += ",";
-                } while (true);
+        std::string out;
+        if (match({TokenType::NONE})) {
+            out = "none";
+        } else {
+            out = std::string(consume(TokenType::IDENTIFIER, "Expected type name.").lexeme);
+            while (match({TokenType::LEFT_BRACKET})) {
+                out += "[";
+                if (!check(TokenType::RIGHT_BRACKET)) {
+                    do {
+                        out += parse_type_name();
+                        if (!match({TokenType::COMMA})) break;
+                        out += ",";
+                    } while (true);
+                }
+                consume(TokenType::RIGHT_BRACKET, "Expected ']' to close this type.");
+                out += "]";
             }
-            consume(TokenType::RIGHT_BRACKET, "Expected ']' to close this type.");
-            out += "]";
+        }
+        if (match({TokenType::QUESTION})) out += "?";
+        while (match({TokenType::PIPE})) {
+            out += " | ";
+            out += parse_type_name();
         }
         return out;
     }

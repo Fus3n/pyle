@@ -1,8 +1,8 @@
 struct map {
-    fn size() { }
-    fn remove(key) { }
-    fn keys() { }
-    fn values() { }
-    fn has(key) { }
-    fn clear() { }
+    fn size(): int { }
+    fn remove(key): none { }
+    fn keys(): array { }
+    fn values(): array { }
+    fn has(key): bool { }
+    fn clear(): none { }
 }

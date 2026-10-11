@@ -79,6 +79,8 @@ namespace pyle {
                 return Token(TokenType::DOT, ".", token_start_span);
             case ';': return Token(TokenType::SEMICOLON, ";", token_start_span);
             case ':': return Token(TokenType::COLON, ":", token_start_span);
+            case '|': return Token(TokenType::PIPE, "|", token_start_span);
+            case '?': return Token(TokenType::QUESTION, "?", token_start_span);
             case '+': 
                 if (match('=')) return Token(TokenType::PLUS_EQUAL, "+=", token_start_span);
                 return Token(TokenType::PLUS, "+", token_start_span);

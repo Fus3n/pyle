@@ -1,5 +1,5 @@
 struct coro {
-    fn resume(arg) { }
-    fn state() { }
-    fn error() { }
+    fn resume(arg): any { }
+    fn state(): string { }
+    fn error(): PCallError? { }
 }

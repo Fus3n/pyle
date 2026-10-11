@@ -1,14 +1,14 @@
 struct array {
-    fn append(val) { }
-    fn size() { }
-    fn pop() { }
-    fn reverse() { }
-    fn slice(start: int, end: int) { }
-    fn clear() { }
-    fn reserve(capacity: int) { }
-    fn resize(new_size: int, default_value) { }
-    fn map(callback: function) { }
-    fn filter(callback: function) { }
-    fn find(callback: function) { }
-    fn index_of(value: any) { }
+    fn append(val): none { }
+    fn size(): int { }
+    fn pop(): any { }
+    fn reverse(): none { }
+    fn slice(start: int, end: int): array { }
+    fn clear(): none { }
+    fn reserve(capacity: int): none { }
+    fn resize(new_size: int, default_value): none { }
+    fn map(callback: function): array { }
+    fn filter(callback: function): array { }
+    fn find(callback: function): any { }
+    fn index_of(value: any): int? { }
 }

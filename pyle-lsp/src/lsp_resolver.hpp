@@ -237,6 +237,42 @@ public:
         std::vector<SymbolInfo> result;
         if (type_name.empty() || type_name == ANY_TYPE) return result;
 
+        for (const std::string& side : split_union(type_name)) {
+            auto part = members_of_single(side, include_private, static_only, context_doc);
+            result.insert(result.end(), part.begin(), part.end());
+        }
+        return result;
+    }
+
+    static std::vector<std::string> split_union(const std::string& type_name) {
+        std::vector<std::string> out;
+        std::string cur;
+        int depth = 0;
+        for (char c : type_name) {
+            if (c == '[') ++depth;
+            else if (c == ']' && depth > 0) --depth;
+            if (c == '|' && depth == 0) {
+                out.push_back(trim_type(cur));
+                cur.clear();
+                continue;
+            }
+            cur += c;
+        }
+        out.push_back(trim_type(cur));
+        return out;
+    }
+
+    static std::string trim_type(std::string s) {
+        while (!s.empty() && (s.front() == ' ' || s.front() == '\t')) s.erase(s.begin());
+        while (!s.empty() && (s.back() == ' ' || s.back() == '\t' || s.back() == '?')) s.pop_back();
+        return s;
+    }
+
+    std::vector<SymbolInfo> members_of_single(const std::string& type_name, bool include_private, bool static_only,
+                                              const DocumentModel* context_doc) {
+        std::vector<SymbolInfo> result;
+        if (type_name.empty() || type_name == ANY_TYPE) return result;
+
         if (utils::has_prefix(type_name, "module:")) {
             std::string module = type_name.substr(7);
             for (auto* doc : module_docs(module, context_doc)) {
@@ -301,6 +337,8 @@ public:
     std::string resolve_base(const std::string& name, DocumentModel& doc, int depth = 8) {
         if (name.empty()) return ANY_TYPE;
 
+        if (name.find('|') != std::string::npos) return name;
+
         for (const auto& s : doc.symbols) {
             if (s.name != name) continue;
             switch (s.kind) {
@@ -341,7 +379,7 @@ public:
             if (b == name) return b;
         }
         for (auto* d : modules.all_docs()) {
-            auto it = d->struct_symbols.find(name);
+            auto it = d->struct_symbols.find(strip_optional(name));
             if (it != d->struct_symbols.end()) {
                 const SymbolInfo* s = it->second;
                 return s->type_name.empty() ? s->name : s->type_name;
@@ -357,7 +395,7 @@ public:
         }
         for (const auto& [var, module] : doc.imports) {
             if (auto* m = modules.resolve(module, doc.file_path)) {
-                auto it = m->struct_symbols.find(name);
+                auto it = m->struct_symbols.find(strip_optional(name));
                 if (it != m->struct_symbols.end()) {
                     const SymbolInfo* s = it->second;
                     return s->type_name.empty() ? s->name : s->type_name;
@@ -365,6 +403,12 @@ public:
             }
         }
         return ANY_TYPE;
+    }
+
+    static std::string strip_optional(std::string s) {
+        while (!s.empty() && (s.back() == ' ' || s.back() == '\t' || s.back() == '?')) s.pop_back();
+        while (!s.empty() && (s.front() == ' ' || s.front() == '\t')) s.erase(s.begin());
+        return s;
     }
 
     std::string resolve_chain(const std::string& chain, DocumentModel& doc, size_t cursor_line = SIZE_MAX, int depth = 8,
@@ -533,12 +577,6 @@ private:
             return member == "[]" ? owner_type.substr(6, owner_type.size() - 7) : ANY_TYPE;
         }
 
-        if (is_call) {
-            for (auto* d : modules.all_docs()) {
-                if (d->struct_symbols.find(owner_type) != d->struct_symbols.end()) return owner_type;
-            }
-        }
-
         auto members = members_of(owner_type, true, false, &context_doc);
         std::string result = ANY_TYPE;
         for (const auto& s : members) {
@@ -567,6 +605,11 @@ private:
             } else if (s.kind == SymbolKind::Struct) {
                 result = s.name;
                 break;
+            }
+        }
+        if (result == ANY_TYPE && is_call) {
+            for (auto* d : modules.all_docs()) {
+                if (d->struct_symbols.find(owner_type) != d->struct_symbols.end()) return owner_type;
             }
         }
         return result;

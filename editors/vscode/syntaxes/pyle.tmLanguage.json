@@ -38,11 +38,24 @@
       },
       "patterns": [
         {
-          "match": "(:)\\s*([a-zA-Z_][a-zA-Z0-9_]*)",
+          "match": "(:)\\s*([a-zA-Z_][a-zA-Z0-9_]*(\\[[^\\]]*\\])?)",
           "captures": {
             "1": { "name": "punctuation.separator.type.pyle" },
             "2": { "name": "storage.type.annotation.pyle" }
           }
+        },
+        {
+          "comment": "Union continuation: | Type keeps names annotated, separators muted",
+          "match": "(\\|)\\s*([a-zA-Z_][a-zA-Z0-9_]*(\\[[^\\]]*\\])?)",
+          "captures": {
+            "1": { "name": "punctuation.separator.type.pyle" },
+            "2": { "name": "storage.type.annotation.pyle" }
+          }
+        },
+        {
+          "comment": "Optional marker ? after a type",
+          "match": "\\?",
+          "name": "punctuation.separator.type.pyle"
         },
         {
           "name": "variable.parameter.function.pyle",
@@ -67,8 +80,16 @@
       }
     },
     {
-      "comment": "Type annotations: var: TypeName or self.field: TypeName",
-      "match": "(:)\\s*([a-zA-Z_][a-zA-Z0-9_]*)",
+      "comment": "Type annotations: var: TypeName, generics",
+      "match": "(:)\\s*([a-zA-Z_][a-zA-Z0-9_]*(\\[[^\\]]*\\])?)",
+      "captures": {
+        "1": { "name": "punctuation.separator.type.pyle" },
+        "2": { "name": "storage.type.annotation.pyle" }
+      }
+    },
+    {
+      "comment": "Union continuation after any annotation",
+      "match": "(\\|)\\s*([a-zA-Z_][a-zA-Z0-9_]*(\\[[^\\]]*\\])?)",
       "captures": {
         "1": { "name": "punctuation.separator.type.pyle" },
         "2": { "name": "storage.type.annotation.pyle" }
@@ -115,6 +136,11 @@
     {
       "name": "keyword.operator.pyle",
       "match": "(\\+|\\-|\\*|/|%|==|!=|<=|>=|=|<|>|\\+=|\\-=|\\*=|/=|\\.\\.|=>)"
+    },
+    {
+      "comment": "Type operators | and ? only occur inside annotations; keep them muted",
+      "name": "punctuation.separator.type.pyle",
+      "match": "(\\||\\?)"
     },
     {
       "name": "constant.numeric.pyle",

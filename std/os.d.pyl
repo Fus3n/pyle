@@ -3,14 +3,14 @@ fn epoch(): int { }
 fn date(): string { }
 fn strptime(date: string, format: string): int { }
 fn parse_date(s: string): Date { }
-fn strftime(format: string, timestamp): string { }
+fn strftime(format: string, timestamp: int | float?): string { }
 fn system(cmd: string): int { }
 fn file_exists(path: string): bool { }
 fn remove(path: string): bool { }
 fn mkdir(path: string): bool { }
 fn listdir(path: string): array[string] { }
 fn rename(src: string, dst: string): bool { }
-fn getenv(name: string) { }
+fn getenv(name: string): string? { }
 fn sleep(ms: int): none { }
 fn sleep_async(ms: int): Future { }
 fn script_path(): string { }
@@ -19,7 +19,7 @@ fn cpu_count(): int { }
 fn spawn(script: string, args: array[string]): Process { }
 fn is_worker(): bool { }
 fn worker_send(msg: string): bool { }
-fn worker_recv(timeout_ms: int) { }
+fn worker_recv(timeout_ms: int): string? { }
 fn worker_args(): array[string] { }
 
 struct Date(year: int, month: int, day: int, hour: int, min: int, sec: int, epoch: int) { }
@@ -27,7 +27,7 @@ struct Date(year: int, month: int, day: int, hour: int, min: int, sec: int, epoc
 struct Process {
     fn pid(): int { }
     fn send(msg: string): bool { }
-    fn recv(timeout_ms: int) { }
+    fn recv(timeout_ms: int): string? { }
     fn recv_async(): Future { }
     fn wait(): int { }
     fn kill(): bool { }
