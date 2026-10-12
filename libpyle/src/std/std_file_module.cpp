@@ -1,4 +1,5 @@
 #include "pyle/std/std_file_module.hpp"
+#include "pyle/std/std_io.hpp"
 #include "pyle/binder.hpp"
 #include <sstream>
 #include <thread>
@@ -72,9 +73,7 @@ namespace pyle {
             return pyle::Value();
         }
         
-        std::stringstream ss;
-        ss << stream.rdbuf();
-        return pyle::to_value(vm, ss.str());
+        return pyle::to_value(vm, pyle::read_stream_all(stream));
     }
 
     void FileInstance::write(VM& vm, const std::string& text) {
@@ -240,9 +239,7 @@ namespace pyle {
         }
         auto [val, future] = pyle::Future::create(vm);
         std::thread([this, future, &vm]() {
-            std::stringstream ss;
-            ss << stream.rdbuf();
-            std::string content = ss.str();
+            std::string content = pyle::read_stream_all(stream);
             std::lock_guard<std::recursive_mutex> lock(vm.get_mutex());
             future->resolve(pyle::to_value(vm, content));
         }).detach();

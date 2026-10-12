@@ -1,0 +1,9 @@
+fn join(a: string, b: string): string { }
+fn basename(path: string): string { }
+fn dirname(path: string): string { }
+fn extension(path: string): string { }
+fn stem(path: string): string { }
+fn normalize(path: string): string { }
+fn absolute(path: string): string { }
+fn is_absolute(path: string): bool { }
+let sep: string

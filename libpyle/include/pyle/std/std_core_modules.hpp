@@ -9,4 +9,6 @@ namespace pyle {
     }
     void register_core_modules(VM& vm);
     Value math_module_factory(VM& vm);
+    Value path_module_factory(VM& vm);
+    Value fs_module_factory(VM& vm);
 }

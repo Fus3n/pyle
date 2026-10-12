@@ -10,6 +10,16 @@
 #include <sstream>
 #include <cstdlib>
 #include <algorithm>
+#include <cstring>
+#include <fstream>
+
+#ifdef _WIN32
+#include <windows.h>
+extern char** _environ;
+#else
+#include <unistd.h>
+extern char** environ;
+#endif
 
 namespace pyle {
 
@@ -35,23 +45,6 @@ namespace pyle {
         std::string cmd = std::get<std::string>(vm.get_heap_object(args[0].as_ref).data);
         int result = std::system(cmd.c_str());
         return Value(static_cast<int64_t>(result));
-    }
-
-    bool os_file_exists(std::string file_path) {
-        return std::filesystem::exists(file_path);
-    }
-
-    pyle::Value os_remove(pyle::VM& vm, pyle::ArgView args) {
-        if (args.size() != 1 || args[0].tag != Value::Tag::StringRef) {
-            vm.runtime_error(RuntimeError::ArgumentError, "os.remove expects 1 string arugment");
-            return Value();
-        }
-
-        std::string file_path = std::get<std::string>(vm.get_heap_object(args[0].as_ref).data);
-
-        std::error_code ec;
-        bool result = std::filesystem::remove(file_path, ec);
-        return Value(result && !ec);
     }
 
     pyle::Value os_sleep(pyle::VM& vm, pyle::ArgView args) {
@@ -81,66 +74,6 @@ namespace pyle {
         (void)args;
         std::filesystem::path p(vm.script_name);
         return Value(Value::Tag::StringRef, vm.intern_string(p.parent_path().string()));
-    }
-
-    pyle::Value os_mkdir(pyle::VM& vm, pyle::ArgView args) {
-        if (args.size() != 1 || args[0].tag != Value::Tag::StringRef) {
-            vm.runtime_error(RuntimeError::ArgumentError, "os.mkdir expects 1 string argument.");
-            return Value();
-        }
-
-        std::string dir = std::get<std::string>(vm.get_heap_object(args[0].as_ref).data);
-
-        std::error_code ec;
-        bool created = std::filesystem::create_directories(dir, ec);
-        return Value((created || std::filesystem::is_directory(dir, ec)) && !ec);
-    }
-
-    pyle::Value os_listdir(pyle::VM& vm, pyle::ArgView args) {
-        if (args.size() != 1 || args[0].tag != Value::Tag::StringRef) {
-            vm.runtime_error(RuntimeError::ArgumentError, "os.listdir expects 1 string argument.");
-            return Value();
-        }
-
-        std::string dir = std::get<std::string>(vm.get_heap_object(args[0].as_ref).data);
-
-        std::error_code ec;
-        if (!std::filesystem::is_directory(dir, ec) || ec) {
-            vm.runtime_error(RuntimeError::ArgumentError, "os.listdir path is not a readable directory.");
-            return Value();
-        }
-
-        ArrayType names;
-        for (const auto& entry : std::filesystem::directory_iterator(dir, ec)) {
-            if (ec) break;
-            names.push_back(Value(Value::Tag::StringRef,
-                vm.intern_string(entry.path().filename().string())));
-        }
-        if (ec) {
-            vm.runtime_error(RuntimeError::Runtime, "os.listdir failed while reading directory.");
-            return Value();
-        }
-        std::sort(names.begin(), names.end(), [&vm](const Value& a, const Value& b) {
-            return std::get<std::string>(vm.get_heap_object(a.as_ref).data) <
-                   std::get<std::string>(vm.get_heap_object(b.as_ref).data);
-        });
-
-        HeapIdx arr_idx = vm.alloc(Object(std::move(names)));
-        return Value(Value::Tag::ArrayRef, arr_idx);
-    }
-
-    pyle::Value os_rename(pyle::VM& vm, pyle::ArgView args) {
-        if (args.size() != 2 || args[0].tag != Value::Tag::StringRef || args[1].tag != Value::Tag::StringRef) {
-            vm.runtime_error(RuntimeError::ArgumentError, "os.rename expects (src: string, dst: string).");
-            return Value();
-        }
-
-        std::string src = std::get<std::string>(vm.get_heap_object(args[0].as_ref).data);
-        std::string dst = std::get<std::string>(vm.get_heap_object(args[1].as_ref).data);
-
-        std::error_code ec;
-        std::filesystem::rename(src, dst, ec);
-        return Value(!ec);
     }
 
     pyle::Value os_getenv(pyle::VM& vm, pyle::ArgView args) {
@@ -297,26 +230,248 @@ namespace pyle {
         return Value(Value::Tag::StringRef, vm.intern_string(buf));
     }
 
+    Value os_pid() {
+#ifdef _WIN32
+        return Value(static_cast<int64_t>(GetCurrentProcessId()));
+#else
+        return Value(static_cast<int64_t>(getpid()));
+#endif
+    }
+
+    Value os_platform(VM& vm) {
+#if defined(_WIN32)
+        return to_value(vm, std::string("windows"));
+#elif defined(__APPLE__)
+        return to_value(vm, std::string("macos"));
+#elif defined(__linux__)
+        return to_value(vm, std::string("linux"));
+#else
+        return to_value(vm, std::string("unknown"));
+#endif
+    }
+
+    Value os_arch(VM& vm) {
+#if defined(_M_X64) || defined(__x86_64__)
+        return to_value(vm, std::string("x86_64"));
+#elif defined(_M_ARM64) || defined(__aarch64__)
+        return to_value(vm, std::string("aarch64"));
+#elif defined(_M_IX86) || defined(__i386__)
+        return to_value(vm, std::string("x86"));
+#else
+        return to_value(vm, std::string("unknown"));
+#endif
+    }
+
+    Value os_hostname(VM& vm) {
+        char buf[256] = {0};
+#ifdef _WIN32
+        DWORD len = sizeof(buf);
+        if (GetComputerNameA(buf, &len)) return to_value(vm, std::string(buf, len));
+#else
+        if (gethostname(buf, sizeof(buf) - 1) == 0) return to_value(vm, std::string(buf));
+#endif
+        return Value();
+    }
+
+    Value os_username(VM& vm) {
+#ifdef _WIN32
+        if (const char* u = std::getenv("USERNAME")) return to_value(vm, std::string(u));
+#else
+        if (const char* u = std::getenv("USER")) return to_value(vm, std::string(u));
+#endif
+        return Value();
+    }
+
+    Value os_environ(VM& vm) {
+        MapType env;
+        auto add = [&](const char* kv) {
+            const char* eq = std::strchr(kv, '=');
+            if (!eq || eq == kv) return;
+            Value key(Value::Tag::StringRef, vm.intern_string(std::string(kv, eq - kv)));
+            Value val(Value::Tag::StringRef, vm.intern_string(std::string(eq + 1)));
+            env[key] = val;
+        };
+#ifdef _WIN32
+        for (char** e = _environ; e && *e; ++e) add(*e);
+#else
+        for (char** e = environ; e && *e; ++e) add(*e);
+#endif
+        return Value(Value::Tag::MapRef, vm.alloc(Object(std::move(env))));
+    }
+
+    Value os_setenv(VM& vm, ArgView args) {
+        if (args.size() != 2 || args[0].tag != Value::Tag::StringRef || args[1].tag != Value::Tag::StringRef) {
+            vm.runtime_error(RuntimeError::ArgumentError, "os.setenv expects (name: string, value: string).");
+            return Value();
+        }
+        std::string name = std::get<std::string>(vm.get_heap_object(args[0].as_ref).data);
+        std::string value = std::get<std::string>(vm.get_heap_object(args[1].as_ref).data);
+#ifdef _WIN32
+        return Value(_putenv_s(name.c_str(), value.c_str()) == 0);
+#else
+        return Value(setenv(name.c_str(), value.c_str(), 1) == 0);
+#endif
+    }
+
+    Value os_unsetenv(VM& vm, ArgView args) {
+        if (args.size() != 1 || args[0].tag != Value::Tag::StringRef) {
+            vm.runtime_error(RuntimeError::ArgumentError, "os.unsetenv expects (name: string).");
+            return Value();
+        }
+        std::string name = std::get<std::string>(vm.get_heap_object(args[0].as_ref).data);
+#ifdef _WIN32
+        return Value(_putenv_s(name.c_str(), "") == 0);
+#else
+        return Value(unsetenv(name.c_str()) == 0);
+#endif
+    }
+
+    Value os_cwd(VM& vm) {
+        std::error_code ec;
+        std::filesystem::path p = std::filesystem::current_path(ec);
+        if (ec) return Value();
+        return to_value(vm, p.string());
+    }
+
+    Value os_chdir(VM& vm, ArgView args) {
+        if (args.size() != 1 || args[0].tag != Value::Tag::StringRef) {
+            vm.runtime_error(RuntimeError::ArgumentError, "os.chdir expects (path: string).");
+            return Value();
+        }
+        std::string p = std::get<std::string>(vm.get_heap_object(args[0].as_ref).data);
+        std::error_code ec;
+        std::filesystem::current_path(p, ec);
+        return Value(!ec);
+    }
+
+    Value os_home(VM& vm) {
+#ifdef _WIN32
+        if (const char* h = std::getenv("USERPROFILE")) return to_value(vm, std::string(h));
+#else
+        if (const char* h = std::getenv("HOME")) return to_value(vm, std::string(h));
+#endif
+        return Value();
+    }
+
+    Value os_tempdir(VM& vm) {
+        std::error_code ec;
+        std::filesystem::path dir = std::filesystem::temp_directory_path(ec);
+        if (ec) return Value();
+        return to_value(vm, dir.string());
+    }
+
+    Value os_tmpname(VM& vm) {
+        std::error_code ec;
+        std::filesystem::path dir = std::filesystem::temp_directory_path(ec);
+        if (ec) dir = ".";
+        int64_t seed = std::chrono::duration_cast<std::chrono::nanoseconds>(
+            std::chrono::steady_clock::now().time_since_epoch()).count();
+        for (int i = 0; i < 128; ++i) {
+            std::filesystem::path candidate = dir / ("pyle_" + std::to_string(seed) + "_" + std::to_string(i));
+            if (!std::filesystem::exists(candidate, ec)) {
+                std::ofstream(candidate.string()).close();
+                return to_value(vm, candidate.string());
+            }
+        }
+        vm.runtime_error(RuntimeError::Runtime, "os.tmpname could not create a temporary file.");
+        return Value();
+    }
+
+    Value os_clock() {
+        return Value(static_cast<double>(std::clock()) / static_cast<double>(CLOCKS_PER_SEC));
+    }
+
+    Value os_difftime(VM& vm, ArgView args) {
+        if (args.size() != 2 || (args[0].tag != Value::Tag::Int && args[0].tag != Value::Tag::Float) ||
+            (args[1].tag != Value::Tag::Int && args[1].tag != Value::Tag::Float)) {
+            vm.runtime_error(RuntimeError::ArgumentError, "os.difftime expects (t2: number, t1: number).");
+            return Value();
+        }
+        double t2 = (args[0].tag == Value::Tag::Int) ? static_cast<double>(args[0].as_int) : args[0].as_float;
+        double t1 = (args[1].tag == Value::Tag::Int) ? static_cast<double>(args[1].as_int) : args[1].as_float;
+        return Value(t2 - t1);
+    }
+
+    Value os_timezone() {
+        std::time_t now = std::time(nullptr);
+        std::tm local_tm{}, utc_tm{};
+#if defined(_WIN32)
+        localtime_s(&local_tm, &now);
+        gmtime_s(&utc_tm, &now);
+#else
+        localtime_r(&now, &local_tm);
+        gmtime_r(&now, &utc_tm);
+#endif
+        return Value(static_cast<int64_t>(std::difftime(std::mktime(&local_tm), std::mktime(&utc_tm))));
+    }
+
+    Value os_localtime(VM& vm, ArgView args) {
+        if (args.size() != 1 || (args[0].tag != Value::Tag::Int && args[0].tag != Value::Tag::Float)) {
+            vm.runtime_error(RuntimeError::ArgumentError, "os.localtime expects (epoch: number).");
+            return Value();
+        }
+        std::time_t when = (args[0].tag == Value::Tag::Int)
+            ? static_cast<std::time_t>(args[0].as_int)
+            : static_cast<std::time_t>(args[0].as_float);
+        std::tm parts{};
+#if defined(_WIN32)
+        localtime_s(&parts, &when);
+#else
+        localtime_r(&when, &parts);
+#endif
+        return date_struct(vm, parts, when);
+    }
+
+    Value os_gmtime(VM& vm, ArgView args) {
+        if (args.size() != 1 || (args[0].tag != Value::Tag::Int && args[0].tag != Value::Tag::Float)) {
+            vm.runtime_error(RuntimeError::ArgumentError, "os.gmtime expects (epoch: number).");
+            return Value();
+        }
+        std::time_t when = (args[0].tag == Value::Tag::Int)
+            ? static_cast<std::time_t>(args[0].as_int)
+            : static_cast<std::time_t>(args[0].as_float);
+        std::tm parts{};
+#if defined(_WIN32)
+        gmtime_s(&parts, &when);
+#else
+        gmtime_r(&when, &parts);
+#endif
+        return date_struct(vm, parts, when);
+    }
+
     Value os_module_factory(VM& vm) {
         NativeModule mod(vm, "os");
         mod.constant("args", vm.argv);
         mod.raw_function("system", os_sys)
             .function<os_time>("time")
             .function<os_epoch>("epoch")
-            .function<os_file_exists>("file_exists")
-            .raw_function("remove", os_remove)
-            .raw_function("mkdir", os_mkdir)
-            .raw_function("listdir", os_listdir)
-            .raw_function("rename", os_rename)
             .raw_function("getenv", os_getenv)
             .raw_function("date", os_date)
             .raw_function("strptime", os_strptime)
             .raw_function("parse_date", os_parse_date)
             .raw_function("strftime", os_strftime)
+            .raw_function("localtime", os_localtime)
+            .raw_function("gmtime", os_gmtime)
             .raw_function("sleep", os_sleep)
             .raw_function("sleep_async", os_sleep_async)
             .raw_function("script_path", os_script_path)
-            .raw_function("script_dir", os_script_dir);
+            .raw_function("script_dir", os_script_dir)
+            .function<os_pid>("pid")
+            .function<os_platform>("platform")
+            .function<os_arch>("arch")
+            .function<os_hostname>("hostname")
+            .function<os_username>("username")
+            .function<os_environ>("environ")
+            .raw_function("setenv", os_setenv)
+            .raw_function("unsetenv", os_unsetenv)
+            .function<os_cwd>("cwd")
+            .raw_function("chdir", os_chdir)
+            .function<os_home>("home")
+            .function<os_tempdir>("tempdir")
+            .function<os_tmpname>("tmpname")
+            .function<os_clock>("clock")
+            .raw_function("difftime", os_difftime)
+            .function<os_timezone>("timezone");
         proc::bind_to_os(vm, mod);
         return mod.build();
     }
@@ -385,6 +540,8 @@ namespace pyle {
 
     void register_core_modules(VM& vm) {
         pyle::register_module(vm, "os", os_module_factory);
+        pyle::register_module(vm, "path", path_module_factory);
+        pyle::register_module(vm, "fs", fs_module_factory);
         pyle::register_module(vm, "color", color_module_factory);
         pyle::register_module(vm, "math", math_module_factory);
     }

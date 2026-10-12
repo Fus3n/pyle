@@ -687,6 +687,17 @@ namespace pyle {
         return Value();
     }
 
+    Value native_exit(VM& vm, ArgView args) {
+        int code = 0;
+        if (args.size() >= 1) {
+            if (args[0].tag == Value::Tag::Int) code = static_cast<int>(args[0].as_int);
+            else if (args[0].tag == Value::Tag::Float) code = static_cast<int>(args[0].as_float);
+        }
+        (void)vm;
+        std::fflush(nullptr);
+        std::exit(code);
+    }
+
     void register_core_natives(VM& vm, bool load_core_modules) {
         pyle::bind_function<native_print>(vm, "print");
         pyle::bind_function<native_printf>(vm, "printf");
@@ -708,6 +719,7 @@ namespace pyle {
         pyle::bind_function<native_background_tick>(vm, "__tick");
         pyle::bind_function<native_ready_pop>(vm, "__next_ready_task");
         pyle::bind_function<native_is_root>(vm, "__is_root");
+    pyle::bind_function<native_exit>(vm, "exit");
 
         auto add_type_const = [&](const std::string& name) {
             pyle::HeapIdx name_idx = vm.intern_string(name);

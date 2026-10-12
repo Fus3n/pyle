@@ -5,18 +5,31 @@ fn date(): string { }
 fn strptime(date: string, format: string): int { }
 fn parse_date(s: string): Date { }
 fn strftime(format: string, timestamp: int | float?): string { }
+fn localtime(epoch: int | float): Date { }
+fn gmtime(epoch: int | float): Date { }
 fn system(cmd: string): int { }
-fn file_exists(path: string): bool { }
-fn remove(path: string): bool { }
-fn mkdir(path: string): bool { }
-fn listdir(path: string): array[string] { }
-fn rename(src: string, dst: string): bool { }
 fn getenv(name: string): string? { }
+fn setenv(name: string, value: string): bool { }
+fn unsetenv(name: string): bool { }
+fn environ(): map { }
 fn sleep(ms: int): none { }
 fn sleep_async(ms: int): Future { }
 fn script_path(): string { }
 fn script_dir(): string { }
 fn cpu_count(): int { }
+fn pid(): int { }
+fn platform(): string { }
+fn arch(): string { }
+fn hostname(): string? { }
+fn username(): string? { }
+fn cwd(): string? { }
+fn chdir(path: string): bool { }
+fn home(): string? { }
+fn tempdir(): string? { }
+fn tmpname(): string { }
+fn clock(): float { }
+fn difftime(t2: int | float, t1: int | float): float { }
+fn timezone(): int { }
 fn spawn(script: string, args: array[string]): Process { }
 fn is_worker(): bool { }
 fn worker_send(msg: string): bool { }

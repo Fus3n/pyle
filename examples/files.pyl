@@ -1,4 +1,4 @@
-let os = import("os")
+let fs = import("fs")
 
 fn test_text_io() {
     let path = "test.txt"
@@ -69,9 +69,9 @@ fn main() {
     test_async_io()
 
     print("\n--- Cleaning up files ---")
-    print("remove test.txt: ", os.remove("test.txt"))
-    print("remove test.bin: ", os.remove("test.bin"))
-    print("remove test_async.txt: ", os.remove("test_async.txt"))
+    print("remove test.txt: ", fs.remove("test.txt"))
+    print("remove test.bin: ", fs.remove("test.bin"))
+    print("remove test_async.txt: ", fs.remove("test_async.txt"))
 }
 
 # Use async.run to allow waitfor inside our coroutines

@@ -1,4 +1,4 @@
-let os = import("os")
+let fs = import("fs")
 
 
 # There is a json parser module in the frontend code but the embdeded target does not include it
@@ -175,12 +175,12 @@ struct JSONParser(_src, _idx) {
     }
 
     fn parse_file(file_name) {
-        if not os.file_exists(file_name) {
+        if not fs.exists(file_name) {
             printf("JSONParser: file {} doesn't exists", file_name)
             return none
         }
 
-        let content = os.read_file(file_name)
+        let content = fs.read_file(file_name)
         
         if content == none {
             print("JSONParser: Could not read file: " + file_name)

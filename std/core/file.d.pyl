@@ -1,0 +1,17 @@
+struct File {
+    fn open(path: string, mode: string): File { }
+    fn read_line(): string? { }
+    fn read_all(): string { }
+    fn write(text: string): none { }
+    fn read_bytes(count: int?): bytes { }
+    fn write_bytes(data: bytes): none { }
+    fn read_line_async(): Future { }
+    fn read_all_async(): Future { }
+    fn write_async(text: string): Future { }
+    fn read_bytes_async(count: int?): Future { }
+    fn write_bytes_async(data: bytes): Future { }
+    fn seek(offset: int, origin: int): none { }
+    fn tell(): int { }
+    fn close(): none { }
+    fn size(): int { }
+}

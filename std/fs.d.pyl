@@ -1,0 +1,16 @@
+fn exists(path: string): bool { }
+fn is_file(path: string): bool { }
+fn is_dir(path: string): bool { }
+fn remove(path: string): bool { }
+fn remove_all(path: string): bool { }
+fn mkdir(path: string): bool { }
+fn listdir(path: string): array[string] { }
+fn walk(path: string): array[string] { }
+fn glob(pattern: string): array[string] { }
+fn rename(src: string, dst: string): bool { }
+fn copy(src: string, dst: string): bool { }
+fn file_size(path: string): int? { }
+fn modified(path: string): int? { }
+fn read_file(path: string): string? { }
+fn write_file(path: string, data: string): bool { }
+fn append_file(path: string, data: string): bool { }
