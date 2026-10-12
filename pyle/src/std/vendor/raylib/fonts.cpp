@@ -14,7 +14,22 @@ namespace raylib_binding {
             auto* f = static_cast<Font*>(std::get<NativeObject>(vm.get_heap_object(obj_idx).data).ptr);
             return to_value_owned<Texture2D>(vm, new Texture2D{ f->texture.id, f->texture.width, f->texture.height, f->texture.mipmaps, f->texture.format });
         });
+        font.custom_getter("baseSize", +[](VM& vm, HeapIdx obj_idx, ArgView) -> Value {
+            auto* f = static_cast<Font*>(std::get<NativeObject>(vm.get_heap_object(obj_idx).data).ptr);
+            return to_value(vm, f->baseSize);
+        });
+        font.custom_getter("glyphCount", +[](VM& vm, HeapIdx obj_idx, ArgView) -> Value {
+            auto* f = static_cast<Font*>(std::get<NativeObject>(vm.get_heap_object(obj_idx).data).ptr);
+            return to_value(vm, f->glyphCount);
+        });
         mod.class_type(font);
+
+        mod.raw_function("IsFontValid", +[](VM& vm, ArgView args) -> Value {
+            if (args.size() != 1) { vm.runtime_error(RuntimeError::ArgumentError, "IsFontValid expects 1 Font."); return Value(); }
+            Font* f = as_native<Font>(vm, args[0], "Font");
+            if (!f) return Value();
+            return Value(IsFontValid(*f));
+        });
 
         mod.raw_function("LoadFont", +[](VM& vm, ArgView args) -> Value {
             if (args.size() != 1) { vm.runtime_error(RuntimeError::ArgumentError, "LoadFont expects 1 string."); return Value(); }

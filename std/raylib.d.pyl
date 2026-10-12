@@ -6,7 +6,7 @@ struct Vector3(x: float, y: float, z: float) { }
 struct Matrix(m0: float, m1: float, m2: float, m3: float, m4: float, m5: float, m6: float, m7: float, m8: float, m9: float, m10: float, m11: float, m12: float, m13: float, m14: float, m15: float) { }
 struct Image(width: int, height: int, mipmaps: int, format: int) { }
 struct Texture(id: int, width: int, height: int, mipmaps: int, format: int) { }
-struct Font(texture: Texture) { }
+struct Font(texture: Texture, baseSize: int, glyphCount: int) { }
 struct Sound { }
 struct Music(looping: bool) { }
 struct Camera3D(position: Vector3, target: Vector3, up: Vector3, fovy: float, projection: int) { }
@@ -186,6 +186,7 @@ fn ExportImage(image: Image, fileName: string): bool { }
 
 fn LoadFont(fileName: string): Font { }
 fn LoadFontEx(path: string, font_size: int, codepoints: array, codepoint_count: int): Font { }
+fn IsFontValid(font: Font): bool { }
 fn UnloadFont(font: Font) { }
 fn DrawTextEx(font: Font, text: string, position: Vector2, size: float, spacing: float, color: Color) { }
 fn MeasureTextEx(font: Font, text: string, size: float, spacing: float): Vector2 { }
