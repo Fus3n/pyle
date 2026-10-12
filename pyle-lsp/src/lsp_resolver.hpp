@@ -178,9 +178,33 @@ private:
             dir = fs::path(from_file).parent_path().string();
         } catch (...) { dir = "."; }
 
+        std::string slash = "/";
+
+        if (utils::has_suffix(name, ".pyl")) {
+            if (!dir.empty() && dir != ".") out.push_back(dir + slash + name);
+            out.push_back(name);
+            if (!workspace_root.empty()) out.push_back(workspace_root + slash + name);
+            for (const auto& p : doc_import_paths(from_file)) {
+                std::string norm = p;
+                std::replace(norm.begin(), norm.end(), '\\', '/');
+                std::vector<std::string> bases;
+                bases.push_back(norm);
+                if (!dir.empty() && dir != ".") bases.push_back(dir + slash + norm);
+                if (!workspace_root.empty()) bases.push_back(workspace_root + slash + norm);
+                for (const auto& base : bases) {
+                    out.push_back(base + slash + name);
+                }
+            }
+            fs::path walk = dir.empty() || dir == "." ? fs::current_path() : fs::path(dir);
+            for (int depth = 0; depth < 4; ++depth) {
+                if (walk.empty()) break;
+                out.push_back((walk / name).string());
+                walk = walk.parent_path();
+            }
+        }
+
         std::string plain = name.substr(name.find_last_of('/') + 1);
 
-        std::string slash = "/";
         if (!dir.empty() && dir != ".") {
             out.push_back(dir + slash + name + ".pyl");
             out.push_back(dir + slash + name + ".d.pyl");
@@ -617,6 +641,13 @@ private:
 
     std::vector<DocumentModel*> module_docs(const std::string& module_name, const DocumentModel* context_doc = nullptr) {
         std::vector<DocumentModel*> out;
+
+        if (utils::has_suffix(module_name, ".pyl")) {
+            const std::string& anchor = context_doc ? context_doc->file_path : "";
+            if (auto* doc = modules.resolve(module_name, anchor)) out.push_back(doc);
+            if (!out.empty()) return out;
+        }
+
         for (auto* d : modules.all_docs()) {
             if (d->is_definition_file) continue;
             if (fs::path(d->file_path).stem().string() == module_name) out.push_back(d);
