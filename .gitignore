@@ -25,3 +25,6 @@ CMakeLists.txt
 
 # Personal test webapp
 webapp/
+
+# Generated build metadata (git commit hash)
+pyle/src/build_info.hpp

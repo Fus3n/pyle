@@ -67,6 +67,28 @@ target("pyle")
     if is_mode("release") then
         set_policy("build.optimization.lto", true)
     end
+    on_load(function (target)
+        local hash = "unknown"
+        local dirty = 0
+        local suffix = ""
+        local out = try {function () return os.iorunv("git", {"rev-parse", "--short", "HEAD"}) end}
+        if out then
+            hash = out:trim()
+            local status = try {function () return os.iorunv("git", {"status", "--porcelain"}) end}
+            if status and #status:trim() > 0 then
+                dirty = 1
+                suffix = "-dirty"
+            end
+        end
+        local content = string.format(
+            "#pragma once\n\n#define PYLE_GIT_HASH \"%s\"\n#define PYLE_GIT_DIRTY %d\n#define PYLE_GIT_SUFFIX \"%s\"\n",
+            hash, dirty, suffix)
+        local header = path.join(os.projectdir(), "pyle", "src", "build_info.hpp")
+        local existing = os.isfile(header) and io.readfile(header) or nil
+        if existing ~= content then
+            io.writefile(header, content)
+        end
+    end)
     after_build(function (target)
         import("core.project.project")
         os.cp("$(projectdir)/std", target:targetdir())

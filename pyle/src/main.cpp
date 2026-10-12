@@ -13,6 +13,7 @@
 #include "pyle/std/std_core.hpp" 
 #include "pyle/std/std_process.hpp"
 #include "pyle/binder.hpp"
+#include "build_info.hpp"
 #include "utils.hpp"
 
 
@@ -86,7 +87,7 @@ int main(int argc, char* argv[]) {
         return 1;
     }
     if (program.get<bool>("--version")) {
-        fmt::printf("Pyle version %s\n", PYLE_VERSION);
+        fmt::printf("Pyle version %s (%s%s)\n", PYLE_VERSION, PYLE_GIT_HASH, PYLE_GIT_SUFFIX);
         return 0;
     }
 
@@ -124,6 +125,12 @@ int main(int argc, char* argv[]) {
     pyle.vm.argv = script_argv;
     pyle::proc::worker_init_from_env(pyle.vm);
     pyle::register_core_natives(pyle.vm); 
+    {
+        pyle::HeapIdx name_idx = pyle.vm.intern_string("PYLE_GIT_HASH");
+        pyle::HeapIdx val_idx = pyle.vm.intern_string(PYLE_GIT_HASH);
+        int slot = pyle.vm.declare_global(name_idx);
+        (*pyle.vm.global_slots)[slot] = pyle::Value(pyle::Value::Tag::StringRef, val_idx);
+    }
     pyle::register_module(pyle.vm, "json", register_json_module);
     pyle::register_module(pyle.vm, "http", register_http_module);
     pyle::register_module(pyle.vm, "crypto", register_crypto_module);
