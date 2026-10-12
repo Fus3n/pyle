@@ -3,6 +3,8 @@
 #include <sstream>
 #include <stdexcept>
 #include <fstream>
+#include <cstdlib>
+#include <iostream>
 
 
 #ifdef _WIN32
@@ -34,9 +36,16 @@ inline fs::path get_executable_directory() {
 
 
 inline std::string read_file(const std::string& filepath) {
+    std::error_code ec;
+    if (!fs::exists(filepath, ec)) {
+        throw std::runtime_error("no such file: '" + filepath + "'");
+    }
+    if (fs::is_directory(filepath, ec)) {
+        throw std::runtime_error("'" + filepath + "' is a directory, not a file");
+    }
     std::ifstream file(filepath, std::ios::in | std::ios::binary);
     if (!file) {
-        throw std::runtime_error("Could not open file: " + filepath);
+        throw std::runtime_error("could not open file: '" + filepath + "'");
     }
     std::ostringstream contents;
     contents << file.rdbuf();
@@ -45,9 +54,10 @@ inline std::string read_file(const std::string& filepath) {
 
 
 inline void print_assertion_status() {
+    if (std::getenv("PYLE_DEBUG") == nullptr) return;
     #ifdef NDEBUG
-        puts("Assertions disabled");
+        std::cerr << "Assertions disabled\n";
     #else
-        puts("Assertions enabled");
+        std::cerr << "Assertions enabled\n";
     #endif
 }

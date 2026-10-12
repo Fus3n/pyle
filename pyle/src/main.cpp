@@ -1,5 +1,7 @@
 #include <exception>
 #include <iostream>
+#include <sstream>
+#include <vector>
 #include <fmt/printf.h>
 
 
@@ -19,23 +21,28 @@ pyle::Value register_http_module(pyle::VM& vm);
 pyle::Value register_crypto_module(pyle::VM& vm);
 
 
+static bool looks_like_flag(const std::string& tok) {
+    return tok.size() > 1 && tok[0] == '-';
+}
+
 int main(int argc, char* argv[]) {
     print_assertion_status();
 
-    argparse::ArgumentParser program("pyle");
+    argparse::ArgumentParser program("pyle", "", argparse::default_arguments::help);
 
     program.add_argument("-v", "--version")
         .help("Prints version information")
         .default_value(false)
         .implicit_value(true);
     program.add_argument("script")
-        .help("Path to .pyle script (everything after it goes to os.args verbatim)")
-        .required()
+        .help("Path to a .pyl script, or - to read the script from stdin (everything after it goes to os.args verbatim)")
         .default_value(std::string(""));
     program.add_argument("-d", "--dissassamble")
-        .help("Prints dissassambled bytecode of the given script")
+        .help("Prints disassembled bytecode of the given script")
         .default_value(false)
         .implicit_value(true);
+
+    const std::vector<std::string> value_flags = {};
 
     std::vector<std::string> pyle_argv = {argv[0]};
     std::vector<std::string> script_argv;
@@ -48,8 +55,16 @@ int main(int argc, char* argv[]) {
                 dashdash = true;
                 continue;
             }
-            if (tok.size() > 1 && tok[0] == '-') {
+            if (looks_like_flag(tok)) {
                 pyle_argv.push_back(tok);
+                if (tok.find('=') == std::string::npos) {
+                    for (const auto& vf : value_flags) {
+                        if (tok == vf && i + 1 < argc) {
+                            pyle_argv.push_back(argv[++i]);
+                            break;
+                        }
+                    }
+                }
                 continue;
             }
         }
@@ -76,12 +91,34 @@ int main(int argc, char* argv[]) {
     }
 
     std::string script_path = program.get<std::string>("script");
+    if (script_path.empty()) {
+        std::cout << program;
+        return 1;
+    }
+
     const std::string def_suffix = ".d.pyl";
-    if (script_path.size() >= def_suffix.size() &&
+    if (script_path != "-" && script_path.size() >= def_suffix.size() &&
         script_path.compare(script_path.size() - def_suffix.size(), def_suffix.size(), def_suffix) == 0) {
         fmt::print(stderr, "Error: '{}' is a type definition file, not a script.\n", script_path);
         return 1;
     }
+
+    std::string source;
+    std::string display_name = script_path;
+    try {
+        if (script_path == "-") {
+            std::ostringstream buffer;
+            buffer << std::cin.rdbuf();
+            source = buffer.str();
+            display_name = "<stdin>";
+        } else {
+            source = read_file(script_path);
+        }
+    } catch (const std::exception& e) {
+        std::cerr << "Error: " << e.what() << "\n";
+        return 1;
+    }
+
     pyle::Pyle pyle;
     pyle.vm.executable_path = argv[0];
     pyle.vm.argv = script_argv;
@@ -96,8 +133,7 @@ int main(int argc, char* argv[]) {
     pyle.vm.add_import_path("./std/");
 
     try {
-        std::string source = read_file(script_path);
-        bool ok = pyle.execute(source, program.get<bool>("--dissassamble"), script_path);
+        bool ok = pyle.execute(source, program.get<bool>("--dissassamble"), display_name);
         if (!ok || pyle.vm.is_panicked()) return 1;
     } catch (const std::exception& e) {
         std::cerr << "Error: " << e.what() << "\n";
