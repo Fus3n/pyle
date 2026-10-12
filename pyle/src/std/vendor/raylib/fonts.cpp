@@ -1,7 +1,34 @@
 #include "raylib_binding.hpp"
+#include <fstream>
 
 namespace pyle {
 namespace raylib_binding {
+
+    namespace {
+
+        bool is_loadable_font(const std::string& path) {
+            std::ifstream file(path, std::ios::binary | std::ios::ate);
+            if (!file) return false;
+            std::streamoff size = file.tellg();
+            if (size < 12) return false;
+            file.seekg(0);
+            unsigned char hdr[12] = {0};
+            file.read(reinterpret_cast<char*>(hdr), 12);
+            if (file.gcount() < 12) return false;
+
+            unsigned int magic = (static_cast<unsigned int>(hdr[0]) << 24) |
+                                 (static_cast<unsigned int>(hdr[1]) << 16) |
+                                 (static_cast<unsigned int>(hdr[2]) << 8) |
+                                  static_cast<unsigned int>(hdr[3]);
+            if (magic == 0x74746366u) return true;
+            if (magic != 0x00010000u && magic != 0x74727565u &&
+                magic != 0x74797031u && magic != 0x4F54544Fu) return false;
+
+            unsigned int num_tables = (static_cast<unsigned int>(hdr[4]) << 8) | hdr[5];
+            return static_cast<std::streamoff>(12 + num_tables * 16) <= size;
+        }
+
+    }
 
     void register_fonts(NativeModule& mod) {
         VM& vm = mod.get_vm();
@@ -34,6 +61,10 @@ namespace raylib_binding {
         mod.raw_function("LoadFont", +[](VM& vm, ArgView args) -> Value {
             if (args.size() != 1) { vm.runtime_error(RuntimeError::ArgumentError, "LoadFont expects 1 string."); return Value(); }
             const std::string& path = from_value<std::string>(vm, args[0]);
+            if (!is_loadable_font(path)) {
+                vm.runtime_error(RuntimeError::Type, "not a valid font file: '" + path + "'");
+                return Value();
+            }
             Font f = LoadFont(path.c_str());
             return to_value_owned<Font>(vm, new Font{ f.baseSize, f.glyphCount, f.glyphPadding, f.texture, f.recs, f.glyphs });
         });
@@ -42,6 +73,10 @@ namespace raylib_binding {
             if (args.size() < 2 || args.size() > 4) { vm.runtime_error(RuntimeError::ArgumentError, "LoadFontEx expects (path, font_size[, codepoints, codepoint_count])."); return Value(); }
             const std::string& path = from_value<std::string>(vm, args[0]);
             int sz = from_value<int>(vm, args[1]);
+            if (!is_loadable_font(path)) {
+                vm.runtime_error(RuntimeError::Type, "not a valid font file: '" + path + "'");
+                return Value();
+            }
             int* codepoints = nullptr;
             int codepoint_count = 0;
             std::vector<int> cp_vec;
