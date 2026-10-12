@@ -483,6 +483,24 @@ private:
         return json{{"isIncomplete", false}, {"items", items}};
     }
 
+    static int completion_group(SymbolKind kind) {
+        switch (kind) {
+            case SymbolKind::Function:
+            case SymbolKind::Method:
+            case SymbolKind::StaticFunction:
+            case SymbolKind::Struct:
+                return 0;
+            case SymbolKind::Variable:
+            case SymbolKind::Field:
+            case SymbolKind::Parameter:
+                return 1;
+            case SymbolKind::Module:
+                return 2;
+            default:
+                return 3;
+        }
+    }
+
     json completion_item(const SymbolInfo& s) const {
         int kind = 6;
         switch (s.kind) {
@@ -500,7 +518,8 @@ private:
             {"label", s.name}, {"kind", kind},
             {"detail", s.detail},
             {"documentation", s.documentation.empty() ? "" : s.documentation},
-            {"insertText", s.name}
+            {"insertText", s.name},
+            {"sortText", std::to_string(completion_group(s.kind)) + "|" + s.name}
         };
     }
 

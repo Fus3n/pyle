@@ -292,6 +292,24 @@ public:
         return s;
     }
 
+    static int symbol_group(SymbolKind kind) {
+        switch (kind) {
+            case SymbolKind::Function:
+            case SymbolKind::Method:
+            case SymbolKind::StaticFunction:
+            case SymbolKind::Struct:
+                return 0;
+            case SymbolKind::Variable:
+            case SymbolKind::Field:
+            case SymbolKind::Parameter:
+                return 1;
+            case SymbolKind::Module:
+                return 2;
+            default:
+                return 3;
+        }
+    }
+
     std::vector<SymbolInfo> members_of_single(const std::string& type_name, bool include_private, bool static_only,
                                               const DocumentModel* context_doc) {
         std::vector<SymbolInfo> result;
@@ -310,6 +328,13 @@ public:
                     }
                 }
             }
+            std::stable_sort(result.begin(), result.end(),
+                             [](const SymbolInfo& a, const SymbolInfo& b) {
+                                 if (symbol_group(a.kind) != symbol_group(b.kind)) {
+                                     return symbol_group(a.kind) < symbol_group(b.kind);
+                                 }
+                                 return a.name < b.name;
+                             });
             return result;
         }
 
