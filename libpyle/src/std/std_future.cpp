@@ -29,10 +29,12 @@ namespace pyle {
             })
             .getter<&Future::is_done>("is_done")
             .getter<&Future::has_failed>("has_failed")
+            .getter<&Future::is_cancelled>("is_cancelled")
             .getter<&Future::get_data>("data")
             .getter<&Future::get_error>("error")
             .method<&Future::resolve>("resolve")
             .method<&Future::reject>("reject")
+            .method<&Future::cancel>("cancel")
             .register_globally();
     }
 }

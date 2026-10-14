@@ -1,3 +1,5 @@
-struct Future(data, is_done: bool, has_failed: bool, error: string) { }
+struct Future(data, is_done: bool, has_failed: bool, is_cancelled: bool, error: string) {
+    fn cancel(): bool { }
+}
 
 fn waitfor(task: Future) { }
