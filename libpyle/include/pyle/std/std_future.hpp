@@ -32,18 +32,17 @@ namespace pyle {
 
         void reject(VM& vm, Value err_val);
 
-        bool cancel() {
-            std::lock_guard<std::mutex> lock(cancel_mutex);
-            if (finished.load()) return false;
-            if (!on_cancel) return false;
-            cancelled.store(true);
-            on_cancel();
-            return true;
-        }
+        bool cancel(VM& vm);
 
         void set_cancel_hook(std::function<void()> fn) {
             std::lock_guard<std::mutex> lock(cancel_mutex);
             on_cancel = std::move(fn);
+        }
+
+        void set_cancel_hook(Value fn) {
+            std::lock_guard<std::mutex> lock(cancel_mutex);
+            pyle_cancel = fn;
+            has_pyle_cancel = true;
         }
 
         void gc_mark(VM& vm);
@@ -52,6 +51,8 @@ namespace pyle {
 
     private:
         std::function<void()> on_cancel;
+        Value pyle_cancel;
+        bool has_pyle_cancel = false;
         std::mutex cancel_mutex;
     };
 
