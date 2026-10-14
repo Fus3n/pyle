@@ -132,6 +132,18 @@ namespace raylib_binding {
             Vector2 m = MeasureTextEx(*f, text.c_str(), sz, spacing);
             return to_value_owned<Vector2>(vm, new Vector2{m.x, m.y});
         });
+
+        mod.raw_function("GetFontAscent", +[](VM& vm, ArgView args) -> Value {
+            if (args.size() != 1) { vm.runtime_error(RuntimeError::ArgumentError, "GetFontAscent expects 1 Font."); return Value(); }
+            Font* f = as_native<Font>(vm, args[0], "Font");
+            if (!f) return Value();
+            int ascent = 0;
+            for (int i = 0; i < f->glyphCount; i++) {
+                int oy = -f->glyphs[i].offsetY;
+                if (oy > ascent) ascent = oy;
+            }
+            return to_value(vm, ascent);
+        });
         
         mod.raw_function("DrawText", +[](VM& vm, ArgView args) -> Value {
             if (args.size() != 5) { vm.runtime_error(RuntimeError::ArgumentError, "DrawText expects (text, posX, posY, fontSize, color)."); return Value(); }
