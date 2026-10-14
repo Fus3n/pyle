@@ -1,21 +1,21 @@
 let os = import("os")
 let json = import("json")
 
-struct Pool(workers: array[Process]) {
+struct Pool(workers: array[Worker]) {
     fn size(): int {
         return self.workers.size()
     }
 
     fn map(tasks: array, timeout_ms: int): array {
-        let results: array = []
+        let results = []
         results.resize(tasks.size(), none)
-        let t: int = 0
+        let t = 0
         while t < tasks.size() {
-            let n: int = self.workers.size()
+            let n = self.workers.size()
             if t + n > tasks.size() {
                 n = tasks.size() - t
             }
-            let i: int = 0
+            let i = 0
             while i < n {
                 self.workers[i].send(json.stringify(tasks[t + i]))
                 i += 1
@@ -36,7 +36,7 @@ struct Pool(workers: array[Process]) {
     }
 
     fn stop(): array[int] {
-        let codes: array[int] = []
+        let codes = []
         for w in self.workers {
             if w.alive() {
                 w.kill()
@@ -48,10 +48,10 @@ struct Pool(workers: array[Process]) {
 }
 
 fn start(script: string, count: int, args: array[string]): Pool {
-    let workers: array[Process] = []
-    let i: int = 0
+    let workers: array[Worker] = []
+    let i = 0
     while i < count {
-        workers.append(os.spawn(script, args))
+        workers.append(os.spawn_worker(script, args))
         i += 1
     }
     return Pool(workers: workers)
@@ -59,7 +59,7 @@ fn start(script: string, count: int, args: array[string]): Pool {
 
 fn serve(handler, timeout_ms: int): bool {
     while true {
-        let msg: string = os.worker_recv(timeout_ms)
+        let msg = os.worker_recv(timeout_ms)
         if msg == none {
             return false
         }

@@ -302,7 +302,7 @@ std::vector<wchar_t> make_env_block(intptr_t r, intptr_t w, const std::string& a
 }
 #endif
 
-struct Process {
+struct Worker {
     std::mutex rmutex;
     std::mutex wmutex;
     RawHandle read_h = kBadHandle;
@@ -316,7 +316,7 @@ struct Process {
     bool exited = false;
 #endif
 
-    ~Process() {
+    ~Worker() {
         handle_close(read_h);
         handle_close(write_h);
 #ifdef _WIN32
@@ -397,8 +397,8 @@ struct Process {
     }
 };
 
-bool spawn_process(const std::string& exe, const std::string& script,
-                   const std::string& args_json, Process*& out, std::string& err) {
+bool spawn_worker_process(const std::string& exe, const std::string& script,
+                   const std::string& args_json, Worker*& out, std::string& err) {
     std::error_code ec;
     std::string abs_exe = std::filesystem::absolute(exe, ec).string();
     if (ec) abs_exe = exe;
@@ -408,7 +408,7 @@ bool spawn_process(const std::string& exe, const std::string& script,
     sa.bInheritHandle = TRUE;
     HANDLE p2c_r = nullptr, p2c_w = nullptr, c2p_r = nullptr, c2p_w = nullptr;
     if (!CreatePipe(&p2c_r, &p2c_w, &sa, 0) || !CreatePipe(&c2p_r, &c2p_w, &sa, 0)) {
-        err = "os.spawn could not create pipes.";
+        err = "os.spawn_worker could not create pipes.";
         handle_close(p2c_r);
         handle_close(p2c_w);
         handle_close(c2p_r);
@@ -432,11 +432,11 @@ bool spawn_process(const std::string& exe, const std::string& script,
     if (!ok) {
         handle_close(p2c_w);
         handle_close(c2p_r);
-        err = last_error_string("os.spawn could not start worker process.");
+        err = last_error_string("os.spawn_worker could not start worker process.");
         return false;
     }
     CloseHandle(pi.hThread);
-    Process* p = new Process();
+    Worker* p = new Worker();
     p->write_h = p2c_w;
     p->read_h = c2p_r;
     p->proc = pi.hProcess;
@@ -447,7 +447,7 @@ bool spawn_process(const std::string& exe, const std::string& script,
     int p2c[2] = {-1, -1};
     int c2p[2] = {-1, -1};
     if (pipe(p2c) != 0 || pipe(c2p) != 0) {
-        err = "os.spawn could not create pipes.";
+        err = "os.spawn_worker could not create pipes.";
         handle_close(p2c[0]);
         handle_close(p2c[1]);
         handle_close(c2p[0]);
@@ -456,7 +456,7 @@ bool spawn_process(const std::string& exe, const std::string& script,
     }
     pid_t pid = fork();
     if (pid < 0) {
-        err = "os.spawn could not fork worker process.";
+        err = "os.spawn_worker could not fork worker process.";
         handle_close(p2c[0]);
         handle_close(p2c[1]);
         handle_close(c2p[0]);
@@ -483,7 +483,7 @@ bool spawn_process(const std::string& exe, const std::string& script,
     }
     close(p2c[0]);
     close(c2p[1]);
-    Process* p = new Process();
+    Worker* p = new Worker();
     p->write_h = p2c[1];
     p->read_h = c2p[0];
     p->pid = pid;
@@ -581,38 +581,38 @@ bool worker_init_from_env(VM& vm) {
     return true;
 }
 
-Value os_spawn(VM& vm, ArgView args) {
+Value os_spawn_worker(VM& vm, ArgView args) {
     if (args.size() < 1 || args.size() > 2 || args[0].tag != Value::Tag::StringRef) {
-        vm.runtime_error(RuntimeError::ArgumentError, "os.spawn expects (script: string, args = []).");
+        vm.runtime_error(RuntimeError::ArgumentError, "os.spawn_worker expects (script: string, args = []).");
         return Value();
     }
     std::vector<std::string> spargs;
     if (args.size() == 2) {
         if (args[1].tag != Value::Tag::ArrayRef) {
-            vm.runtime_error(RuntimeError::ArgumentError, "os.spawn args expects an array of strings.");
+            vm.runtime_error(RuntimeError::ArgumentError, "os.spawn_worker args expects an array of strings.");
             return Value();
         }
         const auto& arr = std::get<ArrayType>(vm.get_heap_object(args[1].as_ref).data);
         for (const auto& v : arr) {
             if (v.tag != Value::Tag::StringRef) {
-                vm.runtime_error(RuntimeError::ArgumentError, "os.spawn args expects an array of strings.");
+                vm.runtime_error(RuntimeError::ArgumentError, "os.spawn_worker args expects an array of strings.");
                 return Value();
             }
             spargs.push_back(std::get<std::string>(vm.get_heap_object(v.as_ref).data));
         }
     }
     if (vm.executable_path.empty()) {
-        vm.runtime_error(RuntimeError::Runtime, "os.spawn needs the interpreter path, which the embedder did not set.");
+        vm.runtime_error(RuntimeError::Runtime, "os.spawn_worker needs the interpreter path, which the embedder did not set.");
         return Value();
     }
     std::string script = std::get<std::string>(vm.get_heap_object(args[0].as_ref).data);
-    Process* p = nullptr;
+    Worker* p = nullptr;
     std::string err;
-    if (!spawn_process(vm.executable_path, script, encode_string_array(spargs), p, err)) {
+    if (!spawn_worker_process(vm.executable_path, script, encode_string_array(spargs), p, err)) {
         vm.runtime_error(RuntimeError::Runtime, err);
         return Value();
     }
-    return to_value_owned(vm, new std::shared_ptr<Process>(p));
+    return to_value_owned(vm, new std::shared_ptr<Worker>(p));
 }
 
 Value os_is_worker(VM& vm, ArgView args) {
@@ -671,8 +671,8 @@ int64_t proc_cpu_count() {
     return static_cast<int64_t>(cpu_count());
 }
 
-Process* proc_of(VM& m, HeapIdx self) {
-    auto* sp = static_cast<std::shared_ptr<Process>*>(std::get<NativeObject>(m.get_heap_object(self).data).ptr);
+Worker* worker_of(VM& m, HeapIdx self) {
+    auto* sp = static_cast<std::shared_ptr<Worker>*>(std::get<NativeObject>(m.get_heap_object(self).data).ptr);
     return sp->get();
 }
 
@@ -680,15 +680,15 @@ void bind_to_os(VM& vm, NativeModule& mod) {
     static std::atomic<bool> tick_registered{false};
     if (!tick_registered.exchange(true)) background_ticks().push_back(recv_tick);
     mod.function<proc_cpu_count>("cpu_count");
-    mod.raw_function("spawn", os_spawn);
+    mod.raw_function("spawn_worker", os_spawn_worker);
     mod.raw_function("is_worker", os_is_worker);
     mod.raw_function("worker_send", os_worker_send);
     mod.raw_function("worker_recv", os_worker_recv);
     mod.raw_function("worker_args", os_worker_args);
 
-    SharedClassBinder<Process> binder(vm, "Process");
+    SharedClassBinder<Worker> binder(vm, "Worker");
     binder.custom_constructor([](VM& m, ArgView) -> Value {
-        m.runtime_error(RuntimeError::ArgumentError, "Process cannot be constructed directly, use os.spawn.");
+        m.runtime_error(RuntimeError::ArgumentError, "Worker cannot be constructed directly, use os.spawn_worker.");
         return Value();
     });
     binder.custom_method("pid", [](VM& m, HeapIdx self, ArgView args) -> Value {
@@ -696,7 +696,7 @@ void bind_to_os(VM& vm, NativeModule& mod) {
             m.runtime_error(RuntimeError::ArgumentError, "pid takes 0 arguments.");
             return Value();
         }
-        return Value(proc_of(m, self)->get_pid());
+        return Value(worker_of(m, self)->get_pid());
     });
     binder.custom_method("send", [](VM& m, HeapIdx self, ArgView args) -> Value {
         if (args.size() != 1 || args[0].tag != Value::Tag::StringRef) {
@@ -704,7 +704,7 @@ void bind_to_os(VM& vm, NativeModule& mod) {
             return Value();
         }
         const std::string& s = std::get<std::string>(m.get_heap_object(args[0].as_ref).data);
-        return Value(proc_of(m, self)->send_msg(s));
+        return Value(worker_of(m, self)->send_msg(s));
     });
     binder.custom_method("recv", [](VM& m, HeapIdx self, ArgView args) -> Value {
         if (args.size() > 1) {
@@ -714,11 +714,11 @@ void bind_to_os(VM& vm, NativeModule& mod) {
         int64_t t = opt_timeout_ms(m, args, 0);
         if (m.is_panicked()) return Value();
         std::string out;
-        return recv_result(m, out, proc_of(m, self)->recv_msg(out, t));
+        return recv_result(m, out, worker_of(m, self)->recv_msg(out, t));
     });
     binder.custom_method("recv_async", [](VM& m, HeapIdx self, ArgView) -> Value {
-        auto* sp = static_cast<std::shared_ptr<Process>*>(std::get<NativeObject>(m.get_heap_object(self).data).ptr);
-        std::shared_ptr<Process> held = *sp;
+        auto* sp = static_cast<std::shared_ptr<Worker>*>(std::get<NativeObject>(m.get_heap_object(self).data).ptr);
+        std::shared_ptr<Worker> held = *sp;
         auto [fval, fut] = Future::create(m);
         auto rec = std::make_shared<PendingRecv>();
         rec->vm = &m;
@@ -738,21 +738,21 @@ void bind_to_os(VM& vm, NativeModule& mod) {
             m.runtime_error(RuntimeError::ArgumentError, "wait takes 0 arguments.");
             return Value();
         }
-        return Value(proc_of(m, self)->join());
+        return Value(worker_of(m, self)->join());
     });
     binder.custom_method("kill", [](VM& m, HeapIdx self, ArgView args) -> Value {
         if (args.size() != 0) {
             m.runtime_error(RuntimeError::ArgumentError, "kill takes 0 arguments.");
             return Value();
         }
-        return Value(proc_of(m, self)->terminate());
+        return Value(worker_of(m, self)->terminate());
     });
     binder.custom_method("alive", [](VM& m, HeapIdx self, ArgView args) -> Value {
         if (args.size() != 0) {
             m.runtime_error(RuntimeError::ArgumentError, "alive takes 0 arguments.");
             return Value();
         }
-        return Value(proc_of(m, self)->is_alive());
+        return Value(worker_of(m, self)->is_alive());
     });
     mod.class_binder(binder);
 }
