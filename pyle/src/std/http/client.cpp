@@ -1,9 +1,31 @@
 #include "http_binding.hpp"
+#include <fstream>
+#include <iterator>
 
 namespace pyle {
 namespace http_binding {
 
     namespace {
+
+        std::mutex g_clients_mutex;
+        std::vector<std::shared_ptr<httplib::Client>> g_clients;
+
+        void track_client(const std::shared_ptr<httplib::Client>& c) {
+            std::lock_guard<std::mutex> lock(g_clients_mutex);
+            g_clients.push_back(c);
+        }
+
+        void untrack_client(const std::shared_ptr<httplib::Client>& c) {
+            std::lock_guard<std::mutex> lock(g_clients_mutex);
+            for (auto it = g_clients.begin(); it != g_clients.end(); ++it) {
+                if (it->get() == c.get()) { g_clients.erase(it); break; }
+            }
+        }
+
+        void cancel_clients() {
+            std::lock_guard<std::mutex> lock(g_clients_mutex);
+            for (auto& c : g_clients) c->stop();
+        }
 
         struct ParsedUrl {
             bool https = false;
@@ -51,13 +73,13 @@ namespace http_binding {
             return true;
         }
 
-        std::unique_ptr<httplib::Client> make_client(const ParsedUrl& url) {
+        std::shared_ptr<httplib::Client> make_client(const ParsedUrl& url) {
             std::string base;
             base += url.https ? "https://" : "http://";
             base += url.host;
             bool default_port = (url.port == (url.https ? 443 : 80));
             if (!default_port) base += ":" + std::to_string(url.port);
-            auto client = std::make_unique<httplib::Client>(base);
+            auto client = std::make_shared<httplib::Client>(base);
             client->set_follow_location(true);
             return client;
         }
@@ -68,11 +90,24 @@ namespace http_binding {
             return out;
         }
 
+        struct FormItem {
+            std::string name;
+            std::string value;
+            std::string file_path;
+            std::string content_type;
+        };
+
         struct RequestOptions {
             std::map<std::string, std::string> headers;
             std::string body;
             double timeout = -1.0;
             std::string content_type = "text/plain";
+            bool follow_redirects = true;
+            bool verify_ssl = true;
+            std::string proxy_host;
+            int proxy_port = 0;
+            bool multipart = false;
+            std::vector<FormItem> form;
         };
 
         void parse_options(pyle::VM& vm, const pyle::Value& val, RequestOptions& opts) {
@@ -103,6 +138,44 @@ namespace http_binding {
                         return;
                     }
                     opts.content_type = std::get<std::string>(vm.get_heap_object(v.as_ref).data);
+                } else if (key == "follow_redirects") {
+                    if (v.tag == pyle::Value::Tag::Bool) opts.follow_redirects = v.as_bool;
+                } else if (key == "verify_ssl") {
+                    if (v.tag == pyle::Value::Tag::Bool) opts.verify_ssl = v.as_bool;
+                } else if (key == "proxy") {
+                    if (v.tag == pyle::Value::Tag::StringRef) {
+                        std::string p = std::get<std::string>(vm.get_heap_object(v.as_ref).data);
+                        auto colon = p.rfind(':');
+                        if (colon != std::string::npos) {
+                            opts.proxy_host = p.substr(0, colon);
+                            opts.proxy_port = std::atoi(p.c_str() + colon + 1);
+                        } else if (!p.empty()) {
+                            opts.proxy_host = p;
+                            opts.proxy_port = 8080;
+                        }
+                    }
+                } else if (key == "form") {
+                    if (v.tag == pyle::Value::Tag::ArrayRef) {
+                        opts.multipart = true;
+                        const auto& arr = std::get<pyle::ArrayType>(vm.get_heap_object(v.as_ref).data);
+                        for (const auto& item : arr) {
+                            if (item.tag != pyle::Value::Tag::MapRef) continue;
+                            FormItem fi;
+                            const auto& fe = std::get<pyle::MapObject>(vm.get_heap_object(item.as_ref).data).entries;
+                            for (const auto& [fk, fv] : fe) {
+                                if (fv.tag != pyle::Value::Tag::StringRef) continue;
+                                std::string fkey = (fk.tag == pyle::Value::Tag::StringRef)
+                                    ? std::get<std::string>(vm.get_heap_object(fk.as_ref).data)
+                                    : vm.value_to_string(fk);
+                                std::string fval = std::get<std::string>(vm.get_heap_object(fv.as_ref).data);
+                                if (fkey == "name") fi.name = fval;
+                                else if (fkey == "value") fi.value = fval;
+                                else if (fkey == "path") fi.file_path = fval;
+                                else if (fkey == "content_type") fi.content_type = fval;
+                            }
+                            if (!fi.name.empty()) opts.form.push_back(std::move(fi));
+                        }
+                    }
                 }
             }
         }
@@ -120,30 +193,72 @@ namespace http_binding {
             return pyle::to_value_owned(vm, data);
         }
 
+        bool iequals(const std::string& a, const std::string& b) {
+            if (a.size() != b.size()) return false;
+            for (size_t i = 0; i < a.size(); ++i) {
+                if (tolower(static_cast<unsigned char>(a[i])) != tolower(static_cast<unsigned char>(b[i]))) return false;
+            }
+            return true;
+        }
+
         httplib::Result perform_request(httplib::Client& client, const std::string& verb,
                                         const std::string& path, const RequestOptions& opts) {
             httplib::Headers headers = to_httplib_headers(opts.headers);
+            std::string ctype = opts.content_type;
+            httplib::Headers clean;
+            for (const auto& [k, v] : headers) {
+                if (iequals(k, "Content-Type")) { ctype = v; continue; }
+                clean.insert({k, v});
+            }
+            headers = clean;
+            if (opts.multipart) {
+                httplib::UploadFormDataItems items;
+                for (const auto& f : opts.form) {
+                    httplib::UploadFormData item;
+                    item.name = f.name;
+                    if (!f.file_path.empty()) {
+                        std::ifstream ifs(f.file_path, std::ios::binary);
+                        std::string content((std::istreambuf_iterator<char>(ifs)),
+                                            std::istreambuf_iterator<char>());
+                        item.content = std::move(content);
+                        auto slash = f.file_path.find_last_of("/\\");
+                        item.filename = (slash == std::string::npos) ? f.file_path : f.file_path.substr(slash + 1);
+                        item.content_type = f.content_type.empty() ? "application/octet-stream" : f.content_type;
+                    } else {
+                        item.content = f.value;
+                    }
+                    items.push_back(std::move(item));
+                }
+                if (verb == "PUT") return client.Put(path, headers, items);
+                if (verb == "PATCH") return client.Patch(path, headers, items);
+                return client.Post(path, headers, items);
+            }
             if (verb == "GET")    return client.Get(path, headers);
             if (verb == "HEAD")   return client.Head(path, headers);
             if (verb == "OPTIONS")return client.Options(path, headers);
             if (verb == "DELETE") return client.Delete(path, headers);
-            if (verb == "POST")   return client.Post(path, headers, opts.body, opts.content_type.c_str());
-            if (verb == "PUT")    return client.Put(path, headers, opts.body, opts.content_type.c_str());
-            if (verb == "PATCH")  return client.Patch(path, headers, opts.body, opts.content_type.c_str());
+            if (verb == "POST")   return client.Post(path, headers, opts.body, ctype.c_str());
+            if (verb == "PUT")    return client.Put(path, headers, opts.body, ctype.c_str());
+            if (verb == "PATCH")  return client.Patch(path, headers, opts.body, ctype.c_str());
             return client.Get(path, headers);
         }
 
-        std::optional<HttpResponseData> exec_request(std::unique_ptr<httplib::Client> client,
+        std::optional<HttpResponseData> exec_request(std::shared_ptr<httplib::Client> client,
                                                      const std::string& verb, const std::string& path,
                                                      const RequestOptions& opts, std::string& error) {
             if (!client) {
                 error = "https requires an ssl-enabled build of the http module.";
                 return std::nullopt;
             }
+            client->set_follow_location(opts.follow_redirects);
+            client->enable_server_certificate_verification(opts.verify_ssl);
+            if (!opts.proxy_host.empty() && opts.proxy_port > 0) client->set_proxy(opts.proxy_host, opts.proxy_port);
             double timeout = opts.timeout > 0 ? opts.timeout : 30.0;
             client->set_connection_timeout(std::chrono::duration<double>(timeout));
             client->set_read_timeout(std::chrono::duration<double>(timeout));
+            track_client(client);
             httplib::Result result = perform_request(*client, verb, path, opts);
+            untrack_client(client);
             if (!result) {
                 error = "http request failed: " + std::string(httplib::to_string(result.error()));
                 return std::nullopt;
@@ -176,10 +291,11 @@ namespace http_binding {
             }
 
             auto [fval, fut] = pyle::Future::create(vm);
-            std::thread([fut, &vm, verb, url, parsed, opts]() {
+            auto client = make_client(parsed);
+            fut->set_cancel_hook([client]() { client->stop(); });
+            std::thread([fut, &vm, verb, url, parsed, opts, client]() {
                 std::string error;
-                auto client = make_client(parsed);
-                auto data = exec_request(std::move(client), verb, parsed.path, opts, error);
+                auto data = exec_request(client, verb, parsed.path, opts, error);
                 std::lock_guard<std::recursive_mutex> lock(vm.get_mutex());
                 if (!data) {
                     fut->failed = true;
@@ -211,7 +327,7 @@ namespace http_binding {
 
         struct HttpClientWrapper {
             ParsedUrl base;
-            std::unique_ptr<httplib::Client> client;
+            std::shared_ptr<httplib::Client> client;
 
             explicit HttpClientWrapper(const ParsedUrl& u)
                 : base(u), client(make_client(u)) {}
@@ -243,10 +359,11 @@ namespace http_binding {
                 ParsedUrl base = wrapper->base;
                 for (const auto& [k, v] : wrapper->default_headers) opts.headers[k] = v;
                 auto [fval, fut] = pyle::Future::create(vm);
-                std::thread([fut, &vm, verb, base, path, opts]() {
+                auto client = make_client(base);
+                fut->set_cancel_hook([client]() { client->stop(); });
+                std::thread([fut, &vm, verb, base, path, opts, client]() {
                     std::string error;
-                    auto client = make_client(base);
-                    auto data = exec_request(std::move(client), verb, path, opts, error);
+                    auto data = exec_request(client, verb, path, opts, error);
                     std::lock_guard<std::recursive_mutex> lock(vm.get_mutex());
                     if (!data) {
                         fut->failed = true;
@@ -268,10 +385,16 @@ namespace http_binding {
             }
 
             double timeout = opts.timeout > 0 ? opts.timeout : 30.0;
+            wrapper->client->set_follow_location(opts.follow_redirects);
+            wrapper->client->enable_server_certificate_verification(opts.verify_ssl);
+            if (!opts.proxy_host.empty() && opts.proxy_port > 0) wrapper->client->set_proxy(opts.proxy_host, opts.proxy_port);
             wrapper->client->set_connection_timeout(std::chrono::duration<double>(timeout));
             wrapper->client->set_read_timeout(std::chrono::duration<double>(timeout));
 
-            return wrap_response(vm, perform_request(*wrapper->client, verb, path, opts));
+            track_client(wrapper->client);
+            httplib::Result result = perform_request(*wrapper->client, verb, path, opts);
+            untrack_client(wrapper->client);
+            return wrap_response(vm, std::move(result));
         }
 
         std::string percent_encode_byte(char c) {
@@ -396,6 +519,14 @@ namespace http_binding {
             return run_url_request(m, "HEAD", args.size() > 0 ? &args[0] : nullptr,
                                    args.size() > 1 ? &args[1] : nullptr, true);
         });
+        mod.raw_function("options", [](pyle::VM& m, pyle::ArgView args) -> pyle::Value {
+            return run_url_request(m, "OPTIONS", args.size() > 0 ? &args[0] : nullptr,
+                                   args.size() > 1 ? &args[1] : nullptr);
+        });
+        mod.raw_function("options_async", [](pyle::VM& m, pyle::ArgView args) -> pyle::Value {
+            return run_url_request(m, "OPTIONS", args.size() > 0 ? &args[0] : nullptr,
+                                   args.size() > 1 ? &args[1] : nullptr, true);
+        });
         mod.raw_function("request", [](pyle::VM& m, pyle::ArgView args) -> pyle::Value {
             if (args.size() < 2 || args.size() > 3 || args[0].tag != pyle::Value::Tag::StringRef) {
                 m.runtime_error(pyle::RuntimeError::ArgumentError,
@@ -409,6 +540,11 @@ namespace http_binding {
 
         mod.raw_function("url_encode", native_url_encode);
         mod.raw_function("url_decode", native_url_decode);
+
+        mod.raw_function("cancel", [](pyle::VM&, pyle::ArgView) -> pyle::Value {
+            cancel_clients();
+            return pyle::Value();
+        });
 
         {
             pyle::ClassBinder<HttpClientWrapper> binder(mod.get_vm(), "Client");
