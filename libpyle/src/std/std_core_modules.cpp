@@ -538,11 +538,32 @@ namespace pyle {
         return Value(Value::Tag::MapRef, map_idx);
     }
 
-    void register_core_modules(VM& vm) {
+    void register_os_module(VM& vm) {
         pyle::register_module(vm, "os", os_module_factory);
+    }
+
+    void register_path_module(VM& vm) {
         pyle::register_module(vm, "path", path_module_factory);
+    }
+
+    void register_fs_module(VM& vm) {
         pyle::register_module(vm, "fs", fs_module_factory);
+    }
+
+    void register_color_module(VM& vm) {
         pyle::register_module(vm, "color", color_module_factory);
+    }
+
+    void register_math_module(VM& vm) {
         pyle::register_module(vm, "math", math_module_factory);
+    }
+
+    void register_core_modules(VM& vm) {
+        register_os_module(vm);
+        register_path_module(vm);
+        register_fs_module(vm);
+        register_color_module(vm);
+        register_math_module(vm);
+        pyle::register_proc_module(vm);
     }
 }

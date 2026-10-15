@@ -34,13 +34,13 @@ namespace {
 
 const uint32_t kMaxFrame = 64u << 20;
 
+}  // namespace
+
 #ifdef _WIN32
-using RawHandle = HANDLE;
 const RawHandle kBadHandle = nullptr;
 bool handle_valid(RawHandle h) { return h != nullptr && h != INVALID_HANDLE_VALUE; }
 void handle_close(RawHandle h) { if (handle_valid(h)) CloseHandle(h); }
 #else
-using RawHandle = int;
 const RawHandle kBadHandle = -1;
 bool handle_valid(RawHandle h) { return h >= 0; }
 void handle_close(RawHandle h) { if (h >= 0) close(h); }
@@ -134,6 +134,7 @@ bool await_readable(RawHandle h, int64_t timeout_ms) {
 #endif
 }
 
+namespace {
 bool frame_send(RawHandle h, const std::string& s) {
     if (!handle_valid(h) || s.size() > kMaxFrame) return false;
     uint32_t len = static_cast<uint32_t>(s.size());
@@ -239,6 +240,8 @@ bool decode_string_array(const std::string& s, std::vector<std::string>& out) {
 }
 
 #ifdef _WIN32
+}  // namespace
+
 std::string last_error_string(const char* what) {
     DWORD code = GetLastError();
     char* msg = nullptr;
@@ -275,6 +278,7 @@ std::string quote_arg(const std::string& s) {
     return o;
 }
 
+namespace {
 std::vector<wchar_t> make_env_block(intptr_t r, intptr_t w, const std::string& args_json) {
     std::vector<wchar_t> block;
     LPWCH env = GetEnvironmentStringsW();

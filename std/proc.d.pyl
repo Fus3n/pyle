@@ -1,0 +1,19 @@
+struct ProcResult(code: int?, stdout: bytes, stderr: bytes, timed_out: bool) { }
+
+struct Child {
+    fn pid(): int { }
+    fn alive(): bool { }
+    fn poll(): int? { }
+    fn wait(timeout_ms: int?): int? { }
+    fn terminate(): bool { }
+    fn kill(): bool { }
+    fn stdin_write(data: string | bytes): bool { }
+    fn stdin_close(): bool { }
+    fn stdout_read(max_bytes: int?, timeout_ms: int?): bytes? { }
+    fn stderr_read(max_bytes: int?, timeout_ms: int?): bytes? { }
+    fn communicate(input: string | bytes?, timeout_ms: int?): ProcResult { }
+}
+
+fn run(program: string, args: array[string]?, options: map?): ProcResult { }
+fn popen(program: string, args: array[string]?, options: map?): Child { }
+fn run_async(program: string, args: array[string]?, options: map?): Future { }
