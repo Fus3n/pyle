@@ -12,8 +12,8 @@ Pyle is a dynamic scripting language meant to sit inside a C++ program and drive
 struct Stack(items) {
     fn _init() { }
 
-    fn push(v) { self.items.append(v) }
-    fn pop() { return self.items.pop() }
+    fn push(v) => self.items.append(v) 
+    fn pop() => self.items.pop() 
 }
 
 let s = Stack(items: [])
