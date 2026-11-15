@@ -983,12 +983,56 @@ namespace pyle {
     }
 
     void Compiler::visit_index(IndexExpr* expr) {
+        if (auto* callee_var = dynamic_cast<VariableExpr*>(expr->callee.get())) {
+            int slot = resolve_local(callee_var->name);
+            if (slot != -1) {
+                expr->index->accept(this);
+                emit_instruction(OpCode::INDEX_GET_LOCAL, static_cast<uint32_t>(slot), expr->bracket.selection.line);
+                return;
+            }
+        }
         expr->callee->accept(this);
         expr->index->accept(this);
         emit_instruction(OpCode::GET_INDEX, 0, expr->bracket.selection.line);
     }
 
     void Compiler::visit_index_assign(IndexAssignExpr* expr) {
+        if (auto* callee_var = dynamic_cast<VariableExpr*>(expr->callee.get())) {
+            int slot = resolve_local(callee_var->name);
+            if (slot != -1) {
+                if (auto* bin = dynamic_cast<BinaryExpr*>(expr->value.get())) {
+                    bool is_inc = bin->op.type == TokenType::PLUS;
+                    bool is_dec = bin->op.type == TokenType::MINUS;
+                    if (is_inc || is_dec) {
+                        if (auto* left = dynamic_cast<IndexExpr*>(bin->left.get())) {
+                            if (auto* left_callee = dynamic_cast<VariableExpr*>(left->callee.get())) {
+                                if (left_callee->name.lexeme == callee_var->name.lexeme
+                                    && resolve_local(left_callee->name) == slot) {
+                                    if (auto* one = dynamic_cast<LiteralExpr*>(bin->right.get())) {
+                                        if (one->token.type == TokenType::INT) {
+                                            int64_t step = 0;
+                                            try {
+                                                step = std::stoll(std::string(one->token.lexeme), nullptr, 0);
+                                            } catch (const std::exception&) {}
+                                            if (step == 1) {
+                                                expr->index->accept(this);
+                                                OpCode op = is_inc ? OpCode::INC_INDEX_LOCAL : OpCode::DEC_INDEX_LOCAL;
+                                                emit_instruction(op, static_cast<uint32_t>(slot), expr->bracket.selection.line);
+                                                return;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                expr->index->accept(this);
+                expr->value->accept(this);
+                emit_instruction(OpCode::INDEX_SET_LOCAL, static_cast<uint32_t>(slot), expr->bracket.selection.line);
+                return;
+            }
+        }
         expr->callee->accept(this);
         expr->index->accept(this);
         expr->value->accept(this);

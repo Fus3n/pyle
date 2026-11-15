@@ -141,6 +141,25 @@ TEST(none_annotations) {
     CHECK_STR(t, "ok", "true");
 }
 
+TEST(for_in_bytes) {
+    Ctx t;
+    CHECK_RUN(t, R"(
+        let bs = []
+        for b in Bytes([104, 101, 108]) { bs.append(b) }
+        let total = 0
+        for b in Bytes([1, 2, 3, 4, 5]) { total += b }
+        let freq = []
+        freq.resize(256, 0)
+        let data = Bytes([65, 66, 65, 67, 65])
+        for ch in data { freq[ch] += 1 }
+        let fcnt = freq[65]
+    )");
+    CHECK_CALM(t);
+    CHECK_STR(t, "bs", "[104, 101, 108]");
+    CHECK_STR(t, "total", "15");
+    CHECK_STR(t, "fcnt", "3");
+}
+
 TEST(functions) {
     Ctx t;
     CHECK_RUN(t, R"(

@@ -64,6 +64,10 @@ namespace pyle {
         SHL,
         SHR,
         BNOT,
+        INDEX_GET_LOCAL,
+        INDEX_SET_LOCAL,
+        INC_INDEX_LOCAL,
+        DEC_INDEX_LOCAL,
         Invalid = 0xFF
     };
 

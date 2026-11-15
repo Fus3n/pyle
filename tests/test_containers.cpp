@@ -88,6 +88,32 @@ TEST(array_mutators) {
     CHECK_STR(t, "rz", "[1, 0, 0]");
 }
 
+TEST(index_increment_fusion) {
+    Ctx t;
+    CHECK_RUN(t, R"(
+        let a = [10, 20, 30]
+        let i = 0
+        a[i] += 1
+        a[1] += 1
+        a[1] -= 1
+        let b = [1.5, 2.5]
+        b[0] += 1
+        b[1] -= 1
+        let m = {k: 5}
+        m["k"] += 1
+        let y: int = (a[2] += 1)
+        let s = 0
+        let src = [1, 1, 1]
+        for j in 0..src.size() { s += src[j] }
+    )");
+    CHECK_CALM(t);
+    CHECK_STR(t, "a", "[11, 20, 31]");
+    CHECK_STR(t, "b", "[2.5, 1.5]");
+    CHECK_STR(t, "m", "{k: 6}");
+    CHECK_STR(t, "y", "31");
+    CHECK_STR(t, "s", "3");
+}
+
 TEST(array_oob) {
     Ctx t;
     CHECK_RUN(t, R"(

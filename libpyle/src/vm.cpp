@@ -981,15 +981,17 @@ namespace pyle {
             "RETURN", "POP", "NEW_ARRAY", "NEW_MAP", "CALL_KW",
             "GET_INDEX", "SET_INDEX", "YIELD", "HALT", "APPEND", "JUMP_IF_NOT_ARRAY",
             "CLOSE_UPVALUES", "BAND", "BOR", "BXOR", "SHL", "SHR", "BNOT",
+            "INDEX_GET_LOCAL", "INDEX_SET_LOCAL", "INC_INDEX_LOCAL", "DEC_INDEX_LOCAL",
         };
         static_assert(static_cast<int>(OpCode::HALT) == 48, "opcode table out of sync");
         static_assert(static_cast<int>(OpCode::JUMP_IF_NOT_ARRAY) == 50, "opcode table out of sync");
         static_assert(static_cast<int>(OpCode::CLOSE_UPVALUES) == 51, "opcode table out of sync");
         static_assert(static_cast<int>(OpCode::BNOT) == 57, "opcode table out of sync");
+        static_assert(static_cast<int>(OpCode::DEC_INDEX_LOCAL) == 61, "opcode table out of sync");
         uint64_t total = 0;
-        for (int i = 0; i <= 57; ++i) total += op_counts[i];
+        for (int i = 0; i <= 61; ++i) total += op_counts[i];
         std::vector<int> order;
-        for (int i = 0; i <= 57; ++i) {
+        for (int i = 0; i <= 61; ++i) {
             if (op_counts[i] > 0) order.push_back(i);
         }
         std::sort(order.begin(), order.end(),
@@ -1495,7 +1497,11 @@ namespace pyle {
                 &&op_BXOR,
                 &&op_SHL,
                 &&op_SHR,
-                &&op_BNOT
+                &&op_BNOT,
+                &&op_INDEX_GET_LOCAL,
+                &&op_INDEX_SET_LOCAL,
+                &&op_INC_INDEX_LOCAL,
+                &&op_DEC_INDEX_LOCAL
             };
             for (size_t i = 0; i < sizeof(labels) / sizeof(labels[0]); ++i) {
                 dispatch_table_storage[i] = labels[i];
@@ -1778,6 +1784,116 @@ namespace pyle {
                         sync_ip();
                         runtime_error(RuntimeError::Type, fmt::format(
                             "Unsupported operand types. a.tag={}, b.tag=int", slot.tag_to_string()));
+                        return;
+                    }
+                }
+                DISPATCH();
+
+                OP(INC_INDEX_LOCAL) {
+                    Value& container = stack[frame->stack_base + ARG];
+                    Value index = pop();
+                    if (container.tag == Value::Tag::ArrayRef) {
+                        if (index.tag != Value::Tag::Int) {
+                            runtime_error(RuntimeError::Type, fmt::format("Array index must be an integer, got '{}'.", index.tag_to_string()));
+                            return;
+                        }
+                        auto& vec = std::get<ArrayType>(heap[container.as_ref].data);
+                        if (index.as_int < 0 || index.as_int >= static_cast<int64_t>(vec.size())) {
+                            runtime_error(RuntimeError::Index, fmt::format("Array index {} out of bounds for size {}.", index.as_int, vec.size()));
+                            return;
+                        }
+                        Value& elem = vec[index.as_int];
+                        if (elem.tag == Value::Tag::Int) {
+                            elem.as_int += 1;
+                        } else if (elem.tag == Value::Tag::Float) {
+                            elem.as_float += 1.0;
+                        } else {
+                            sync_ip();
+                            runtime_error(RuntimeError::Type, fmt::format("Unsupported operand types. a.tag={}, b.tag=int", elem.tag_to_string()));
+                            return;
+                        }
+                        push(elem);
+                    } else if (container.tag == Value::Tag::MapRef) {
+                        if (!is_hashable(index)) {
+                            runtime_error(RuntimeError::Type, fmt::format("Unhashable type '{}' cannot be used as a map key.", index.tag_to_string()));
+                            return;
+                        }
+                        index = canonicalize_map_key(index);
+                        auto& map = std::get<MapObject>(heap[container.as_ref].data).entries;
+                        auto it = map.find(index);
+                        if (it == map.end()) {
+                            sync_ip();
+                            runtime_error(RuntimeError::Index, "Key not found in map.");
+                            return;
+                        }
+                        Value& elem = it->second;
+                        if (elem.tag == Value::Tag::Int) {
+                            elem.as_int += 1;
+                        } else if (elem.tag == Value::Tag::Float) {
+                            elem.as_float += 1.0;
+                        } else {
+                            sync_ip();
+                            runtime_error(RuntimeError::Type, fmt::format("Unsupported operand types. a.tag={}, b.tag=int", elem.tag_to_string()));
+                            return;
+                        }
+                        push(elem);
+                    } else {
+                        runtime_error(RuntimeError::Type, fmt::format("Cannot apply '+=' to index on type '{}'.", container.tag_to_string()));
+                        return;
+                    }
+                }
+                DISPATCH();
+
+                OP(DEC_INDEX_LOCAL) {
+                    Value& container = stack[frame->stack_base + ARG];
+                    Value index = pop();
+                    if (container.tag == Value::Tag::ArrayRef) {
+                        if (index.tag != Value::Tag::Int) {
+                            runtime_error(RuntimeError::Type, fmt::format("Array index must be an integer, got '{}'.", index.tag_to_string()));
+                            return;
+                        }
+                        auto& vec = std::get<ArrayType>(heap[container.as_ref].data);
+                        if (index.as_int < 0 || index.as_int >= static_cast<int64_t>(vec.size())) {
+                            runtime_error(RuntimeError::Index, fmt::format("Array index {} out of bounds for size {}.", index.as_int, vec.size()));
+                            return;
+                        }
+                        Value& elem = vec[index.as_int];
+                        if (elem.tag == Value::Tag::Int) {
+                            elem.as_int -= 1;
+                        } else if (elem.tag == Value::Tag::Float) {
+                            elem.as_float -= 1.0;
+                        } else {
+                            sync_ip();
+                            runtime_error(RuntimeError::Type, fmt::format("Unsupported operand types. a.tag={}, b.tag=int", elem.tag_to_string()));
+                            return;
+                        }
+                        push(elem);
+                    } else if (container.tag == Value::Tag::MapRef) {
+                        if (!is_hashable(index)) {
+                            runtime_error(RuntimeError::Type, fmt::format("Unhashable type '{}' cannot be used as a map key.", index.tag_to_string()));
+                            return;
+                        }
+                        index = canonicalize_map_key(index);
+                        auto& map = std::get<MapObject>(heap[container.as_ref].data).entries;
+                        auto it = map.find(index);
+                        if (it == map.end()) {
+                            sync_ip();
+                            runtime_error(RuntimeError::Index, "Key not found in map.");
+                            return;
+                        }
+                        Value& elem = it->second;
+                        if (elem.tag == Value::Tag::Int) {
+                            elem.as_int -= 1;
+                        } else if (elem.tag == Value::Tag::Float) {
+                            elem.as_float -= 1.0;
+                        } else {
+                            sync_ip();
+                            runtime_error(RuntimeError::Type, fmt::format("Unsupported operand types. a.tag={}, b.tag=int", elem.tag_to_string()));
+                            return;
+                        }
+                        push(elem);
+                    } else {
+                        runtime_error(RuntimeError::Type, fmt::format("Cannot apply '-=' to index on type '{}'.", container.tag_to_string()));
                         return;
                     }
                 }
@@ -2403,6 +2519,120 @@ namespace pyle {
                     } else {
                         runtime_error(RuntimeError::Type, fmt::format("Cannot set index on non-array/map type '{}'.", container.tag_to_string()));
                         return;
+                    }
+                }
+                DISPATCH();
+
+                OP(INDEX_SET_LOCAL) {
+                    if (stack_size() < 2) {
+                        runtime_error(RuntimeError::StackUnderflow, "Stack underflow in INDEX_SET_LOCAL.");
+                        return;
+                    }
+                    Value& container = stack[frame->stack_base + ARG];
+                    Value value = peek(1);
+                    Value index = peek(2);
+
+                    if (container.tag == Value::Tag::ArrayRef) {
+                        if (index.tag != Value::Tag::Int) {
+                            runtime_error(RuntimeError::Type, fmt::format("Array index must be an integer, got '{}'.", index.tag_to_string()));
+                            return;
+                        }
+                        auto& vec = std::get<ArrayType>(heap[container.as_ref].data);
+                        if (index.as_int < 0 || index.as_int >= static_cast<int64_t>(vec.size())) {
+                            runtime_error(RuntimeError::Index, fmt::format("Array index {} out of bounds for size {}.", index.as_int, vec.size()));
+                            return;
+                        }
+                        vec[index.as_int] = value;
+                        sp -= 1;
+                        set_top(value);
+                    } else if (container.tag == Value::Tag::MapRef) {
+                        if (!is_hashable(index)) {
+                            runtime_error(RuntimeError::Type, fmt::format("Unhashable type '{}' cannot be used as a map key.", index.tag_to_string()));
+                            return;
+                        }
+                        index = canonicalize_map_key(index);
+                        auto& map = std::get<MapObject>(heap[container.as_ref].data).entries;
+                        map[index] = value;
+                        sp -= 1;
+                        set_top(value);
+                    } else {
+                        runtime_error(RuntimeError::Type, fmt::format("Cannot set index on non-array/map type '{}'.", container.tag_to_string()));
+                        return;
+                    }
+                }
+                DISPATCH();
+
+                OP(INDEX_GET_LOCAL) {
+                    if (stack_size() < 1) {
+                        runtime_error(RuntimeError::StackUnderflow, "Stack underflow in INDEX_GET_LOCAL.");
+                        return;
+                    }
+                    Value& container = stack[frame->stack_base + ARG];
+                    Value index = pop();
+
+                    switch (container.tag) {
+                        case Value::Tag::ArrayRef: { 
+                            if (index.tag != Value::Tag::Int) {
+                                runtime_error(RuntimeError::Type, fmt::format("Array index must be an integer, got '{}'.", index.tag_to_string()));
+                                return;
+                            }
+                            auto& vec = std::get<ArrayType>(heap[container.as_ref].data);
+                            if (index.as_int < 0 || index.as_int >= static_cast<int64_t>(vec.size())) {
+                                runtime_error(RuntimeError::Index, fmt::format("Array index {} out of bounds for size {}.", index.as_int, vec.size()));
+                                return;
+                            }
+                            push(vec[index.as_int]);
+                            break;
+                        }
+                        case Value::Tag::BytesRef: {
+                            if (index.tag != Value::Tag::Int) {
+                                runtime_error(RuntimeError::Type, "Byte index must be an integer.");
+                                return;
+                            }
+                            const auto& vec = std::get<BytesType>(heap[container.as_ref].data);
+                            if (index.as_int < 0 || index.as_int >= static_cast<int64_t>(vec.size())) {
+                                runtime_error(RuntimeError::Index, "Byte index out of bounds.");
+                                return;
+                            }
+                            push(Value(static_cast<int64_t>(vec[index.as_int])));
+                            break;
+                        }
+                        case Value::Tag::StringRef: {
+                            if (index.tag != Value::Tag::Int) {
+                                runtime_error(RuntimeError::Type, fmt::format("Array index must be an integer, got '{}'.", index.tag_to_string()));
+                                return;
+                            }
+                            const auto& str = std::get<std::string>(heap[container.as_ref].data);
+                            if (index.as_int < 0 || index.as_int >= static_cast<int64_t>(str.size())) {
+                                runtime_error(RuntimeError::Index, fmt::format("String index {} out of bounds for length {}.", index.as_int, str.size()));
+                                return;
+                            }
+                            std::string char_str(1, str[index.as_int]);
+                            HeapIdx char_idx = intern_string(char_str);
+                            push(Value(Value::Tag::StringRef, char_idx));
+                            break;
+                        }
+                        case Value::Tag::MapRef: {
+                            if (!is_hashable(index)) {
+                                runtime_error(RuntimeError::Type, fmt::format("Unhashable type '{}' cannot be used as a map key.", index.tag_to_string()));
+                                return;
+                            }
+                            index = canonicalize_map_key(index);
+                            auto& map = std::get<MapObject>(heap[container.as_ref].data).entries;
+                            auto it = map.find(index);
+                            if (it != map.end()) {
+                                push(it->second);
+                            } else {
+                                sync_ip();
+                                runtime_error(RuntimeError::Index, "Key not found in map.");
+                                return;
+                            }
+                            break;
+                        }
+                        default: {
+                            runtime_error(RuntimeError::Type, fmt::format("Cannot get index on type '{}'.", container.tag_to_string()));
+                            return;
+                        }
                     }
                 }
                 DISPATCH();
