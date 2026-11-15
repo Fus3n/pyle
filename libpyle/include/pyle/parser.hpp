@@ -64,6 +64,10 @@ namespace pyle {
         std::unique_ptr<Expr> equality();
         std::unique_ptr<Expr> comparison();
         std::unique_ptr<Expr> range();
+        std::unique_ptr<Expr> bit_or();
+        std::unique_ptr<Expr> bit_xor();
+        std::unique_ptr<Expr> bit_and();
+        std::unique_ptr<Expr> shift();
         std::unique_ptr<Expr> term(); 
         std::unique_ptr<Expr> factor();
         

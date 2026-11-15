@@ -217,6 +217,7 @@ TEST(syntax_error_fails) {
     Ctx t;
     CHECK(!t.run("let x = "));
     CHECK(!t.run("fn broken( { }"));
+    CHECK(!t.run("let a = [1, 2, 3]\nlet i = 0\na[i + 1] += 2"));
 }
 
 TEST(compile_errors_fail) {

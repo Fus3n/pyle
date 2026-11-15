@@ -33,6 +33,13 @@ namespace pyle {
                 case OpCode::SUB:  fmt::print("SUB\n"); break;
                 case OpCode::MUL:  fmt::print("MUL\n"); break;
                 case OpCode::DIV:  fmt::print("DIV\n"); break;
+                case OpCode::MOD:  fmt::print("MOD\n"); break;
+                case OpCode::BAND: fmt::print("BAND\n"); break;
+                case OpCode::BOR:  fmt::print("BOR\n"); break;
+                case OpCode::BXOR: fmt::print("BXOR\n"); break;
+                case OpCode::SHL:  fmt::print("SHL\n"); break;
+                case OpCode::SHR:  fmt::print("SHR\n"); break;
+                case OpCode::BNOT: fmt::print("BNOT\n"); break;
                 case OpCode::HALT: fmt::print("HALT\n"); break;
                 case OpCode::POP:   fmt::print("POP\n"); break;
                 case OpCode::CALL: {

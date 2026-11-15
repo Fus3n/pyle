@@ -980,15 +980,16 @@ namespace pyle {
             "POP_JUMP_IF_FALSE", "POP_JUMP_IF_TRUE", "LOOP",             "CALL", "CALL_METHOD",
             "RETURN", "POP", "NEW_ARRAY", "NEW_MAP", "CALL_KW",
             "GET_INDEX", "SET_INDEX", "YIELD", "HALT", "APPEND", "JUMP_IF_NOT_ARRAY",
-            "CLOSE_UPVALUES",
+            "CLOSE_UPVALUES", "BAND", "BOR", "BXOR", "SHL", "SHR", "BNOT",
         };
         static_assert(static_cast<int>(OpCode::HALT) == 48, "opcode table out of sync");
         static_assert(static_cast<int>(OpCode::JUMP_IF_NOT_ARRAY) == 50, "opcode table out of sync");
         static_assert(static_cast<int>(OpCode::CLOSE_UPVALUES) == 51, "opcode table out of sync");
+        static_assert(static_cast<int>(OpCode::BNOT) == 57, "opcode table out of sync");
         uint64_t total = 0;
-        for (int i = 0; i <= 51; ++i) total += op_counts[i];
+        for (int i = 0; i <= 57; ++i) total += op_counts[i];
         std::vector<int> order;
-        for (int i = 0; i <= 51; ++i) {
+        for (int i = 0; i <= 57; ++i) {
             if (op_counts[i] > 0) order.push_back(i);
         }
         std::sort(order.begin(), order.end(),
@@ -1185,6 +1186,26 @@ namespace pyle {
             set_top(Value(Value::Tag::StringRef, idx));\
         } else { \
             std::string msg = fmt::format("Unsupported operand types. a.tag={}, b.tag={}", \
+            a.tag_to_string(), b.tag_to_string()); \
+            sync_expr; \
+            runtime_error(RuntimeError::Type, msg); \
+            return; \
+        } \
+    } while (false)
+
+#define BITWISE_OP(op, sync_expr) \
+    do { \
+        if (stack_size() < 2) { \
+            sync_expr; \
+            runtime_error(RuntimeError::StackUnderflow, "Not enough values in the stack to apply bitwise operation"); \
+            return; \
+        } \
+        Value b = pop(); \
+        Value a = peek(); \
+        if (a.tag == Value::Tag::Int && b.tag == Value::Tag::Int) { \
+            set_top(Value(static_cast<int64_t>(static_cast<uint64_t>(a.as_int) op static_cast<uint64_t>(b.as_int)))); \
+        } else { \
+            std::string msg = fmt::format("Unsupported operand types for bitwise operation. a.tag={}, b.tag={}", \
             a.tag_to_string(), b.tag_to_string()); \
             sync_expr; \
             runtime_error(RuntimeError::Type, msg); \
@@ -1468,7 +1489,13 @@ namespace pyle {
                 &&op_HALT,
                 &&op_APPEND,
                 &&op_JUMP_IF_NOT_ARRAY,
-                &&op_CLOSE_UPVALUES
+                &&op_CLOSE_UPVALUES,
+                &&op_BAND,
+                &&op_BOR,
+                &&op_BXOR,
+                &&op_SHL,
+                &&op_SHR,
+                &&op_BNOT
             };
             for (size_t i = 0; i < sizeof(labels) / sizeof(labels[0]); ++i) {
                 dispatch_table_storage[i] = labels[i];
@@ -1566,6 +1593,93 @@ namespace pyle {
                         runtime_error(RuntimeError::Type, msg);
                         return;
                     }
+                }
+                DISPATCH();
+
+                OP(BAND) {
+                    BITWISE_OP(&, sync_ip());
+                }
+                DISPATCH();
+
+                OP(BOR) {
+                    BITWISE_OP(|, sync_ip());
+                }
+                DISPATCH();
+
+                OP(BXOR) {
+                    BITWISE_OP(^, sync_ip());
+                }
+                DISPATCH();
+
+                OP(SHL) {
+                    if (stack_size() < 2) {
+                        sync_ip();
+                        runtime_error(RuntimeError::StackUnderflow, "Not enough values in the stack to apply shift");
+                        return;
+                    }
+                    Value b = pop();
+                    Value a = peek();
+                    if (a.tag != Value::Tag::Int || b.tag != Value::Tag::Int) {
+                        std::string msg = fmt::format("Unsupported operand types for shift. a.tag={}, b.tag={}",
+                        a.tag_to_string(), b.tag_to_string());
+                        sync_ip();
+                        runtime_error(RuntimeError::Type, msg);
+                        return;
+                    }
+                    if (static_cast<uint64_t>(b.as_int) >= 64) [[unlikely]] {
+                        if (b.as_int < 0) {
+                            sync_ip();
+                            runtime_error(RuntimeError::Type, "Negative shift count.");
+                            return;
+                        }
+                        set_top(Value(int64_t{0}));
+                    } else {
+                        set_top(Value(static_cast<int64_t>(static_cast<uint64_t>(a.as_int) << static_cast<uint64_t>(b.as_int))));
+                    }
+                }
+                DISPATCH();
+
+                OP(SHR) {
+                    if (stack_size() < 2) {
+                        sync_ip();
+                        runtime_error(RuntimeError::StackUnderflow, "Not enough values in the stack to apply shift");
+                        return;
+                    }
+                    Value b = pop();
+                    Value a = peek();
+                    if (a.tag != Value::Tag::Int || b.tag != Value::Tag::Int) {
+                        std::string msg = fmt::format("Unsupported operand types for shift. a.tag={}, b.tag={}",
+                        a.tag_to_string(), b.tag_to_string());
+                        sync_ip();
+                        runtime_error(RuntimeError::Type, msg);
+                        return;
+                    }
+                    if (static_cast<uint64_t>(b.as_int) >= 64) [[unlikely]] {
+                        if (b.as_int < 0) {
+                            sync_ip();
+                            runtime_error(RuntimeError::Type, "Negative shift count.");
+                            return;
+                        }
+                        set_top(Value(a.as_int < 0 ? int64_t{-1} : int64_t{0}));
+                    } else {
+                        set_top(Value(a.as_int >> static_cast<int>(b.as_int)));
+                    }
+                }
+                DISPATCH();
+
+                OP(BNOT) {
+                    if (sp == stack) {
+                        sync_ip();
+                        runtime_error(RuntimeError::StackUnderflow, "Stack underflow in bitwise not.");
+                        return;
+                    }
+                    Value a = peek();
+                    if (a.tag != Value::Tag::Int) {
+                        sync_ip();
+                        runtime_error(RuntimeError::Type, fmt::format("Cannot apply bitwise not to type '{}'.", a.tag_to_string()));
+                        return;
+                    }
+                    set_top(Value(static_cast<int64_t>(~static_cast<uint64_t>(a.as_int))));
                 }
                 DISPATCH();
 

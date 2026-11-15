@@ -79,7 +79,16 @@ namespace pyle {
                 return Token(TokenType::DOT, ".", token_start_span);
             case ';': return Token(TokenType::SEMICOLON, ";", token_start_span);
             case ':': return Token(TokenType::COLON, ":", token_start_span);
-            case '|': return Token(TokenType::PIPE, "|", token_start_span);
+            case '|':
+                if (match('=')) return Token(TokenType::PIPE_EQUAL, "|=", token_start_span);
+                return Token(TokenType::PIPE, "|", token_start_span);
+            case '&':
+                if (match('=')) return Token(TokenType::AMP_EQUAL, "&=", token_start_span);
+                return Token(TokenType::AMP, "&", token_start_span);
+            case '^':
+                if (match('=')) return Token(TokenType::CARET_EQUAL, "^=", token_start_span);
+                return Token(TokenType::CARET, "^", token_start_span);
+            case '~': return Token(TokenType::TILDE, "~", token_start_span);
             case '?': return Token(TokenType::QUESTION, "?", token_start_span);
             case '+': 
                 if (match('=')) return Token(TokenType::PLUS_EQUAL, "+=", token_start_span);
@@ -103,9 +112,17 @@ namespace pyle {
                 if (match('>')) return Token(TokenType::ARROW, "=>", token_start_span);
                 return Token(TokenType::EQUAL, "=", token_start_span);
             case '<':
+                if (match('<')) {
+                    if (match('=')) return Token(TokenType::LESS_LESS_EQUAL, "<<=", token_start_span);
+                    return Token(TokenType::LESS_LESS, "<<", token_start_span);
+                }
                 if (match('=')) return Token(TokenType::LESS_EQUAL, "<=", token_start_span);
                 return Token(TokenType::LESS, "<", token_start_span);
             case '>':
+                if (match('>')) {
+                    if (match('=')) return Token(TokenType::GREATER_GREATER_EQUAL, ">>=", token_start_span);
+                    return Token(TokenType::GREATER_GREATER, ">>", token_start_span);
+                }
                 if (match('=')) return Token(TokenType::GREATER_EQUAL, ">=", token_start_span);
                 return Token(TokenType::GREATER, ">", token_start_span);
             case '"': {

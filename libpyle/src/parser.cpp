@@ -12,6 +12,7 @@
 namespace pyle {
 
     static std::unique_ptr<Expr> clone_expr(Expr* e) {
+        if (!e) return nullptr;
         if (auto* v = dynamic_cast<VariableExpr*>(e)) {
             return std::make_unique<VariableExpr>(v->name);
         }
@@ -19,14 +20,16 @@ namespace pyle {
             return std::make_unique<LiteralExpr>(l->token);
         }
         if (auto* g = dynamic_cast<GetFieldExpr*>(e)) {
-            return std::make_unique<GetFieldExpr>(clone_expr(g->obj.get()), g->name);
+            auto obj = clone_expr(g->obj.get());
+            if (!obj) return nullptr;
+            return std::make_unique<GetFieldExpr>(std::move(obj), g->name);
         }
         if (auto* idx = dynamic_cast<IndexExpr*>(e)) {
-            return std::make_unique<IndexExpr>(
-                clone_expr(idx->callee.get()), 
-                clone_expr(idx->index.get()),
-                idx->bracket
-            );
+            auto callee = clone_expr(idx->callee.get());
+            if (!callee) return nullptr;
+            auto index = clone_expr(idx->index.get());
+            if (!index) return nullptr;
+            return std::make_unique<IndexExpr>(std::move(callee), std::move(index), idx->bracket);
         }
         return nullptr;
     }
@@ -524,7 +527,9 @@ namespace pyle {
             throw ParserError();
         }
 
-        if (match({TokenType::PLUS_EQUAL, TokenType::MINUS_EQUAL, TokenType::STAR_EQUAL, TokenType::SLASH_EQUAL})) {
+        if (match({TokenType::PLUS_EQUAL, TokenType::MINUS_EQUAL, TokenType::STAR_EQUAL, TokenType::SLASH_EQUAL,
+                   TokenType::AMP_EQUAL, TokenType::PIPE_EQUAL, TokenType::CARET_EQUAL,
+                   TokenType::LESS_LESS_EQUAL, TokenType::GREATER_GREATER_EQUAL})) {
             Token op_eq = previous();
             std::unique_ptr<Expr> value = assignment();
             
@@ -533,7 +538,12 @@ namespace pyle {
             if (op_eq.type == TokenType::PLUS_EQUAL) { binary_op_type = TokenType::PLUS; op_lexeme = "+"; }
             else if (op_eq.type == TokenType::MINUS_EQUAL) { binary_op_type = TokenType::MINUS; op_lexeme = "-"; }
             else if (op_eq.type == TokenType::STAR_EQUAL) { binary_op_type = TokenType::STAR; op_lexeme = "*"; }
-            else { binary_op_type = TokenType::SLASH; op_lexeme = "/"; }
+            else if (op_eq.type == TokenType::SLASH_EQUAL) { binary_op_type = TokenType::SLASH; op_lexeme = "/"; }
+            else if (op_eq.type == TokenType::AMP_EQUAL) { binary_op_type = TokenType::AMP; op_lexeme = "&"; }
+            else if (op_eq.type == TokenType::PIPE_EQUAL) { binary_op_type = TokenType::PIPE; op_lexeme = "|"; }
+            else if (op_eq.type == TokenType::CARET_EQUAL) { binary_op_type = TokenType::CARET; op_lexeme = "^"; }
+            else if (op_eq.type == TokenType::LESS_LESS_EQUAL) { binary_op_type = TokenType::LESS_LESS; op_lexeme = "<<"; }
+            else { binary_op_type = TokenType::GREATER_GREATER; op_lexeme = ">>"; }
                 
             Token binary_op(binary_op_type, op_lexeme, op_eq.selection);
             
@@ -609,7 +619,7 @@ namespace pyle {
 
         while (match({TokenType::GREATER, TokenType::GREATER_EQUAL, TokenType::LESS, TokenType::LESS_EQUAL})) {
             Token op = previous();
-            std::unique_ptr<Expr> right = term();
+            std::unique_ptr<Expr> right = range();
             expr = std::make_unique<BinaryExpr>(std::move(expr), op, std::move(right));
         }
 
@@ -617,12 +627,60 @@ namespace pyle {
     }
 
     std::unique_ptr<Expr> Parser::range() {
-        std::unique_ptr<Expr> expr = term(); 
+        std::unique_ptr<Expr> expr = bit_or();
         if (match({TokenType::DOT_DOT})) {
+            Token op = previous();
+            std::unique_ptr<Expr> right = bit_or();
+            expr = std::make_unique<BinaryExpr>(std::move(expr), op, std::move(right));
+        }
+        return expr;
+    }
+
+    std::unique_ptr<Expr> Parser::bit_or() {
+        std::unique_ptr<Expr> expr = bit_xor();
+
+        while (match({TokenType::PIPE})) {
+            Token op = previous();
+            std::unique_ptr<Expr> right = bit_xor();
+            expr = std::make_unique<BinaryExpr>(std::move(expr), op, std::move(right));
+        }
+
+        return expr;
+    }
+
+    std::unique_ptr<Expr> Parser::bit_xor() {
+        std::unique_ptr<Expr> expr = bit_and();
+
+        while (match({TokenType::CARET})) {
+            Token op = previous();
+            std::unique_ptr<Expr> right = bit_and();
+            expr = std::make_unique<BinaryExpr>(std::move(expr), op, std::move(right));
+        }
+
+        return expr;
+    }
+
+    std::unique_ptr<Expr> Parser::bit_and() {
+        std::unique_ptr<Expr> expr = shift();
+
+        while (match({TokenType::AMP})) {
+            Token op = previous();
+            std::unique_ptr<Expr> right = shift();
+            expr = std::make_unique<BinaryExpr>(std::move(expr), op, std::move(right));
+        }
+
+        return expr;
+    }
+
+    std::unique_ptr<Expr> Parser::shift() {
+        std::unique_ptr<Expr> expr = term();
+
+        while (match({TokenType::LESS_LESS, TokenType::GREATER_GREATER})) {
             Token op = previous();
             std::unique_ptr<Expr> right = term();
             expr = std::make_unique<BinaryExpr>(std::move(expr), op, std::move(right));
         }
+
         return expr;
     }
 
@@ -653,7 +711,7 @@ namespace pyle {
     }
 
     std::unique_ptr<Expr> Parser::unary() {
-        if (match({TokenType::NOT, TokenType::MINUS, TokenType::PLUS})) {
+        if (match({TokenType::NOT, TokenType::MINUS, TokenType::PLUS, TokenType::TILDE})) {
             Token op = previous();
             std::unique_ptr<Expr> right = unary();
             return std::make_unique<UnaryExpr>(op, std::move(right));

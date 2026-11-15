@@ -58,6 +58,12 @@ namespace pyle {
         APPEND,
         JUMP_IF_NOT_ARRAY,
         CLOSE_UPVALUES,
+        BAND,
+        BOR,
+        BXOR,
+        SHL,
+        SHR,
+        BNOT,
         Invalid = 0xFF
     };
 

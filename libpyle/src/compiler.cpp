@@ -372,6 +372,30 @@ namespace pyle {
         return true;
     }
 
+    bool Compiler::fold_bitwise(TokenType op, const Value& lhs, const Value& rhs, Value& out) {
+        if (lhs.tag != Value::Tag::Int || rhs.tag != Value::Tag::Int) return false;
+
+        const uint64_t a = static_cast<uint64_t>(lhs.as_int);
+        const uint64_t b = static_cast<uint64_t>(rhs.as_int);
+        switch (op) {
+            case TokenType::AMP:   out = Value(static_cast<int64_t>(a & b)); return true;
+            case TokenType::PIPE:  out = Value(static_cast<int64_t>(a | b)); return true;
+            case TokenType::CARET: out = Value(static_cast<int64_t>(a ^ b)); return true;
+            case TokenType::LESS_LESS:
+                if (rhs.as_int < 0) return false;
+                if (rhs.as_int >= 64) { out = Value(int64_t{0}); return true; }
+                out = Value(static_cast<int64_t>(a << b));
+                return true;
+            case TokenType::GREATER_GREATER:
+                if (rhs.as_int < 0) return false;
+                if (rhs.as_int >= 64) { out = Value(lhs.as_int < 0 ? int64_t{-1} : int64_t{0}); return true; }
+                out = Value(lhs.as_int >> static_cast<int>(rhs.as_int));
+                return true;
+            default:
+                return false;
+        }
+    }
+
     bool Compiler::try_fold_binary(BinaryExpr* expr, uint32_t lhs_idx, uint32_t rhs_idx) {
         const Value& lhs = current_chunk->const_pool[lhs_idx];
         const Value& rhs = current_chunk->const_pool[rhs_idx];
@@ -393,6 +417,13 @@ namespace pyle {
             case TokenType::GREATER:
             case TokenType::GREATER_EQUAL:
                 if (!fold_comparison(op, lhs, rhs, result)) return false;
+                break;
+            case TokenType::AMP:
+            case TokenType::PIPE:
+            case TokenType::CARET:
+            case TokenType::LESS_LESS:
+            case TokenType::GREATER_GREATER:
+                if (!fold_bitwise(op, lhs, rhs, result)) return false;
                 break;
             default:
                 return false;
@@ -419,6 +450,10 @@ namespace pyle {
                 break;
             case TokenType::NOT:
                 result = Value(!vm.is_truthy(operand));
+                break;
+            case TokenType::TILDE:
+                if (operand.tag != Value::Tag::Int) return false;
+                result = Value(static_cast<int64_t>(~static_cast<uint64_t>(operand.as_int)));
                 break;
             default:
                 return false;
@@ -460,6 +495,11 @@ namespace pyle {
             case TokenType::GREATER: emit_instruction(OpCode::GT, 0, line); break;
             case TokenType::GREATER_EQUAL: emit_instruction(OpCode::GTE, 0, line); break;
             case TokenType::DOT_DOT: emit_instruction(OpCode::NEW_RANGE, 0, line); break;
+            case TokenType::AMP: emit_instruction(OpCode::BAND, 0, line); break;
+            case TokenType::PIPE: emit_instruction(OpCode::BOR, 0, line); break;
+            case TokenType::CARET: emit_instruction(OpCode::BXOR, 0, line); break;
+            case TokenType::LESS_LESS: emit_instruction(OpCode::SHL, 0, line); break;
+            case TokenType::GREATER_GREATER: emit_instruction(OpCode::SHR, 0, line); break;
             default:
                 reporter.report(expr->op.selection, ErrorType::Compile, "Unknown binary operator.");
                 break;
@@ -932,6 +972,10 @@ namespace pyle {
                 break;
             }
             case TokenType::PLUS: break;
+            case TokenType::TILDE: {
+                emit_instruction(OpCode::BNOT, 0, expr->op.selection.line);
+                break;
+            }
             default:
                 reporter.report(expr->op.selection, ErrorType::Compile, "Unknown unary operator.");
                 break;

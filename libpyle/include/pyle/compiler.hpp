@@ -67,6 +67,7 @@ namespace pyle {
         void pop_instructions(size_t count);
         bool fold_arithmetic(TokenType op, const Value& lhs, const Value& rhs, Value& out);
         bool fold_comparison(TokenType op, const Value& lhs, const Value& rhs, Value& out);
+        bool fold_bitwise(TokenType op, const Value& lhs, const Value& rhs, Value& out);
         bool try_fold_binary(BinaryExpr* expr, uint32_t lhs_idx, uint32_t rhs_idx);
         bool try_fold_unary(UnaryExpr* expr, uint32_t operand_idx);
         bool try_emit_local_increment(AssignExpr* expr);

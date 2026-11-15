@@ -1,0 +1,70 @@
+# Bitwise operators: & | ^ ~ << >>
+# They work on 64-bit signed integers only. Any other type raises TypeError.
+
+let a = 12
+let b = 10
+
+print("and:", a & b)
+print("or: ", a | b)
+print("xor:", a ^ b)
+print("not:", ~0)
+
+# Flags / permission bitmask
+let READ = 1 << 0
+let WRITE = 1 << 1
+let EXEC = 1 << 2
+
+fn has(bits: int, flag: int): bool { return bits & flag != 0 }
+
+let perms = READ | EXEC
+print("read: ", has(perms, READ))
+print("write:", has(perms, WRITE))
+print("exec: ", has(perms, EXEC))
+
+fn grant(bits: int, flag: int): int { return bits | flag }
+fn revoke(bits: int, flag: int): int { return bits & ~flag }
+fn toggle(bits: int, flag: int): int { return bits ^ flag }
+
+perms = grant(perms, WRITE)
+print("granted write:", has(perms, WRITE))
+perms = revoke(perms, READ)
+print("revoked read: ", has(perms, READ))
+perms = toggle(perms, EXEC)
+print("toggled exec: ", has(perms, EXEC))
+
+# Shifts: left shift wraps in 64-bit two's complement, right shift is arithmetic
+print("1 << 63:", 1 << 63)
+print("-4 >> 1:", -4 >> 1)
+
+# Shift counts: >= 64 does not error, negative does
+let k = 64
+print("1 << 64:", 1 << k)
+print("-8 >> 64:", -8 >> k)
+
+let r = pcall(fn() { return 1 << -1 })
+print("negative shift ok:", r.ok, "type:", r.error.type, "message:", r.error.message)
+
+# Precedence: shifts bind tightest, then &, then ^, then |, then comparisons
+print("5 & 3 == 1:", 5 & 3 == 1)
+print("1 | 2 ^ 3 & 4 << 1:", 1 | 2 ^ 3 & 4 << 1)
+
+# Compound assignment
+let x = 6
+x &= 3
+x |= 8
+x ^= 3
+x <<= 2
+x >>= 1
+print("compound result:", x)
+
+# Bit packing a 24-bit color and unpacking it back
+fn pack(rgb: array[int]): int { return (rgb[0] << 16) | (rgb[1] << 8) | rgb[2] }
+fn unpack(value: int): array[int] { return [(value >> 16) & 0xFF, (value >> 8) & 0xFF, value & 0xFF] }
+
+let packed = pack([31, 128, 255])
+print("packed:", packed)
+print("unpacked:", unpack(packed))
+
+# Type checking is strict at runtime
+let bad = pcall(fn() { return 1.5 & 1 })
+print("float operand ok:", bad.ok, "type:", bad.error.type)
