@@ -98,7 +98,7 @@ The desktop suite reports 97 tests; the wasm build excludes `tests/test_proc.cpp
 | Platform | Status |
 |---|---|
 | Windows x86_64 (MSVC 2022, mingw clang64) | Tested |
-| Linux x86_64 | Not tested |
+| Linux x86_64 (Ubuntu 26.04, GCC, WSL) | Tested |
 | macOS (arm64/x86_64) | Not tested |
 | Web/WASM (wasm32, Emscripten) | Tested (`proc`, Worker and `.pyled` unavailable) |
 
