@@ -84,7 +84,9 @@ namespace pyle {
     Value os_script_dir(VM& vm, ArgView args) {
         (void)args;
         std::filesystem::path p(vm.script_name);
-        return Value(Value::Tag::StringRef, vm.intern_string(p.parent_path().string()));
+        std::string dir = p.parent_path().string();
+        if (dir.empty()) dir = ".";
+        return Value(Value::Tag::StringRef, vm.intern_string(dir));
     }
 
     pyle::Value os_getenv(pyle::VM& vm, pyle::ArgView args) {
