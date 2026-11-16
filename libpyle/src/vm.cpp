@@ -9,6 +9,7 @@
 #include "pyle/std/std_coro.hpp"
 #include "pyle/std/std_map.hpp"
 #include "pyle/std/std_bytes.hpp"
+#include "pyle/std/std_bytes_builder.hpp"
 #include "pyle/value.hpp"
 
 namespace pyle {
@@ -271,8 +272,9 @@ namespace pyle {
             case Value::Tag::StructTypeRef: 
             case Value::Tag::NativeObjectRef:
             case Value::Tag::MapRef: 
-            case Value::Tag::CoroutineRef: 
-            case Value::Tag::BytesRef: {
+            case Value::Tag::CoroutineRef:
+            case Value::Tag::BytesRef:
+            case Value::Tag::BytesBuilderRef: {
                 HeapIdx idx = val.as_ref;
                 if (heap[idx].permanent) {
                     return;
@@ -481,6 +483,11 @@ namespace pyle {
             case Value::Tag::None: ss << "none"; break;
             case Value::Tag::CoroutineRef: ss << "<coro>"; break;
             case Value::Tag::NativeFuncRef: ss << "<native_function>"; break;
+            case Value::Tag::BytesBuilderRef: {
+                const auto& vec = std::get<BytesType>(heap[val.as_ref].data);
+                ss << "<bytes_builder size=" << vec.size() << ">";
+                break;
+            }
             case Value::Tag::BytesRef: {
                 const auto& vec = std::get<BytesType>(heap[val.as_ref].data);
                 ss << "<bytes " << vec.size() << ">";
@@ -2362,8 +2369,9 @@ namespace pyle {
                         }
 
                         case Value::Tag::ArrayRef:
-                        case Value::Tag::StringRef: 
-                        case Value::Tag::BytesRef: {
+                        case Value::Tag::StringRef:
+                        case Value::Tag::BytesRef:
+                        case Value::Tag::BytesBuilderRef: {
                             const Value *args_ptr = arg_count > 0 ? (sp - arg_count) : nullptr;
                             ArgView args_view{args_ptr, static_cast<size_t>(arg_count)};
                             sync_ip();
@@ -2372,8 +2380,10 @@ namespace pyle {
                                 result = ArrayMethods::dispatch(*this, callee.as_ref, method_name, args_view);
                             } else if (callee.tag == Value::Tag::StringRef) {
                                 result = StringMethods::dispatch(*this, callee.as_ref, method_name, args_view);
-                            } else {
+                            } else if (callee.tag == Value::Tag::BytesRef) {
                                 result = BytesMethods::dispatch(*this, callee.as_ref, method_name, args_view);
+                            } else {
+                                result = BytesBuilderMethods::dispatch(*this, callee.as_ref, method_name, args_view);
                             }
                             if (panicked) return;
                             sp -= (arg_count + 1);

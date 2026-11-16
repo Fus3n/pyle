@@ -1,0 +1,8 @@
+struct bytes_builder {
+    fn push(b: int): int { }
+    fn extend_array(arr: array[int]): int { }
+    fn reserve(n: int): int { }
+    fn size(): int { }
+    fn to_string(): string { }
+    fn to_bytes(): bytes { }
+}

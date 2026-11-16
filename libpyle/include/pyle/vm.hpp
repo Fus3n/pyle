@@ -109,7 +109,8 @@ namespace pyle {
         inline bool is_hashable(const Value& v) const {
             return v.tag != Value::Tag::ArrayRef &&
                 v.tag != Value::Tag::MapRef &&
-                v.tag != Value::Tag::StructRef;
+                v.tag != Value::Tag::StructRef &&
+                v.tag != Value::Tag::BytesBuilderRef;
         }
 
         /// Creates a new VM with the given configuration.

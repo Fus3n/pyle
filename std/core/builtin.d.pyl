@@ -24,6 +24,7 @@ fn toint(v: any): int | none { }
 fn tofloat(v: any): float | none { }
 fn Coro(f: function): coro { }
 fn Bytes(arr: array[int]): bytes { }
+fn BytesBuilder(capacity: int?): bytes_builder { }
 fn waitfor(task): any { }
 
 let PYLE_VERSION: string

@@ -602,6 +602,28 @@ namespace pyle {
         return pyle::Value(pyle::Value::Tag::BytesRef, idx);
     }
 
+    pyle::Value native_bytes_builder(pyle::VM& vm, pyle::ArgView args) {
+        pyle::BytesType builder;
+        if (args.size() == 1) {
+            if (args[0].tag != pyle::Value::Tag::Int) {
+                vm.runtime_error(pyle::RuntimeError::ArgumentError, "BytesBuilder expects an optional int capacity argument.");
+                return pyle::Value();
+            }
+            int64_t capacity = args[0].as_int;
+            if (capacity < 0) {
+                vm.runtime_error(pyle::RuntimeError::ArgumentError, "BytesBuilder capacity must be non-negative.");
+                return pyle::Value();
+            }
+            builder.reserve(static_cast<size_t>(capacity));
+        } else if (args.size() != 0) {
+            vm.runtime_error(pyle::RuntimeError::ArgumentError, "BytesBuilder expects 0 or 1 arguments.");
+            return pyle::Value();
+        }
+
+        pyle::HeapIdx idx = vm.alloc(pyle::Object(std::move(builder)));
+        return pyle::Value(pyle::Value::Tag::BytesBuilderRef, idx);
+    }
+
     static pyle::Value native_is_root(pyle::VM& vm, pyle::ArgView) {
         return pyle::Value(vm.active_coroutine_idx == 0 || vm.active_coroutine_idx == vm.main_coroutine_idx);
     }
@@ -716,6 +738,7 @@ namespace pyle {
         pyle::bind_function<native_raise>(vm, "raise");
         pyle::bind_function<native_coro_constructor>(vm, "Coro");
         pyle::bind_function<native_bytes>(vm, "Bytes");
+        pyle::bind_function<native_bytes_builder>(vm, "BytesBuilder");
         pyle::bind_function<native_background_tick>(vm, "__tick");
         pyle::bind_function<native_ready_pop>(vm, "__next_ready_task");
         pyle::bind_function<native_is_root>(vm, "__is_root");

@@ -1,0 +1,54 @@
+fn demo_basic_bytes() {
+    let raw = Bytes([0x41, 0x42, 0x43, 0x44, 0x45])
+    print("size:", raw.size())
+    print("first:", raw[0])
+    let total = 0
+    for b in raw { total += b }
+    print("sum:", total)
+    print("as string:", raw.to_string())
+}
+
+fn build_packet(tag: int, payload: array[int]): bytes {
+    let b = BytesBuilder()
+    b.push(tag)
+    b.extend_array(payload)
+    return b.to_bytes()
+}
+
+fn demo_builder() {
+    let packet = build_packet(3, [0x48, 0x65, 0x6C, 0x6C, 0x6F])
+    print("packet size:", packet.size())
+    print("packet:", packet.to_string())
+
+    let chunked = BytesBuilder(64)
+    chunked.extend_array([0x48, 0x55, 0x46, 0x31])
+    chunked.extend_array([0x01, 0x02, 0x03])
+    print("chunked size:", chunked.size())
+    print("chunked to_string:", chunked.to_string())
+    print("chunked after to_string (size):", chunked.size())
+    let final = chunked.to_bytes()
+    print("final to_string:", final.to_string())
+}
+
+fn demo_typed_reads() {
+    let le_one = Bytes([0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00])
+    let be_one = Bytes([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01])
+    print("le:", le_one.to_int_le())
+    print("be:", be_one.to_int_be())
+
+    let le_float = Bytes([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xF0, 0x3F])
+    let be_float = Bytes([0x3F, 0xF0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00])
+    print("le float:", le_float.to_float_le())
+    print("be float:", be_float.to_float_be())
+}
+
+fn main() {
+    print("--- basic bytes ---")
+    demo_basic_bytes()
+    print("--- builder ---")
+    demo_builder()
+    print("--- typed reads ---")
+    demo_typed_reads()
+}
+
+main()

@@ -30,7 +30,8 @@ namespace pyle {
         enum class Tag {
             Int, Float, Bool, None, StringRef, ArrayRef, StructRef,
             NativeFuncRef, FuncRef, IteratorRef, RangeRef, ClosureRef, UpvalueRef,
-            StructTypeRef, MapRef, NativeObjectRef, CoroutineRef, BytesRef
+            StructTypeRef, MapRef, NativeObjectRef, CoroutineRef, BytesRef,
+            BytesBuilderRef
         } tag;
         union {
             int64_t as_int;
@@ -61,7 +62,8 @@ namespace pyle {
                    t == Tag::MapRef ||
                    t == Tag::NativeObjectRef ||
                    t == Tag::CoroutineRef ||
-                   t == Tag::BytesRef);
+                   t == Tag::BytesRef ||
+                   t == Tag::BytesBuilderRef);
         }
 
         std::string tag_to_string() const {
@@ -73,7 +75,8 @@ namespace pyle {
                 case Tag::StringRef: return "string";
                 case Tag::ArrayRef: return "array";
                 case Tag::StructRef: return "struct";
-                case Tag::BytesRef: return "bytes";
+                 case Tag::BytesRef: return "bytes";
+                 case Tag::BytesBuilderRef: return "bytes_builder";
                 case Tag::NativeFuncRef: return "native_function";
                 case Tag::FuncRef: 
                 case Tag::ClosureRef:
@@ -405,9 +408,9 @@ namespace pyle {
             MapObject,
             NativeObject,
             NativeMethod,
-            Coroutine,
-            BytesType 
-        > data;
+             Coroutine,
+             BytesType
+         > data;
 
         Object() = default;
         explicit Object(std::string str) : data(std::move(str)) {}
@@ -424,7 +427,7 @@ namespace pyle {
         explicit Object(NativeObject u) : data(u) {}
         explicit Object(NativeMethod nm) : data(nm) {}           
         explicit Object(Coroutine coro) : data(std::move(coro)) {} 
-        explicit Object(BytesType b) : data(std::move(b)) {}
+         explicit Object(BytesType b) : data(std::move(b)) {}
     };
 
 
