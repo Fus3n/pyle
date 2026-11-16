@@ -57,7 +57,7 @@ The main targets are `pyle` for the interpreter, `pyle-lsp` for the language ser
 
 ## Embedding
 
-Everything except the library itself is a frontend. The `pyle` interpreter, `pyle-lsp`, and the embedding examples all link against one static library target, `libpyle`, which is the whole language: lexer, parser, compiler, VM, garbage collector, and the core native functions. The heavier dependencies (simdjson, cpp-httplib, mbedtls, argparse, raylib) belong to the `pyle` binary and its modules, not to the library, so embedding does not pull any of them in.
+Everything except the library (libpyle) itself is the "general-purpose frontend". The `pyle` interpreter, `pyle-lsp`, and the embedding examples all link against one static library target, `libpyle`, which is the whole language: lexer, parser, compiler, VM, garbage collector, and the core native functions. The heavier dependencies (simdjson, cpp-httplib, mbedtls, argparse, raylib) belong to the `pyle` binary and its modules, not to the library, so embedding does not pull any of them in.
 
 To link it, compile everything under `libpyle/src` as C++17, add `libpyle/include` to your include path, and provide the headers for fmt and unordered_dense. Both of those are header-only, and building in-tree with xmake fetches them for you automatically. `xmake build libpyle` produces the static library; if your own project uses xmake you can point it at this repo and depend on the `libpyle` target directly, and if it uses CMake the generated `CMakeLists.txt` from the Building section already contains it.
 
