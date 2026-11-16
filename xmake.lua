@@ -4,10 +4,34 @@ set_languages("c++17")
 
 add_rules("mode.debug", "mode.release")
 
-option("profile_ops")
-    set_default(false)
+option("with_cli")
+    set_default(true)
     set_showmenu(true)
-    set_description("Enable per-opcode profiling counters (PYLE_PROFILE=1 at runtime)")
+    set_description("Build the pyle command-line interpreter and its bundled modules")
+option_end()
+
+option("with_lsp")
+    set_default(true)
+    set_showmenu(true)
+    set_description("Build the pyle language server")
+option_end()
+
+option("with_raylib")
+    set_default(true)
+    set_showmenu(true)
+    set_description("Build the raylib native module")
+option_end()
+
+option("with_tests")
+    set_default(true)
+    set_showmenu(true)
+    set_description("Build the test suite")
+option_end()
+
+option("with_examples")
+    set_default(true)
+    set_showmenu(true)
+    set_description("Build the C++ embedding examples")
 option_end()
 
 if is_mode("release") then
@@ -21,147 +45,141 @@ if is_mode("debug") then
     set_policy("build.sanitizer.undefined", true)    
 end
 
-package("unordered_dense")
-    set_homepage("https://github.com/martinus/unordered_dense")
-    add_urls("https://github.com/martinus/unordered_dense/archive/refs/tags/v$(version).tar.gz")
-    add_versions("4.11.0", "a232f7433b45872d43e4dc74a25cbd58effc0be76e3d704b34e5de3c637eed77")
-    on_install(function (package)
-        os.cp("include/*", package:installdir("include"))
-    end)
-package_end()
+if has_config("with_cli") then
+    add_requires("argparse 3.2", "simdjson 4.2.4")
+    add_requires("cpp-httplib 0.50.1")
+    add_requires("mbedtls 3.6.1")
+end
 
-add_requires("fmt 12.2.0", {configs = {header_only = true}})
-add_requires("unordered_dense 4.11.0", "argparse 3.2", "simdjson 4.2.4")
-add_requires("raylib 5.5")
-add_requires("nlohmann_json 3.11.3")
-add_requires("cpp-httplib 0.50.1")
-add_requires("mbedtls 3.6.1")
+if has_config("with_lsp") then
+    add_requires("nlohmann_json 3.11.3")
+end
+
+if has_config("with_raylib") then
+    add_requires("raylib 5.5")
+end
+
 add_cxxflags("/utf-8", {tools = "cl"})
 add_rules("plugin.compile_commands.autoupdate")
 
-target("libpyle")
-    set_kind("$(kind)")
-    add_files("libpyle/src/**.cpp")
-    add_includedirs("libpyle/include", {public = true})
-    add_packages("fmt", "unordered_dense", {public = true})
-    if has_config("profile_ops") then
-        add_defines("PYLE_PROFILE_OPS", {public = true})
-    end
-    if is_mode("release") then
-        set_policy("build.optimization.lto", true)
-    end
+includes("libpyle")
 
-target("pyle")
-    set_kind("binary")
-    add_files("pyle/src/main.cpp")
-    add_files("pyle/src/std/std_json.cpp")
-    add_files("pyle/src/std/http/**.cpp")
-    add_files("pyle/src/std/crypto/module.cpp")
-    add_packages("argparse", "simdjson", "cpp-httplib", "mbedtls")
-    add_defines("CPPHTTPLIB_MBEDTLS_SUPPORT")
-    if is_plat("mingw", "msys", "windows") then
-        add_syslinks("ws2_32", "crypt32", "bcrypt")
-    end
-    add_deps("libpyle")
-    set_rundir("$(projectdir)")
-    if is_mode("release") then
-        set_policy("build.optimization.lto", true)
-    end
-    on_load(function (target)
-        local hash = "unknown"
-        local dirty = 0
-        local suffix = ""
-        local out = try {function () return os.iorunv("git", {"rev-parse", "--short", "HEAD"}) end}
-        if out then
-            hash = out:trim()
-            local status = try {function () return os.iorunv("git", {"status", "--porcelain"}) end}
-            if status and #status:trim() > 0 then
-                dirty = 1
-                suffix = "-dirty"
+if has_config("with_cli") then
+    target("pyle")
+        set_kind("binary")
+        add_files("pyle/src/main.cpp")
+        add_files("pyle/src/std/std_json.cpp")
+        add_files("pyle/src/std/http/**.cpp")
+        add_files("pyle/src/std/crypto/module.cpp")
+        add_packages("argparse", "simdjson", "cpp-httplib", "mbedtls")
+        add_defines("CPPHTTPLIB_MBEDTLS_SUPPORT")
+        if is_plat("mingw", "msys", "windows") then
+            add_syslinks("ws2_32", "crypt32", "bcrypt")
+        end
+        add_deps("libpyle")
+        set_rundir("$(projectdir)")
+        if is_mode("release") then
+            set_policy("build.optimization.lto", true)
+        end
+        on_load(function (target)
+            local hash = "unknown"
+            local dirty = 0
+            local suffix = ""
+            local out = try {function () return os.iorunv("git", {"rev-parse", "--short", "HEAD"}) end}
+            if out then
+                hash = out:trim()
+                local status = try {function () return os.iorunv("git", {"status", "--porcelain"}) end}
+                if status and #status:trim() > 0 then
+                    dirty = 1
+                    suffix = "-dirty"
+                end
             end
+            local content = string.format(
+                "#pragma once\n\n#define PYLE_GIT_HASH \"%s\"\n#define PYLE_GIT_DIRTY %d\n#define PYLE_GIT_SUFFIX \"%s\"\n",
+                hash, dirty, suffix)
+            local header = path.join(os.projectdir(), "pyle", "src", "build_info.hpp")
+            local existing = os.isfile(header) and io.readfile(header) or nil
+            if existing ~= content then
+                io.writefile(header, content)
+            end
+        end)
+        after_build(function (target)
+            import("core.project.project")
+            os.cp("$(projectdir)/std", target:targetdir())
+        end)
+end
+
+if has_config("with_raylib") then
+    target("raylib")
+        set_kind("shared")
+        set_filename("raylib.pyled")
+        add_files("pyle/src/std/vendor/raylib/**.cpp")
+        add_packages("raylib")
+        add_deps("libpyle")
+        after_build(function (target)
+            local outdir = target:targetdir()
+            local stddir = path.join(outdir, "std")
+            os.mkdir(stddir)
+            os.cp(target:targetfile(), path.join(stddir, "raylib.pyled"))
+            os.cp(target:targetfile(), path.join("$(projectdir)/std", "raylib.pyled"))
+        end)
+end
+
+if has_config("with_examples") then
+    target("example_basic_embedding")
+        set_kind("binary")
+        set_languages("c++17")
+        add_files("examples_cpp/01_basic_embedding.cpp")
+        add_deps("libpyle")
+
+    target("example_function_binding")
+        set_kind("binary")
+        set_languages("c++17")
+        add_files("examples_cpp/02_function_binding.cpp")
+        add_deps("libpyle")
+
+    target("example_class_binding")
+        set_kind("binary")
+        set_languages("c++17")
+        add_files("examples_cpp/03_class_binding.cpp")
+        add_deps("libpyle")
+
+    target("example_async_binding")
+        set_kind("binary")
+        set_languages("c++17")
+        add_files("examples_cpp/04_async_binding.cpp")
+        add_deps("libpyle")
+end
+
+if has_config("with_tests") then
+    target("pyle_tests")
+        set_kind("binary")
+        set_group("tests")
+        add_files("tests/*.cpp")
+        add_deps("libpyle")
+        set_rundir("$(projectdir)")
+        add_tests("suite")
+end
+
+if has_config("with_lsp") then
+    target("pyle-lsp")
+        set_kind("binary")
+        add_files("pyle-lsp/src/main.cpp")
+        add_packages("nlohmann_json")
+        add_deps("libpyle")
+        set_rundir("$(projectdir)")
+        set_runtimes("MT")
+        
+        if is_plat("mingw", "msys") then
+            add_ldflags("-static", {force = true})
         end
-        local content = string.format(
-            "#pragma once\n\n#define PYLE_GIT_HASH \"%s\"\n#define PYLE_GIT_DIRTY %d\n#define PYLE_GIT_SUFFIX \"%s\"\n",
-            hash, dirty, suffix)
-        local header = path.join(os.projectdir(), "pyle", "src", "build_info.hpp")
-        local existing = os.isfile(header) and io.readfile(header) or nil
-        if existing ~= content then
-            io.writefile(header, content)
-        end
-    end)
-    after_build(function (target)
-        import("core.project.project")
-        os.cp("$(projectdir)/std", target:targetdir())
-    end)
 
-target("raylib")
-    set_kind("shared")
-    set_filename("raylib.pyled")
-    add_files("pyle/src/std/vendor/raylib/**.cpp")
-    add_packages("raylib")
-    add_deps("libpyle")
-    after_build(function (target)
-        local outdir = target:targetdir()
-        local stddir = path.join(outdir, "std")
-        os.mkdir(stddir)
-        os.cp(target:targetfile(), path.join(stddir, "raylib.pyled"))
-        os.cp(target:targetfile(), path.join("$(projectdir)/std", "raylib.pyled"))
-    end)
-
-target("example_basic_embedding")
-    set_kind("binary")
-    set_languages("c++17")
-    add_files("examples_cpp/01_basic_embedding.cpp")
-    add_deps("libpyle")
-
-target("example_function_binding")
-    set_kind("binary")
-    set_languages("c++17")
-    add_files("examples_cpp/02_function_binding.cpp")
-    add_deps("libpyle")
-
-target("example_class_binding")
-    set_kind("binary")
-    set_languages("c++17")
-    add_files("examples_cpp/03_class_binding.cpp")
-    add_deps("libpyle")
-
-
-target("example_async_binding")
-    set_kind("binary")
-    set_languages("c++17")
-    add_files("examples_cpp/04_async_binding.cpp")
-    add_deps("libpyle")
-
-
-target("pyle_tests")
-    set_kind("binary")
-    set_group("tests")
-    add_files("tests/*.cpp")
-    add_deps("libpyle")
-    set_rundir("$(projectdir)")
-    add_tests("suite")
-
-target("pyle-lsp")
-    set_kind("binary")
-    add_files("pyle-lsp/src/main.cpp")
-    add_packages("nlohmann_json")
-    add_deps("libpyle")
-    set_rundir("$(projectdir)")
-    set_runtimes("MT")
-    
-    if is_plat("mingw", "msys") then
-        add_ldflags("-static", {force = true})
-    end
-
-    -- Ship layout: <build>/pyle-lsp/pyle-lsp.exe so the extension and manual
-    -- installs can pick it up next to the interpreter.
-    after_build(function (target)
-        import("core.project.project")
-        local outdir = path.join(target:targetdir(), "pyle-lsp")
-        os.mkdir(outdir)
-        os.cp(target:targetfile(), path.join(outdir, "pyle-lsp.exe"))
-    end)
-
-
-
+        -- Ship layout: <build>/pyle-lsp/pyle-lsp.exe so the extension and manual
+        -- installs can pick it up next to the interpreter.
+        after_build(function (target)
+            import("core.project.project")
+            local outdir = path.join(target:targetdir(), "pyle-lsp")
+            os.mkdir(outdir)
+            os.cp(target:targetfile(), path.join(outdir, "pyle-lsp.exe"))
+        end)
+end

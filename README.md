@@ -41,25 +41,62 @@ printf("{} then {}\n", s.pop(), s.pop()) # 2 then 1
 
 ## Building
 
-The build uses [xmake](https://xmake.io). Any compiler it supports works: clang, gcc, and msvc. To pick one explicitly, configure the project and then build:
+The build uses [xmake](https://xmake.io). Any compiler xmake supports works: clang, gcc, and msvc.
+
+Build everything (interpreter, language server, raylib module, tests, examples):
 
 ```sh
 xmake f -m release
+xmake
+```
+
+Build just the command-line interpreter:
+
+```sh
+xmake f -m release --with_lsp=n --with_raylib=n --with_tests=n --with_examples=n
 xmake build pyle
 ```
 
-Add `--toolchain=clang`, `--toolchain=gcc`, or `--toolchain=msvc` to the configure line if you want to force a specific one rather than letting xmake detect it. `-p` and `-a` set the platform and architecture the same way they do in any xmake project. Leaving off the target name builds everything.
+Build just the library:
 
-If you would rather drive the build from CMake, or you want clangd to understand the project, `xmake project -k cmake` writes out a `CMakeLists.txt` and `xmake project -k compile_commands` writes out a `compile_commands.json`.
+```sh
+xmake f -m release --with_cli=n --with_lsp=n --with_raylib=n --with_tests=n --with_examples=n
+xmake build libpyle
+```
+
+Every part sits behind a `--with_*` option, all on by default: `--with_cli`, `--with_lsp`, `--with_raylib`, `--with_tests`, `--with_examples`. A disabled part creates no target and resolves none of its packages, so the library-only configure above touches nothing but fmt and unordered_dense, both header-only. Artifacts land under `build/<platform>/<arch>/<mode>/`.
+
+Add `--toolchain=clang`, `--toolchain=gcc`, or `--toolchain=msvc` to the configure line to force a compiler; `-p` and `-a` set platform and architecture as in any xmake project. `xmake project -k compile_commands` writes `compile_commands.json` for clangd. The `xmake project -k cmake` output references the local xmake package cache, so treat it as IDE integration for this repo only — for real CMake use the bundled `libpyle/CMakeLists.txt` shown in the Embedding section.
 
 The main targets are `pyle` for the interpreter, `pyle-lsp` for the language server, and `pyle_tests` for the test suite, which you can run with `xmake run pyle_tests`. There are also four embedding examples, `example_basic_embedding`, `example_function_binding`, `example_class_binding`, and `example_async_binding`, each covering one way of wiring the VM into a host program. The C++ sample below is the first of them, so you can read it here and then build it to see the same thing run.
 
 
 ## Embedding
 
-Everything except the library (libpyle) itself is the "general-purpose frontend". The `pyle` interpreter, `pyle-lsp`, and the embedding examples all link against one static library target, `libpyle`, which is the whole language: lexer, parser, compiler, VM, garbage collector, and the core native functions. The heavier dependencies (simdjson, cpp-httplib, mbedtls, argparse, raylib) belong to the `pyle` binary and its modules, not to the library, so embedding does not pull any of them in.
+The library is the whole language: lexer, parser, compiler, VM, garbage collector, and the core native functions. The `pyle` interpreter binary, `pyle-lsp`, and the embedding examples are separate targets that link against it. The heavier dependencies (simdjson, cpp-httplib, mbedtls, argparse, raylib) belong to the interpreter binary and its bundled modules, not to the library, so embedding does not pull any of them in.
 
-To link it, compile everything under `libpyle/src` as C++17, add `libpyle/include` to your include path, and provide the headers for fmt and unordered_dense. Both of those are header-only, and building in-tree with xmake fetches them for you automatically. `xmake build libpyle` produces the static library; if your own project uses xmake you can point it at this repo and depend on the `libpyle` target directly, and if it uses CMake the generated `CMakeLists.txt` from the Building section already contains it.
+To link it, compile everything under `libpyle/src` as C++17, add `libpyle/include` to your include path, and provide the headers for fmt and unordered_dense. Both of those are header-only, and both xmake and the bundled CMake project fetch them for you automatically. If your own project uses xmake, include the library script and depend on the target:
+
+```lua
+includes("path/to/pyle/libpyle")
+
+target("my_app")
+    set_kind("binary")
+    add_files("main.cpp")
+    add_deps("libpyle")
+```
+
+That configure resolves only fmt and unordered_dense; the interpreter, raylib, and the rest are never referenced.
+
+If your project uses CMake, point `add_subdirectory` at `libpyle` (a vendored copy or git submodule) and link the target:
+
+```cmake
+add_subdirectory(third_party/pyle/libpyle)
+add_executable(my_app main.cpp)
+target_link_libraries(my_app PRIVATE libpyle)
+```
+
+`libpyle/CMakeLists.txt` is a standalone CMake project: it uses `find_package(fmt)` when available and otherwise fetches fmt and unordered_dense with `FetchContent`. `BUILD_SHARED_LIBS=ON` produces a shared library, and `PYLE_PROFILE_OPS=ON` enables the profiling build. No xmake installation is involved.
 
 ## C++ Example
 

@@ -21,7 +21,7 @@ vm_verify
 *.pyled
 
 # Handled by xmake
-CMakeLists.txt
+/CMakeLists.txt
 
 # Personal test webapp
 webapp/
