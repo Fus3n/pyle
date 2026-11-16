@@ -1,4 +1,8 @@
 struct bytes {
     fn size(): int { }
     fn to_string(): string { }
+    fn to_int_le(): int { }
+    fn to_int_be(): int { }
+    fn to_float_le(): float { }
+    fn to_float_be(): float { }
 }
