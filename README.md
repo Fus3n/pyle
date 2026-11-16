@@ -339,6 +339,20 @@ fn divide(a, b) {
 }
 ```
 
+## Benchmarks
+
+Factorial shows parity with CPython within a few percent, compiler-dependent:
+
+| Build | Compiler | Best (seconds) |
+|-------|----------|----------------|
+| Windows Pyle mingw | clang 23.1.5 | 0.0451 |
+| Windows Pyle MSVC (VS 2022) | MSVC | 0.0668 |
+| Windows CPython 3.14.6 | MSVC | 0.0613 |
+| Linux Pyle (WSL2) | gcc 15.2.0 | 0.0425 |
+| Linux CPython 3.14.4 (WSL2) | gcc 15.2.0 | 0.0397 |
+
+Both machines used the same hardware; Pyle 0.2.0. Methodology, raw runs and the Python twin (`examples/factorial.pyl`) live in [benchmarks/BENCHMARKS.md](benchmarks/BENCHMARKS.md). That's the reference set; additional benchmarks land there as they're collected.
+
 ## Editor Support
 
 A VS Code extension lives in `editors/vscode`. It gives you Pyle syntax highlighting plus hover, completion, go to definition, and signature help, all powered by the `pyle-lsp` server built alongside the interpreter. To try it, run `npm install` in that folder and launch it from VS Code with F5, which opens an Extension Development Host.
