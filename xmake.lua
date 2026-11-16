@@ -40,22 +40,26 @@ if is_mode("release") then
     add_ldflags("-flto=thin", {force = true})
 end
 
+if is_plat("mingw", "msys") then
+    add_ldflags("-Wl,-Bstatic", "-lc++", "-Wl,-Bdynamic", {force = true})
+end
+
 if is_mode("debug") then
     set_policy("build.sanitizer.address", true)      
     set_policy("build.sanitizer.undefined", true)    
 end
 
-if has_config("with_cli") then
+if has_config("with_cli") and not is_plat("wasm") then
     add_requires("argparse 3.2", "simdjson 4.2.4")
     add_requires("cpp-httplib 0.50.1")
     add_requires("mbedtls 3.6.1")
 end
 
-if has_config("with_lsp") then
+if has_config("with_lsp") and not is_plat("wasm") then
     add_requires("nlohmann_json 3.11.3")
 end
 
-if has_config("with_raylib") then
+if has_config("with_raylib") and not is_plat("wasm") then
     add_requires("raylib 5.5")
 end
 
@@ -64,7 +68,7 @@ add_rules("plugin.compile_commands.autoupdate")
 
 includes("libpyle")
 
-if has_config("with_cli") then
+if has_config("with_cli") and not is_plat("wasm") then
     target("pyle")
         set_kind("binary")
         add_files("pyle/src/main.cpp")
@@ -109,7 +113,7 @@ if has_config("with_cli") then
         end)
 end
 
-if has_config("with_raylib") then
+if has_config("with_raylib") and not is_plat("wasm") then
     target("raylib")
         set_kind("shared")
         set_filename("raylib.pyled")
@@ -125,7 +129,7 @@ if has_config("with_raylib") then
         end)
 end
 
-if has_config("with_examples") then
+if has_config("with_examples") and not is_plat("wasm") then
     target("example_basic_embedding")
         set_kind("binary")
         set_languages("c++17")
@@ -151,7 +155,7 @@ if has_config("with_examples") then
         add_deps("libpyle")
 end
 
-if has_config("with_tests") then
+if has_config("with_tests") and not is_plat("wasm") then
     target("pyle_tests")
         set_kind("binary")
         set_group("tests")
@@ -161,7 +165,7 @@ if has_config("with_tests") then
         add_tests("suite")
 end
 
-if has_config("with_lsp") then
+if has_config("with_lsp") and not is_plat("wasm") then
     target("pyle-lsp")
         set_kind("binary")
         add_files("pyle-lsp/src/main.cpp")
@@ -182,4 +186,24 @@ if has_config("with_lsp") then
             os.mkdir(outdir)
             os.cp(target:targetfile(), path.join(outdir, "pyle-lsp.exe"))
         end)
+end
+
+if is_plat("wasm") then
+    if has_config("with_tests") then
+        target("pyle_tests")
+            set_kind("binary")
+            set_group("tests")
+            set_filename("pyle_tests.js")
+            add_files("tests/*.cpp")
+            remove_files("tests/test_proc.cpp")
+            add_deps("libpyle")
+            add_cxxflags("-fwasm-exceptions")
+            add_ldflags(
+                "-fwasm-exceptions",
+                "-sEXIT_RUNTIME=1",
+                "-sENVIRONMENT=node",
+                {force = true}
+            )
+        target_end()
+    end
 end

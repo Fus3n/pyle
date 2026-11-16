@@ -1,10 +1,22 @@
 #include "pyle/std/std_file_module.hpp"
 #include "pyle/std/std_io.hpp"
 #include "pyle/binder.hpp"
+#include "pyle/config.hpp"
 #include <sstream>
 #include <thread>
+#include <utility>
 
 namespace pyle {
+    namespace {
+        template <typename F>
+        void spawn_file_task(F&& job) {
+#if PYLE_HAS_THREADS
+            std::thread(std::forward<F>(job)).detach();
+#else
+            job();
+#endif
+        }
+    }
     
     FileInstance::FileInstance(const std::string& path, const std::string& mode) 
         : path(path), mode(mode) {
@@ -219,7 +231,7 @@ namespace pyle {
             return pyle::Value();
         }
         auto [val, future] = pyle::Future::create(vm);
-        std::thread([this, future, &vm]() {
+        spawn_file_task([this, future, &vm]() {
             std::string line;
             if (std::getline(stream, line)) {
                 std::lock_guard<std::recursive_mutex> lock(vm.get_mutex());
@@ -228,7 +240,7 @@ namespace pyle {
                 std::lock_guard<std::recursive_mutex> lock(vm.get_mutex());
                 future->resolve(pyle::Value());
             }
-        }).detach();
+        });
         return val;
     }
 
@@ -238,11 +250,11 @@ namespace pyle {
             return pyle::Value();
         }
         auto [val, future] = pyle::Future::create(vm);
-        std::thread([this, future, &vm]() {
+        spawn_file_task([this, future, &vm]() {
             std::string content = pyle::read_stream_all(stream);
             std::lock_guard<std::recursive_mutex> lock(vm.get_mutex());
             future->resolve(pyle::to_value(vm, content));
-        }).detach();
+        });
         return val;
     }
 
@@ -252,7 +264,7 @@ namespace pyle {
             return pyle::Value();
         }
         auto [val, future] = pyle::Future::create(vm);
-        std::thread([this, text, future, &vm]() {
+        spawn_file_task([this, text, future, &vm]() {
             stream << text;
             bool fail = stream.fail();
             std::lock_guard<std::recursive_mutex> lock(vm.get_mutex());
@@ -261,7 +273,7 @@ namespace pyle {
             } else {
                 future->resolve(pyle::Value());
             }
-        }).detach();
+        });
         return val;
     }
 
@@ -287,7 +299,7 @@ namespace pyle {
         }
 
         auto [val, future] = pyle::Future::create(vm);
-        std::thread([this, count, future, &vm]() mutable {
+        spawn_file_task([this, count, future, &vm]() mutable {
             if (count == -1) {
                 auto current_pos = stream.tellg();
                 stream.seekg(0, std::ios::end); 
@@ -312,7 +324,7 @@ namespace pyle {
             std::lock_guard<std::recursive_mutex> lock(vm.get_mutex());
             HeapIdx idx = vm.alloc(Object(std::move(buffer)));
             future->resolve(pyle::Value(pyle::Value::Tag::BytesRef, idx));
-        }).detach();
+        });
         return val;
     }
 
@@ -329,7 +341,7 @@ namespace pyle {
         pyle::BytesType buffer = buffer_ref; 
         
         auto [val, future] = pyle::Future::create(vm);
-        std::thread([this, buffer = std::move(buffer), future, &vm]() {
+        spawn_file_task([this, buffer = std::move(buffer), future, &vm]() {
             stream.write(reinterpret_cast<const char*>(buffer.data()), buffer.size());
             bool fail = stream.fail();
             std::lock_guard<std::recursive_mutex> lock(vm.get_mutex());
@@ -338,7 +350,7 @@ namespace pyle {
             } else {
                 future->resolve(pyle::Value());
             }
-        }).detach();
+        });
         return val;
     }
 

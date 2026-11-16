@@ -20,6 +20,10 @@ target("libpyle")
     set_kind("$(kind)")
     set_languages("c++17")
     add_files("src/**.cpp")
+    if is_plat("wasm") then
+        remove_files("src/std/std_proc.cpp", "src/std/std_process.cpp")
+        add_cxxflags("-fwasm-exceptions")
+    end
     add_includedirs("include", {public = true})
     add_packages("fmt", "unordered_dense", {public = true})
     if has_config("profile_ops") then

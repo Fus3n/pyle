@@ -1,6 +1,7 @@
 #include "pyle/std/std_core_modules.hpp"
 #include "pyle/binder.hpp"
 #include "pyle/value.hpp"
+#include "pyle/config.hpp"
 #include <chrono>
 #include "pyle/std/std_future.hpp"
 #include <thread>
@@ -36,6 +37,11 @@ namespace pyle {
         int64_t seconds = std::chrono::duration_cast<std::chrono::seconds>(now.time_since_epoch()).count();
         return Value(seconds);
     }
+
+    Value os_cpu_count() {
+        unsigned n = std::thread::hardware_concurrency();
+        return Value(static_cast<int64_t>(n == 0 ? 1 : n));
+    }
   
     Value os_sys(VM& vm, ArgView args) {
         if (args.size() != 1 || args[0].tag != Value::Tag::StringRef) {
@@ -57,10 +63,15 @@ namespace pyle {
         int64_t ms = pyle::from_value<int64_t>(vm, args[0]);
         auto [val, future] = pyle::Future::create(vm);
         
+#if PYLE_HAS_THREADS
         std::thread([future, ms]() {
             std::this_thread::sleep_for(std::chrono::milliseconds(ms));
             future->finished.store(true);
         }).detach();
+#else
+        (void)ms;
+        future->finished.store(true);
+#endif
         
         return val;
     }
@@ -241,6 +252,8 @@ namespace pyle {
     Value os_platform(VM& vm) {
 #if defined(_WIN32)
         return to_value(vm, std::string("windows"));
+#elif defined(__EMSCRIPTEN__)
+        return to_value(vm, std::string("wasm"));
 #elif defined(__APPLE__)
         return to_value(vm, std::string("macos"));
 #elif defined(__linux__)
@@ -251,7 +264,11 @@ namespace pyle {
     }
 
     Value os_arch(VM& vm) {
-#if defined(_M_X64) || defined(__x86_64__)
+#if defined(__wasm32__)
+        return to_value(vm, std::string("wasm32"));
+#elif defined(__wasm64__)
+        return to_value(vm, std::string("wasm64"));
+#elif defined(_M_X64) || defined(__x86_64__)
         return to_value(vm, std::string("x86_64"));
 #elif defined(_M_ARM64) || defined(__aarch64__)
         return to_value(vm, std::string("aarch64"));
@@ -445,6 +462,7 @@ namespace pyle {
         mod.raw_function("system", os_sys)
             .function<os_time>("time")
             .function<os_epoch>("epoch")
+            .function<os_cpu_count>("cpu_count")
             .raw_function("getenv", os_getenv)
             .raw_function("date", os_date)
             .raw_function("strptime", os_strptime)
@@ -472,7 +490,9 @@ namespace pyle {
             .function<os_clock>("clock")
             .raw_function("difftime", os_difftime)
             .function<os_timezone>("timezone");
+#if PYLE_HAS_PROCESS
         proc::bind_to_os(vm, mod);
+#endif
         return mod.build();
     }
     
@@ -564,6 +584,8 @@ namespace pyle {
         register_fs_module(vm);
         register_color_module(vm);
         register_math_module(vm);
+#if PYLE_HAS_PROCESS
         pyle::register_proc_module(vm);
+#endif
     }
 }

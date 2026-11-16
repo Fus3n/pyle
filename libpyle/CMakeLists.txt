@@ -36,6 +36,13 @@ endif()
 
 file(GLOB_RECURSE PYLE_LIB_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp")
 
+if(EMSCRIPTEN OR CMAKE_SYSTEM_NAME STREQUAL "Emscripten" OR CMAKE_SYSTEM_NAME STREQUAL "wasm")
+    set(PYLE_WASM TRUE)
+    list(REMOVE_ITEM PYLE_LIB_SOURCES
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/std/std_proc.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/std/std_process.cpp")
+endif()
+
 add_library(libpyle ${PYLE_LIB_SOURCES})
 add_library(pyle::libpyle ALIAS libpyle)
 
@@ -43,6 +50,11 @@ target_include_directories(libpyle PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOUR
 target_compile_features(libpyle PUBLIC cxx_std_17)
 target_compile_definitions(libpyle PUBLIC FMT_HEADER_ONLY=1)
 target_link_libraries(libpyle PUBLIC fmt::fmt-header-only ${PYLE_UNORDERED_DENSE})
+
+if(PYLE_WASM)
+    target_compile_options(libpyle PUBLIC -fwasm-exceptions)
+    target_link_options(libpyle PUBLIC -fwasm-exceptions)
+endif()
 
 if(PYLE_PROFILE_OPS)
     target_compile_definitions(libpyle PUBLIC PYLE_PROFILE_OPS)

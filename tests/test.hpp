@@ -5,7 +5,11 @@
 #include <iterator>
 #include <string>
 #include <vector>
+#ifdef _WIN32
 #include <io.h>
+#else
+#include <unistd.h>
+#endif
 #include <fcntl.h>
 #include "pyle/pyle.hpp"
 #include "pyle/std/std_core.hpp"
@@ -52,18 +56,31 @@ struct StderrCap {
 
     void start() {
         fflush(stderr);
+#ifdef _WIN32
         saved = _dup(2);
         int tmp = _open(path, _O_WRONLY | _O_CREAT | _O_TRUNC, 0600);
         if (tmp < 0) return;
         _dup2(tmp, 2);
         _close(tmp);
+#else
+        saved = dup(2);
+        int tmp = open(path, O_WRONLY | O_CREAT | O_TRUNC, 0600);
+        if (tmp < 0) return;
+        dup2(tmp, 2);
+        close(tmp);
+#endif
     }
 
     std::string stop() {
         fflush(stderr);
         if (saved >= 0) {
+#ifdef _WIN32
             _dup2(saved, 2);
             _close(saved);
+#else
+            dup2(saved, 2);
+            close(saved);
+#endif
             saved = -1;
         }
         std::string s;

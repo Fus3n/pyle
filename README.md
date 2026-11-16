@@ -71,6 +71,37 @@ Add `--toolchain=clang`, `--toolchain=gcc`, or `--toolchain=msvc` to the configu
 The main targets are `pyle` for the interpreter, `pyle-lsp` for the language server, and `pyle_tests` for the test suite, which you can run with `xmake run pyle_tests`. There are also four embedding examples, `example_basic_embedding`, `example_function_binding`, `example_class_binding`, and `example_async_binding`, each covering one way of wiring the VM into a host program. The C++ sample below is the first of them, so you can read it here and then build it to see the same thing run.
 
 
+## WebAssembly
+
+`libpyle` builds for `wasm32` with Emscripten; the library uses no Emscripten APIs. Platform differences live in `libpyle/include/pyle/config.hpp`, where process, thread and `.pyled` support degrade to zero on Emscripten while remaining one code path everywhere else.
+
+An [emsdk](https://github.com/emscripten-core/emsdk) installation is required. The toolchain is located via `xmake f -p wasm --emsdk=/path/to/emsdk`, the `EMSDK` environment variable, or `emcc` on the `PATH`:
+
+```sh
+xmake f -p wasm -m release
+xmake build libpyle
+```
+
+The configure skips the desktop-only pieces (interpreter, language server, raylib, JSON/HTTP/crypto, `.pyled` native modules). Async helpers such as `os.sleep_async` and the async `File` methods resolve synchronously on wasm. The CMake project behaves the same: passing the Emscripten toolchain file excludes the `proc` sources automatically.
+
+The test suite also runs under Node:
+
+```sh
+xmake build -y pyle_tests
+node build/wasm/wasm32/release/pyle_tests.js
+```
+
+The desktop suite reports 97 tests; the wasm build excludes `tests/test_proc.cpp` (process APIs are unavailable), so it reports 87.
+
+## Platform support
+
+| Platform | Status |
+|---|---|
+| Windows x86_64 (MSVC 2022, mingw clang64) | Tested |
+| Linux x86_64 | Not tested |
+| macOS (arm64/x86_64) | Not tested |
+| Web/WASM (wasm32, Emscripten) | Tested (`proc`, Worker and `.pyled` unavailable) |
+
 ## Embedding
 
 The library is the whole language: lexer, parser, compiler, VM, garbage collector, and the core native functions. The `pyle` interpreter binary, `pyle-lsp`, and the embedding examples are separate targets that link against it. The heavier dependencies (simdjson, cpp-httplib, mbedtls, argparse, raylib) belong to the interpreter binary and its bundled modules, not to the library, so embedding does not pull any of them in.

@@ -558,10 +558,6 @@ Value recv_tick(VM& vm, ArgView) {
 
 }  // namespace
 
-int cpu_count() {
-    unsigned n = std::thread::hardware_concurrency();
-    return n == 0 ? 1 : static_cast<int>(n);
-}
 
 bool worker_init_from_env(VM& vm) {
     const char* flag = std::getenv("PYLE_WORKER");
@@ -671,9 +667,6 @@ Value os_worker_args(VM& vm, ArgView args) {
     return Value(Value::Tag::ArrayRef, vm.alloc(Object(std::move(arr))));
 }
 
-int64_t proc_cpu_count() {
-    return static_cast<int64_t>(cpu_count());
-}
 
 Worker* worker_of(VM& m, HeapIdx self) {
     auto* sp = static_cast<std::shared_ptr<Worker>*>(std::get<NativeObject>(m.get_heap_object(self).data).ptr);
@@ -683,7 +676,6 @@ Worker* worker_of(VM& m, HeapIdx self) {
 void bind_to_os(VM& vm, NativeModule& mod) {
     static std::atomic<bool> tick_registered{false};
     if (!tick_registered.exchange(true)) background_ticks().push_back(recv_tick);
-    mod.function<proc_cpu_count>("cpu_count");
     mod.raw_function("spawn_worker", os_spawn_worker);
     mod.raw_function("is_worker", os_is_worker);
     mod.raw_function("worker_send", os_worker_send);

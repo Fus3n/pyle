@@ -32,6 +32,11 @@
     #define DynLibOpen(path) dlopen(path, RTLD_NOW | RTLD_LOCAL)
     #define DynLibSym(lib, name) dlsym(lib, name)
     #define DynLibClose(lib) dlclose(lib)
+#elif defined(__EMSCRIPTEN__)
+    using DynLib = void*;
+    #define DynLibOpen(path) (static_cast<DynLib>(nullptr))
+    #define DynLibSym(lib, name) (static_cast<void*>(nullptr))
+    #define DynLibClose(lib) ((void)0)
 #else
     #error "Unsupported platform for .pyled native modules"
 #endif
@@ -142,6 +147,7 @@ namespace pyle {
             return module_val;
         }
 
+#if PYLE_HAS_DYNLIB
         // Try loading as .pyled native module
         {
             std::string mod_name = std::get<std::string>(vm.get_heap_object(mod_name_idx).data);
@@ -182,6 +188,7 @@ namespace pyle {
                 if (auto result = try_load_pyled(dir + pyled_filepath)) return *result;
             }
         }
+#endif
 
         std::string mod_name = std::get<std::string>(vm.get_heap_object(mod_name_idx).data);
 
