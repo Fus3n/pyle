@@ -1,5 +1,7 @@
 #include "http_binding.hpp"
 #include <regex>
+#include <algorithm>
+#include <cctype>
 
 namespace pyle {
 namespace http_binding {
@@ -296,7 +298,13 @@ namespace http_binding {
                             HttpResponseData out = fut.get();
                             res.status = static_cast<int>(out.status);
                             for (const auto& [hk, hv] : out.headers) res.headers.insert({hk, hv});
-                            if (!out.body.empty() && out.headers.find("Content-Type") == out.headers.end()) {
+                            bool has_ct = false;
+                            for (const auto& [hk, hv] : out.headers) {
+                                std::string lower = hk;
+                                std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
+                                if (lower == "content-type") { has_ct = true; break; }
+                            }
+                            if (!out.body.empty() && !has_ct) {
                                 res.set_content(out.body, "text/plain");
                             } else {
                                 res.body = std::move(out.body);
@@ -327,7 +335,13 @@ namespace http_binding {
                                 }
                                 res.status = static_cast<int>(data.status);
                                 for (const auto& [hk, hv] : data.headers) res.headers.insert({hk, hv});
-                                if (!data.body.empty() && data.headers.find("Content-Type") == data.headers.end()) {
+                                bool has_ct = false;
+                                for (const auto& [hk, hv] : data.headers) {
+                                    std::string lower = hk;
+                                    std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
+                                    if (lower == "content-type") { has_ct = true; break; }
+                                }
+                                if (!data.body.empty() && !has_ct) {
                                     res.set_content(data.body, "text/plain");
                                 } else {
                                     res.body = std::move(data.body);
