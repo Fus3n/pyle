@@ -695,6 +695,8 @@ namespace pyle {
         clear_pending();
         size_t saved_sp_offset = sp - stack;
         size_t saved_frame_count = frame_count;
+        HeapIdx saved_globals_idx = globals_idx;
+        std::vector<Value>* saved_global_slots = global_slots;
         push(pyle::Value());
         push(callee);
         for (size_t i = 0; i < count; ++i) push(args[i]);
@@ -720,6 +722,8 @@ namespace pyle {
         last_result = pyle::Value();
         sp = stack + saved_sp_offset;
         frame_count = saved_frame_count;
+        globals_idx = saved_globals_idx;
+        global_slots = saved_global_slots;
         return result;
     }
 

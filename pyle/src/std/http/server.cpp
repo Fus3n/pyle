@@ -305,6 +305,7 @@ namespace http_binding {
                         register_catch_all(verb, handler);
                     } else {
                         auto handler = [m = vm, table](const httplib::Request& req, httplib::Response& res) {
+                            std::lock_guard<std::recursive_mutex> vm_lock(m->get_mutex());
                             GcDisable gc(*m);
                             try {
                                 std::vector<std::string> captures;
