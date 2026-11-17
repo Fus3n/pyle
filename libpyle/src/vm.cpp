@@ -2056,9 +2056,13 @@ namespace pyle {
                 DISPATCH();
 
                 OP(CLOSURE) {
-                    Value fn_val = pop(); 
+                    Value fn_val = pop();
                     Function& fn = std::get<Function>(heap[fn_val.as_ref].data);
-                    
+
+                    if (frame->module_swap && frame->module_env_idx != 0 && fn.module_env == 0) {
+                        fn.module_env = frame->module_env_idx;
+                    }
+
                     Closure closure;
                     closure.function = fn_val.as_ref;
                     
