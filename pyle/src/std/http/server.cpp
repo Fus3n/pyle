@@ -101,6 +101,7 @@ namespace http_binding {
             httplib::Server svr;
             std::string host = "0.0.0.0";
             int port = 8080;
+            int worker_threads = 4;
             std::vector<pyle::Value> handlers;
             std::vector<Route> routes;
             std::mutex jobs_mutex;
@@ -110,7 +111,15 @@ namespace http_binding {
             char bound_mode = 0;
 
             HttpServerWrapper() {
-                svr.new_task_queue = [] { return new httplib::ThreadPool(1); };
+                int threads = 4;
+                if (const char* env = std::getenv("PYLE_HTTP_THREADS")) {
+                    int v = std::atoi(env);
+                    if (v >= 1) {
+                        threads = v;
+                    }
+                }
+                worker_threads = threads;
+                svr.new_task_queue = [threads] { return new httplib::ThreadPool(threads); };
                 apply_mime_overrides(svr);
                 std::lock_guard<std::mutex> lock(g_live_servers_mutex());
                 g_live_servers().push_back(this);
@@ -652,7 +661,15 @@ namespace http_binding {
                 server->vm = &m;
                 for (size_t i = 0; i < args.size(); ++i) {
                     if (args[i].tag == pyle::Value::Tag::Int) {
-                        server->port = static_cast<int>(args[i].as_int);
+                        if (i == 2) {
+                            int v = static_cast<int>(args[i].as_int);
+                            if (v >= 1) {
+                                server->worker_threads = v;
+                                server->svr.new_task_queue = [v] { return new httplib::ThreadPool(v); };
+                            }
+                        } else {
+                            server->port = static_cast<int>(args[i].as_int);
+                        }
                     } else if (args[i].tag == pyle::Value::Tag::Float) {
                         server->port = static_cast<int>(args[i].as_float);
                     } else if (args[i].tag == pyle::Value::Tag::StringRef) {
@@ -660,7 +677,7 @@ namespace http_binding {
                     } else {
                         delete server;
                         m.runtime_error(pyle::RuntimeError::ArgumentError,
-                            "http.Server expects optional (host: string) and/or (port: int).");
+                            "http.Server expects optional (host: string), (port: int) and (threads: int).");
                         return pyle::Value();
                     }
                 }
@@ -763,7 +780,8 @@ namespace http_binding {
                 auto* fut_ptr = new std::shared_ptr<pyle::Future>(fut);
                 server->materialize(true);
                 apply_mime_overrides(server->svr);
-                server->svr.new_task_queue = [] { return new httplib::ThreadPool(16); };
+                int threads = server->worker_threads;
+                server->svr.new_task_queue = [threads] { return new httplib::ThreadPool(threads); };
                 std::thread([server, fut_ptr]() {
                     bool ok = server->svr.listen(server->host, server->port);
                     server->running.store(false);
