@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128" fill="none">
+	<rect x="0" y="0" width="128" height="128" rx="10" fill="#EF6114" />
+	<path
+		fill="#FFFFFF"
+		fill-rule="evenodd"
+		d="M 35 32 A 6.6 6.6 0 0 1 41.6 25.4 L 68.55 25.4 L 99.46 50.48 Q 103.75 54 99.46 57.52 L 68.55 82.6 L 54.8 82.6 L 54.8 98 A 6.6 6.6 0 0 1 48.2 104.6 L 41.6 104.6 A 6.6 6.6 0 0 1 35 98 Z M 54.8 43 L 62.5 43 L 74.05 52.35 Q 76.03 54 74.05 55.65 L 62.5 65 L 54.8 65 Z"
+	/>
+</svg>

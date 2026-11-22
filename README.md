@@ -1,12 +1,12 @@
 <p align="center">
-  <img src="assets/pyle-logo.png" alt="Pyle logo" width="140">
+  <img src="assets/pyle-logo.svg" alt="Pyle logo" width="120">
 </p>
 <p align="center"><b>Pyle is a fast, lightweight, embeddable dynamic scripting language for C++ 17+.</b></p>
 
 
 ## Overview
 
-Pyle is a dynamic scripting language meant to sit inside a C++ program and drive gameplay logic, tooling, and small scripts without pulling in a heavier runtime. It embeds a stack-based VM that you can execute scripts on, and you can pass data in and out of it and bind your own native functions and types to it.
+Pyle is a dynamic scripting language meant to sit inside a C++ program and drive gameplay logic, tooling, and small scripts without pulling in a heavier runtime. It embeds a stack-based VM that you can execute scripts on, and you can pass data in and out of it and bind your own native functions and types to it. [Full documentation](https://fus3n.github.io/pyle-docs/)
 
 ```js
 struct Stack(items) {
