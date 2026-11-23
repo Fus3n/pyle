@@ -13,5 +13,5 @@
 #endif
 
 namespace pyle {
-    #define PYLE_VERSION "0.2.0"
+    #define PYLE_VERSION "0.3.0"
 }
